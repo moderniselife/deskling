@@ -2,7 +2,8 @@
 # Use it from ~/.claude/settings.json with "shell": "powershell" (see hooks/README.md).
 #
 #   deskling-hook.ps1          fire-and-forget
-#   deskling-hook.ps1 wait     PermissionRequest: wait for Allow/Deny on the screen
+#   deskling-hook.ps1 sync     quick round trip, prints the relay's reply
+#   deskling-hook.ps1 wait     PermissionRequest / AskUserQuestion: wait for an answer on the screen
 
 param([string]$Mode = "")
 
@@ -43,6 +44,10 @@ try {
     if ($wait -le 0) { exit 0 }
     $res = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook?wait=$wait" -Headers $headers `
       -ContentType "application/json" -Body $body -TimeoutSec ($wait + 10)
+    if ($res.Content) { [Console]::Out.Write($res.Content) }
+  } elseif ($Mode -eq "sync") {
+    $res = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook" -Headers $headers `
+      -ContentType "application/json" -Body $body -TimeoutSec 4
     if ($res.Content) { [Console]::Out.Write($res.Content) }
   } else {
     Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook" -Headers $headers `

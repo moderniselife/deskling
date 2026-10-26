@@ -1,7 +1,7 @@
 {
   "name": "deskling",
   "displayName": "Deskling",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Sends Claude Code activity to your Deskling desk screen and lets you approve permission requests from it.",
   "author": {
     "name": "moderniselife"
@@ -9,6 +9,18 @@
   "repository": "https://github.com/moderniselife/deskling",
   "license": "MIT",
   "keywords": ["notifications", "hardware", "esp32", "dashboard"],
+  "mcpServers": {
+    "deskling": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/channel/deskling-channel.mjs"],
+      "env": {
+        "DESKLING_URL": "${user_config.relay_url}",
+        "DESKLING_TOKEN": "${user_config.token}",
+        "DESKLING_NAME": "${user_config.device_name}"
+      }
+    }
+  },
+  "channels": [{ "server": "deskling", "displayName": "Deskling" }],
   "userConfig": {
     "relay_url": {
       "type": "string",

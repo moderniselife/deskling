@@ -1,12 +1,18 @@
 export type AgentState = "idle" | "working" | "waiting" | "needs_you" | "done";
 
+/** Which tool the session lives in, so the screen can badge it. */
+export type Source = "claude-code" | "cursor" | "codex" | "gemini" | "custom";
+
 export interface Agent {
-  id: string; // Claude Code session_id, or a custom id for other agents
+  id: string; // Claude Code session_id, Cursor conversation_id, or a custom id
+  source: Source;
   name: string; // project folder name or a custom label
   host: string; // machine name
   os: string; // mac | windows | linux | cloud | ...
   state: AgentState;
-  task: string; // one-line description of what it's doing
+  task: string; // one line: what it's doing right now
+  lastPrompt: string; // the last thing you asked it
+  lastMessage: string; // the last thing it said
   since: number; // ms epoch when the current state started
   updated: number;
 }
@@ -18,6 +24,7 @@ export interface FeedItem {
   level: FeedLevel;
   title: string;
   body: string;
+  agentId: string | null;
   ts: number;
 }
 
@@ -31,17 +38,40 @@ export interface Reminder {
   notified: boolean;
 }
 
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface Question {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+}
+
 export interface Pending {
   id: string;
+  kind: "permission" | "question";
   agentId: string;
+  source: Source;
   name: string;
   host: string;
   os: string;
   tool: string;
   summary: string; // the command or file the tool wants to touch
   detail: string; // short explanation if we have one
+  questions: Question[]; // for kind === "question"
   ts: number;
   expires: number;
+}
+
+export interface ChatLine {
+  id: string;
+  from: "you" | "agent";
+  text: string;
+  status: "queued" | "delivered" | "sent"; // "sent" = an agent reply
+  ts: number;
 }
 
 export interface State {
@@ -49,11 +79,15 @@ export interface State {
   feed: FeedItem[];
   reminders: Reminder[];
   pending: Pending[];
+  chats: Record<string, ChatLine[]>; // per agent id
   focus: boolean;
   pingWhenDone: boolean;
 }
 
 export type Decision = "allow" | "deny" | "computer";
+
+/** Answers keyed by question text: a label, or labels for multi-select. */
+export type Answers = Record<string, string | string[]>;
 
 /** Why a snapshot was sent, so the screen can pick an animation. */
 export interface Cause {
@@ -62,9 +96,11 @@ export interface Cause {
     | "agent"
     | "feed"
     | "permission"
+    | "question"
     | "permission_closed"
     | "done"
     | "ping"
+    | "chat"
     | "reminder"
     | "reminder_due"
     | "reminder_done"

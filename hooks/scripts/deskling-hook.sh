@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Forwards a Claude Code hook event (JSON on stdin) to the Deskling relay.
 #
-#   deskling-hook.sh        fire-and-forget (most events)
-#   deskling-hook.sh wait   PermissionRequest: wait for Allow/Deny on the screen
-#                           and print the decision for Claude Code
+#   deskling-hook.sh        fire-and-forget (status events)
+#   deskling-hook.sh sync   quick round trip, prints the relay's reply
+#                           (Stop / UserPromptSubmit pick up messages queued on the screen)
+#   deskling-hook.sh wait   PermissionRequest / AskUserQuestion: wait for an answer
+#                           on the screen and print it for Claude Code
 #
 # Settings come from the plugin's options (CLAUDE_PLUGIN_OPTION_*), or from
 # DESKLING_* environment variables, or from ~/.deskling/config.
@@ -45,6 +47,13 @@ if [ "$1" = "wait" ]; then
   fi
   # Prints the relay's decision JSON (or nothing, so the terminal prompt appears).
   curl -sSf --max-time $((WAIT + 10)) -X POST "${URL}/hook?wait=${WAIT}" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    -H "X-Deskling-Host: ${NAME}" \
+    -H "X-Deskling-OS: ${OS}" \
+    --data-binary @- 2>/dev/null || true
+elif [ "$1" = "sync" ]; then
+  curl -sSf --max-time 4 -X POST "${URL}/hook" \
     -H "Authorization: Bearer ${TOKEN}" \
     -H "Content-Type: application/json" \
     -H "X-Deskling-Host: ${NAME}" \

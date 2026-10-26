@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [{ "command": "./hooks/deskling-cursor.sh" }],
+    "afterFileEdit": [{ "command": "./hooks/deskling-cursor.sh" }],
+    "stop": [{ "command": "./hooks/deskling-cursor.sh" }]
+  }
+}

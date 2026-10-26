@@ -93,6 +93,68 @@ check("ticking a reminder off sticks", s.reminders.find((x) => x.id === r.id)?.d
 const n = await fetch(`${URL_BASE}/api/event`, { method: "POST", headers: auth, body: JSON.stringify({ kind: "notify", title: "Daily digest is ready", body: "Scheduled task" }) });
 check("notify works", n.ok);
 
+// Questions (AskUserQuestion via PreToolUse).
+const question = hook(
+  {
+    hook_event_name: "PreToolUse",
+    tool_name: "AskUserQuestion",
+    tool_input: { questions: [{ question: "Which database?", header: "DB", multiSelect: false, options: [{ label: "Postgres", description: "" }, { label: "SQLite", description: "" }] }] },
+  },
+  "?wait=10",
+);
+s = await waitFor((m) => m.pending.some((p) => p.kind === "question"));
+const q = s.pending.find((p) => p.kind === "question");
+check("question shows with its options", q.questions[0].options.length === 2 && q.questions[0].question === "Which database?");
+ws.send(JSON.stringify({ type: "answer", id: q.id, answers: { "Which database?": "SQLite" } }));
+const qOut = await (await question).json();
+check("answer reaches Claude", qOut?.hookSpecificOutput?.permissionDecision === "deny" && qOut.hookSpecificOutput.permissionDecisionReason.includes("SQLite"));
+
+// Messages from the screen: queued, then delivered when Claude stops.
+await hook({ hook_event_name: "UserPromptSubmit", prompt: "Write the docs" });
+ws.send(JSON.stringify({ type: "message", agentId: "s-smoke", text: "also add a FAQ section" }));
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.status === "queued"));
+check("message queues on the screen", true);
+const stopRes = await (await hook({ hook_event_name: "Stop", last_assistant_message: "Docs written." })).json();
+check("stop delivers queued message and keeps Claude going", stopRes.decision === "block" && stopRes.reason.includes("FAQ"));
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.status === "delivered"));
+check("message marked delivered", true);
+ws.send(JSON.stringify({ type: "message", agentId: "s-smoke", text: "and run the tests" }));
+await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.status === "queued" && c.text === "and run the tests"));
+const upRes = await (await hook({ hook_event_name: "UserPromptSubmit", prompt: "ship it" })).json();
+check("queued message rides along with your next prompt", upRes?.hookSpecificOutput?.additionalContext?.includes("run the tests"));
+
+// Channel: a live channel takes messages straight away instead of the Stop hook.
+const reg = await (await fetch(`${URL_BASE}/channel/register`, { method: "POST", headers: auth, body: JSON.stringify({ host: "test-mac", cwd: "/Users/joe/code/web-app", os: "mac" }) })).json();
+check("channel links to the session on the same machine + folder", reg.agentId === "s-smoke", JSON.stringify(reg));
+const poll = fetch(`${URL_BASE}/channel/poll?cid=${reg.cid}&wait=10`, { headers: auth }).then((r) => r.json());
+await new Promise((r) => setTimeout(r, 300));
+ws.send(JSON.stringify({ type: "message", agentId: "s-smoke", text: "hello over the channel" }));
+const polled = await poll;
+check("channel poll receives the message", polled.messages?.[0] === "hello over the channel", JSON.stringify(polled));
+await fetch(`${URL_BASE}/channel/reply`, { method: "POST", headers: auth, body: JSON.stringify({ cid: reg.cid, text: "On it!" }) });
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.from === "agent" && c.text === "On it!"));
+check("Claude's channel reply shows in the chat", true);
+
+// Cursor.
+const cursorHook = (body, q = "") =>
+  fetch(`${URL_BASE}/hook${q}`, { method: "POST", headers: { ...auth, "x-deskling-host": "win-pc", "x-deskling-os": "windows", "x-deskling-source": "cursor" }, body: JSON.stringify({ conversation_id: "c1", workspace_roots: ["C:\\code\\styles"], ...body }) });
+const cs = await (await cursorHook({ hook_event_name: "beforeSubmitPrompt", prompt: "fix the navbar" })).json();
+s = await waitFor((m) => m.agents.some((a) => a.id === "cursor-c1" && a.source === "cursor" && a.name === "styles"));
+check("cursor chat shows up as an agent", cs.continue === true);
+const cShell = cursorHook({ hook_event_name: "beforeShellExecution", command: "npm test", cwd: "C:\\code\\styles" }, "?approve=1&wait=10");
+s = await waitFor((m) => m.pending.some((p) => p.source === "cursor"));
+ws.send(JSON.stringify({ type: "decision", id: s.pending.find((p) => p.source === "cursor").id, decision: "allow" }));
+const cOut = await (await cShell).json();
+check("cursor shell approval", cOut.permission === "allow");
+await cursorHook({ hook_event_name: "stop", status: "completed" });
+s = await waitFor((m) => m.agents.find((a) => a.id === "cursor-c1")?.state === "done");
+check("cursor stop marks done", true);
+
+// Custom agents via the API.
+await fetch(`${URL_BASE}/api/event`, { method: "POST", headers: auth, body: JSON.stringify({ kind: "status", id: "nightly", name: "Nightly digest", state: "working", task: "Reading inboxes", source: "custom" }) });
+s = await waitFor((m) => m.agents.some((a) => a.id === "nightly"));
+check("custom agent status", s.agents.find((a) => a.id === "nightly").task === "Reading inboxes");
+
 await hook({ hook_event_name: "SessionEnd", reason: "other" });
 s = await waitFor((m) => !m.agents.some((a) => a.id === "s-smoke"));
 check("session end removes the agent", true);
