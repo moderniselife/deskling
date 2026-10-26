@@ -1,0 +1,18 @@
+# ESP-IDF
+firmware/build/
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/dependencies.lock
+
+# Node / Wrangler
+node_modules/
+.wrangler/
+.dev.vars
+
+# CAD exports in progress
+case/**/*.bak
+
+# OS
+.DS_Store
+Thumbs.db
