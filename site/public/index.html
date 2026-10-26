@@ -463,8 +463,12 @@ p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px
               <figcaption><b>Answer Claude's questions</b><span>Its multiple-choice questions become big buttons, and your answer goes straight back.</span></figcaption>
             </figure>
             <figure class="panel" id="p-chat" role="tabpanel" aria-labelledby="t-chat">
-              <div class="frame"><img src="/media/chat.webp" width="1280" height="800" alt="Chat with a Claude Code session, with quick replies" loading="lazy"></div>
-              <figcaption><b>Message any session</b><span>Quick replies like "Run the tests", or type on the on-screen keyboard.</span></figcaption>
+              <div class="frame"><img src="/media/chat.webp" width="1280" height="800" alt="A session's conversation: your prompt, its thinking, the files it edits, its reply and its helpers, with quick replies" loading="lazy"></div>
+              <figcaption><b>Follow the whole conversation</b><span>Its replies as they arrive, what it's thinking, every step and its helpers. Reply with a tap or the on-screen keyboard.</span></figcaption>
+            </figure>
+            <figure class="panel" id="p-new" role="tabpanel" aria-labelledby="t-new">
+              <div class="frame"><img src="/media/new-session.webp" width="1280" height="800" alt="New session: pick the computer, the agent (Claude Code, OpenCode or Gemini CLI), the model and the project, then say what to do" loading="lazy"></div>
+              <figcaption><b>Start a session from the screen</b><span>Pick the computer, the agent, the model and the project, then say what it should do.</span></figcaption>
             </figure>
             <figure class="panel" id="p-home" role="tabpanel" aria-labelledby="t-home">
               <div class="frame"><img src="/media/home.webp" width="1280" height="800" alt="Home screen with Deskling, the clock, reminders and a live feed" loading="lazy"></div>
@@ -483,7 +487,8 @@ p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px
         <div class="tabs" role="tablist" aria-label="Deskling screens" aria-orientation="vertical">
           <button type="button" class="tab" role="tab" id="t-permission" aria-controls="p-permission" aria-selected="true"><span class="dot" style="--c:#C8553D"></span><b>Allow or deny a command</b><span>See exactly what Claude wants to run, on which machine, and tap once.</span></button>
           <button type="button" class="tab" role="tab" id="t-question" aria-controls="p-question" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#E0B43A"></span><b>Answer its questions</b><span>Its multiple-choice questions become big buttons, and your answer goes straight back.</span></button>
-          <button type="button" class="tab" role="tab" id="t-chat" aria-controls="p-chat" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#8E80D6"></span><b>Message any session</b><span>Quick replies like "Run the tests", or type on the on-screen keyboard.</span></button>
+          <button type="button" class="tab" role="tab" id="t-chat" aria-controls="p-chat" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#8E80D6"></span><b>Follow the whole conversation</b><span>Its replies as they arrive, what it's thinking, every step and its helpers.</span></button>
+          <button type="button" class="tab" role="tab" id="t-new" aria-controls="p-new" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#CFC4F2"></span><b>Start a session</b><span>Pick the computer, the agent, the model and the project.</span></button>
           <button type="button" class="tab" role="tab" id="t-home" aria-controls="p-home" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#F5C24A"></span><b>Tick off reminders</b><span>"Remind me at 3 to reply to that email." Claude sets it, and Deskling nudges you.</span></button>
           <button type="button" class="tab" role="tab" id="t-sessions" aria-controls="p-sessions" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#2F8A63"></span><b>See every session</b><span>Your Mac, your PC, Cursor and cloud sessions, sorted by who needs you.</span></button>
           <button type="button" class="tab" role="tab" id="t-night" aria-controls="p-night" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#2A2433"></span><b>Doze off at night</b><span>After 10pm it dims to a quiet clock and only wakes for what matters.</span></button>
@@ -590,6 +595,7 @@ deskling remind "Stretch" --in 20m</code></pre><button type="button" class="copy
         <details><summary>Can it be quiet?</summary><p>Yes. There's a volume slider, and "Quiet at night" mutes everything between 10pm and 7am except the reminders you asked for.</p></details>
         <details><summary>Which agents does it work with?</summary><p>Claude Code and OpenCode fully, with any model OpenCode can use, including local ones. The runner also starts Gemini CLI, Cursor, Codex, Copilot, Goose, Qwen Code, Kimi and Kiro from the screen. Anything else can send notifications, reminders and its status with one command.</p></details>
         <details><summary>Does it work with more than one computer?</summary><p>That's the point. Install the plugin on each one, and every session shows up with the name of the machine it's on.</p></details>
+        <details><summary>Can I try it before I have the board?</summary><p>Yes. Deploy your relay and open its <code>/app</code> page: it's Deskling in your browser, with the same conversations, approvals and new sessions. Add it to your phone's home screen and it works there too.</p></details>
         <details><summary>I don't have a 3D printer.</summary><p>It works fine without the case, propped up on a little stand. Any print service can make the parts from the STL files in the repo.</p></details>
       </div>
     </div>

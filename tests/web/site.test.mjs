@@ -63,7 +63,7 @@ check("motion defaults to off when the system asks for less motion", await reduc
 
 const nojs = await browser.newPage({ javaScriptEnabled: false });
 await nojs.goto(url + "/");
-check("without JavaScript every screen is still there", (await nojs.locator(".panel").evaluateAll((els) => els.filter((e) => e.offsetHeight > 0).length)) === 6);
+check("without JavaScript every screen is still there", (await nojs.locator(".panel").evaluateAll((els) => els.filter((e) => e.offsetHeight > 0).length)) === (await nojs.locator(".panel").count()));
 
 await browser.close();
 server.close();
