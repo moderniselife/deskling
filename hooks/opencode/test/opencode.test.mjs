@@ -257,7 +257,7 @@ try {
   relay.updates.length = 0;
   const runnerPort = await freePort();
   runner = spawn(process.execPath, [join(here, "..", "..", "runner", "deskling-runner.mjs")], {
-    env: { ...env, DESKLING_OPENCODE: BIN, DESKLING_CLAUDE: "off", DESKLING_OPENCODE_PORT: String(runnerPort), DESKLING_PROJECTS: proj, DESKLING_ACP: `OC ACP=${BIN} acp` },
+    env: { ...env, DESKLING_OPENCODE: BIN, DESKLING_CLAUDE: "off", DESKLING_OPENCODE_PORT: String(runnerPort), DESKLING_PROJECTS: proj, DESKLING_ACP: `OC ACP=${BIN} acp`, DESKLING_OLLAMA_URL: model.url.replace(/\/v1$/, ""), DESKLING_LMSTUDIO_URL: "http://127.0.0.1:9" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   runner.stdout.on("data", (d) => (log += d));
@@ -266,8 +266,9 @@ try {
   const eng = relay.registered.engines?.find((e) => e.id === "opencode");
   check("the runner offers OpenCode", !!eng, JSON.stringify(relay.registered.engines));
   check("with the models you set up, your default first", eng?.models?.[0]?.id === "mock/mock-coder" && eng.models[0].name === "Mock coder", JSON.stringify(eng?.models));
+  check("it finds local models in Ollama with no setup (and skips embedding models)", eng?.models?.some((m) => m.id === "ollama/mock-coder") && !eng.models.some((m) => /embed/.test(m.id)), JSON.stringify(eng?.models));
   check("it installs the Deskling plugin and agents for OpenCode", existsSync(join(cfg, "plugins", "deskling.js")) && existsSync(join(cfg, "agents", "deskling-reviewer.md")));
-  relay.job = { id: "j2", machine: relay.registered.machine, project: proj, prompt: "say hello to the screen", engine: "opencode", model: "mock/mock-coder" };
+  relay.job = { id: "j2", machine: relay.registered.machine, project: proj, prompt: "say hello to the screen", engine: "opencode", model: "ollama/mock-coder" };
   await until("the job to start", () => relay.done, 30000);
   check("it starts an OpenCode session for the screen", relay.done.ok === true && relay.done.id === "j2", JSON.stringify(relay.done));
   await until("the new session's reply", () => relay.updates.some((u) => (u.lines || []).some((l) => l.from === "agent" && /say hello to the screen/.test(l.text))), 30000);

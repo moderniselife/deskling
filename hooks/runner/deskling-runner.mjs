@@ -31,6 +31,8 @@
 //   DESKLING_ACP                   more ACP agents, or other commands for known ones:
 //                                  "Pi=npx pi-acp; Gemini CLI=gemini --experimental-acp"
 //   DESKLING_ACP_IDLE_HOURS        close an ACP session after this long without a turn (default 4)
+//   DESKLING_OLLAMA_URL, DESKLING_LMSTUDIO_URL  where to look for local model servers
+//                                  (default: Ollama on 127.0.0.1:11434, LM Studio on 127.0.0.1:1234)
 //   DESKLING_OPENCODE_AGENT        the OpenCode agent for sessions from the screen (default: deskling;
 //                                  "default" for OpenCode's own default)
 
@@ -202,7 +204,7 @@ function ocPassword() {
   }
   return p;
 }
-const oc = { url: `http://127.0.0.1:${OC_PORT}`, password: "", proc: null, ok: false };
+const oc = { url: `http://127.0.0.1:${OC_PORT}`, password: "", proc: null, ok: false, content: "" };
 const ocHeaders = () => ({ "content-type": "application/json", authorization: "Basic " + Buffer.from(`opencode:${oc.password}`).toString("base64") });
 async function ocFetch(path, init = {}) {
   const res = await fetch(oc.url + path, { ...init, headers: { ...ocHeaders(), ...(init.headers ?? {}) }, signal: AbortSignal.timeout(init.timeout ?? 20_000) });
@@ -256,6 +258,49 @@ async function installPlugin() {
   return ok;
 }
 
+// ---- local models: Ollama and LM Studio running on this computer are offered to OpenCode
+// without any setup (unless you've set up a provider with that name yourself).
+const LOCAL_SERVERS = [
+  { id: "ollama", name: "Ollama (local)", url: get("DESKLING_OLLAMA_URL", "http://127.0.0.1:11434"), list: "/api/tags", pick: (j) => (j.models || []).map((m) => m.name) },
+  { id: "lmstudio", name: "LM Studio (local)", url: get("DESKLING_LMSTUDIO_URL", "http://127.0.0.1:1234"), list: "/v1/models", pick: (j) => (j.data || []).map((m) => m.id) },
+];
+
+/** The provider names in your own OpenCode config (a lenient read of JSON with comments). */
+function yourProviders() {
+  const dir = join(process.env.XDG_CONFIG_HOME || join(HOME, ".config"), "opencode");
+  const ids = new Set();
+  for (const f of ["config.json", "opencode.json", "opencode.jsonc"]) {
+    try {
+      const text = readFileSync(join(dir, f), "utf8")
+        .replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m, str) => str ?? "")
+        .replace(/,(\s*[}\]])/g, "$1");
+      for (const k of Object.keys(JSON.parse(text).provider ?? {})) ids.add(k);
+    } catch {
+      /* none, or not readable */
+    }
+  }
+  return ids;
+}
+
+/** OpenCode config for the local model servers that are running now ("" for none). */
+async function localModelsConfig() {
+  const mine = yourProviders();
+  const provider = {};
+  for (const srv of LOCAL_SERVERS) {
+    if (mine.has(srv.id)) continue;
+    try {
+      const res = await fetch(srv.url.replace(/\/+$/, "") + srv.list, { signal: AbortSignal.timeout(1500) });
+      if (!res.ok) continue;
+      const names = srv.pick(await res.json()).filter((n) => typeof n === "string" && n && !/embed/i.test(n)).slice(0, 12);
+      if (!names.length) continue;
+      provider[srv.id] = { npm: "@ai-sdk/openai-compatible", name: srv.name, options: { baseURL: srv.url.replace(/\/+$/, "") + "/v1" }, models: Object.fromEntries(names.map((n) => [n, { name: n }])) };
+    } catch {
+      /* not running */
+    }
+  }
+  return Object.keys(provider).length ? JSON.stringify({ provider }) : "";
+}
+
 async function ensureOpenCode() {
   oc.password ||= ocPassword();
   if (oc.ok) {
@@ -271,7 +316,7 @@ async function ensureOpenCode() {
   const fd = openSync(join(HOME, ".deskling", "opencode.log"), "a");
   oc.proc = runCmd(OPENCODE, ["serve", "--port", String(OC_PORT), "--hostname", "127.0.0.1"], {
     cwd: HOME,
-    env: { ...process.env, OPENCODE_SERVER_PASSWORD: oc.password, OPENCODE_SERVER_USERNAME: "opencode" },
+    env: { ...process.env, OPENCODE_SERVER_PASSWORD: oc.password, OPENCODE_SERVER_USERNAME: "opencode", ...(oc.content ? { OPENCODE_CONFIG_CONTENT: oc.content } : {}) },
     stdio: ["ignore", fd, fd],
     windowsHide: true,
     detached: platform() !== "win32", // its own process group, so it can be stopped as a whole
@@ -594,6 +639,20 @@ async function acpLoop() {
 async function engines() {
   const list = [];
   if (has(CLAUDE)) list.push({ id: "claude", name: "Claude Code", models: [] });
+  if (has(OPENCODE)) {
+    // Local model servers started or stopped, or new models pulled: restart our OpenCode server
+    // to pick them up, but never in the middle of a session's turn.
+    const content = await localModelsConfig();
+    if (content !== oc.content) {
+      let busy = false;
+      if (oc.ok) busy = await ocFetch("/session/status").then((st) => Object.values(st ?? {}).some((x) => x?.type === "busy")).catch(() => false);
+      if (!busy) {
+        if (oc.ok) log("local models changed: restarting the OpenCode server");
+        oc.content = content;
+        stopOpenCode();
+      }
+    }
+  }
   if (has(OPENCODE) && (await ensureOpenCode())) {
     await installPlugin();
     let models = [];

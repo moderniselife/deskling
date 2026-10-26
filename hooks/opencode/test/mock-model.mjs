@@ -22,6 +22,11 @@ export function startMockModel(port = 0) {
     let body = "";
     req.on("data", (d) => (body += d));
     req.on("end", () => {
+      if (req.url === "/api/tags") {
+        // Ollama's list of models.
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ models: [{ name: "mock-coder" }, { name: "nomic-embed-text" }] }));
+      }
       if (req.url.endsWith("/models")) {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify({ data: [{ id: "mock-coder", object: "model" }] }));
