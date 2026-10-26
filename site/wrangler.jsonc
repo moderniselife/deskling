@@ -1,0 +1,18 @@
+{
+  // deskling.mojolayers.com: landing page, browser installer, and the firmware update server.
+  "name": "deskling-site",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/firmware/*"]
+  },
+  "vars": {
+    // Builds are published here by firmware/tools/release.sh.
+    "FIRMWARE_ORIGIN": "https://raw.githubusercontent.com/moderniselife/deskling/firmware-dist/"
+  },
+  "observability": { "enabled": true }
+}
