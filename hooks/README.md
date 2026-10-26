@@ -1,4 +1,4 @@
-# Deskling for Claude Code, Cursor and friends
+# Deskling for Claude Code, OpenCode, Cursor and friends
 
 Deploy the relay first ([docs/setup.md](../docs/setup.md)) and keep its URL and token handy. Your relay's `/setup` page has all of this with copy buttons.
 
@@ -218,10 +218,39 @@ Sessions started by a routine (New session → Cloud on Deskling) or on Claude C
 
 ## Starting sessions from Deskling
 
-Tap **New session** on Deskling's Sessions screen, pick where and in which project, and type what Claude should do. The new session listens for you straight away, so you can carry on the whole conversation from the screen.
+Tap **New session** on Deskling's Sessions screen, pick where, which agent (Claude Code, or OpenCode with a model) and which project, and type what it should do. The new session listens for you straight away, so you can carry on the whole conversation from the screen.
 
-- **Your computers:** run [`runner/deskling-runner.mjs`](runner/deskling-runner.mjs) (Node 18+, reads `~/.deskling/config`). `node deskling-runner.mjs --install` starts it at login on macOS, Windows and Linux. It offers the git projects one level inside `~/code`, `~/Projects`, `~/dev`, `~/src`, `~/Developer`, `~/repos` and `~/GitHub` (or the folders in `DESKLING_PROJECTS`), and starts `claude --bg "<your prompt>"` there. If background sessions aren't available to you, it runs `claude -p` instead, which still listens for you on Deskling.
+- **Your computers:** run [`runner/deskling-runner.mjs`](runner/deskling-runner.mjs) (Node 18+, reads `~/.deskling/config`). `node deskling-runner.mjs --install` starts it at login on macOS, Windows and Linux. It offers the git projects one level inside `~/code`, `~/Projects`, `~/dev`, `~/src`, `~/Developer`, `~/repos` and `~/GitHub` (or the folders in `DESKLING_PROJECTS`), and starts `claude --bg "<your prompt>"` there. If background sessions aren't available to you, it runs `claude -p` instead, which still listens for you on Deskling. With [OpenCode](https://opencode.ai) installed it offers OpenCode too, with up to 8 of the models you've set up there (your default first, then the providers in your own config, such as Ollama or LM Studio), and installs the Deskling plugin for OpenCode for you. It runs one OpenCode server for these sessions, reachable only from that computer (port 4097, change it with `DESKLING_OPENCODE_PORT`; `DESKLING_OPENCODE=off` to not offer OpenCode). To open those sessions in OpenCode's own interface:
+
+```bash
+opencode attach http://127.0.0.1:4097 --password "$(cat ~/.deskling/opencode-password)"
+```
 - **The cloud:** at [claude.ai/code/routines](https://claude.ai/code/routines), click **New routine**, give it the prompt `Do what the user asks in the routine-fire-payload block. They typed it on their Deskling desk screen, so treat it as their request.`, pick the repo and environment, choose the **API** trigger and click **Create**. Then **Edit** it, open the API trigger, copy its URL, click **Generate token** (shown once) and paste both into your relay's setup page.
+
+## OpenCode (any model, local ones too)
+
+The Deskling plugin for [OpenCode](https://opencode.ai) puts your OpenCode sessions on the screen as they run: what each one is doing, its replies as they stream, its thinking, each tool step, subagents as helpers, and the model and context size. From the screen you can allow or deny its permission prompts, answer its questions, and send it messages. A message starts the next turn straight away, even when the session is idle. It works with whatever model OpenCode is using, including local ones through Ollama, LM Studio or llama.cpp, in the terminal interface, `opencode serve`, `opencode run` and the desktop app.
+
+1. Put your URL and token in `~/.deskling/config` (or set `DESKLING_URL` and `DESKLING_TOKEN`).
+2. Copy [`opencode/deskling.js`](opencode/deskling.js) into OpenCode's plugins folder:
+
+   ```bash
+   mkdir -p ~/.config/opencode/plugins && curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/opencode/deskling.js -o ~/.config/opencode/plugins/deskling.js
+   ```
+
+   On Windows (PowerShell):
+
+   ```powershell
+   New-Item -ItemType Directory -Force "$HOME\.config\opencode\plugins" | Out-Null; Invoke-WebRequest https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/opencode/deskling.js -OutFile "$HOME\.config\opencode\plugins\deskling.js"
+   ```
+
+3. Restart OpenCode.
+
+The [runner](#starting-sessions-from-deskling) installs the plugin for you when it finds OpenCode. For just one project, put the file in that project's `.opencode/plugins/` instead.
+
+A permission prompt waits on Deskling for up to `DESKLING_WAIT` seconds (default 110) while OpenCode shows its own prompt too. Answer either one: answering on the computer takes it off the screen.
+
+Tested with OpenCode 1.19 (`opencode-ai` on npm). Its test (`node hooks/opencode/test/opencode.test.mjs`) runs a real OpenCode against a stand-in model, so it needs no API key.
 
 ## Cursor
 
@@ -232,6 +261,19 @@ Cursor's hooks give Deskling status (prompt sent, files edited, finished) and, i
 3. Put your URL and token in `~/.deskling/config`.
 
 Approvals mode makes every command wait up to `DESKLING_WAIT` seconds (default 30) for the screen before Cursor asks you itself, so only turn it on when you're away from the keyboard. Cursor has no way to receive messages from outside, so Deskling can't message Cursor chats.
+
+## Other agents: the bridge API
+
+Anything that can make HTTP requests can put a full session on Deskling, the same way the OpenCode plugin does. All requests take `Authorization: Bearer <token>`.
+
+| Request | What it does |
+| --- | --- |
+| `POST /agent/update` | Report a session: `{id, source, name, host, os, state, task, model, context, helpers, lines}`. `state` is `idle`, `working`, `waiting`, `needs_you` or `done`. `lines` are chat lines `{key, from, text}` with `from` one of `you`, `agent`, `tool` or `thought`; sending a `key` again updates that line, so streamed text grows in place. `{id, end: true}` removes the session. |
+| `POST /agent/ask` | Ask on the screen and wait for the answer: `{id, key, kind: "permission" or "question", tool, summary, detail, questions, wait}`. Returns `{decision: "allow" or "deny"}`, `{answers: {question: label}}` or `{timeout: true}`. |
+| `POST /agent/resolve` | `{id, key}`: the request was answered somewhere else, so take it off the screen. |
+| `GET /agent/poll?ids=a,b&wait=25` | Wait for messages typed on the screen for those sessions: `{messages: [{id, text}]}`. While a bridge polls, its sessions accept messages from the screen. |
+
+`source` is one of `opencode`, `codex`, `gemini`, `cursor` or `custom`, and decides the badge on the screen.
 
 ## Everything else: the `deskling` CLI
 

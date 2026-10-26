@@ -101,10 +101,19 @@ a{color:var(--purple)}
     </section>
 
     <section>
+      <h2>OpenCode, with any model</h2>
+      <p>The Deskling plugin for OpenCode shows your OpenCode sessions here as they run, with their replies, thinking and steps, and lets you approve, answer and message them from the screen. It works with any model OpenCode uses, local ones included. Save the config file above, then install the plugin and restart OpenCode. The runner below does this for you.</p>
+      <p class="muted">Mac or Linux, in Terminal:</p>
+      <div class="copy"><code id="ocmac"></code><button class="ghost" data-copy="ocmac">Copy</button></div>
+      <p class="muted">Windows, in PowerShell:</p>
+      <div class="copy"><code id="ocwin"></code><button class="ghost" data-copy="ocwin">Copy</button></div>
+    </section>
+
+    <section>
       <h2>Start sessions from Deskling</h2>
       <p>Tap <b>New session</b> on the screen, pick where it runs and what it should do, and it starts already listening for you, so the whole conversation can happen on Deskling.</p>
       <h3>On your computers</h3>
-      <p>Run the small Deskling runner on each computer you want to start sessions on. It needs Node 18 or newer and the <code>~/.deskling/config</code> above. It offers the git projects in your usual code folders (change that with <code>DESKLING_PROJECTS</code>) and starts Claude Code in the background there.</p>
+      <p>Run the small Deskling runner on each computer you want to start sessions on. It needs Node 18 or newer and the <code>~/.deskling/config</code> above. It offers the git projects in your usual code folders (change that with <code>DESKLING_PROJECTS</code>) and starts Claude Code in the background there. With OpenCode installed, it offers OpenCode and your models too.</p>
       <p class="muted">Mac or Linux, in Terminal:</p>
       <div class="copy"><code id="runmac"></code><button class="ghost" data-copy="runmac">Copy</button></div>
       <p class="muted">Windows, in PowerShell:</p>
@@ -173,6 +182,9 @@ async function unlock() {
   const raw = 'https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/runner/deskling-runner.mjs';
   $('runmac').textContent = 'mkdir -p ~/.deskling && curl -fsSL ' + raw + ' -o ~/.deskling/deskling-runner.mjs && node ~/.deskling/deskling-runner.mjs --install';
   $('runwin').textContent = 'New-Item -ItemType Directory -Force "$HOME\\\\.deskling" | Out-Null; Invoke-WebRequest ' + raw + ' -OutFile "$HOME\\\\.deskling\\\\deskling-runner.mjs"; node "$HOME\\\\.deskling\\\\deskling-runner.mjs" --install';
+  const ocraw = 'https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/opencode/deskling.js';
+  $('ocmac').textContent = 'mkdir -p ~/.config/opencode/plugins && curl -fsSL ' + ocraw + ' -o ~/.config/opencode/plugins/deskling.js';
+  $('ocwin').textContent = 'New-Item -ItemType Directory -Force "$HOME\\\\.config\\\\opencode\\\\plugins" | Out-Null; Invoke-WebRequest ' + ocraw + ' -OutFile "$HOME\\\\.config\\\\opencode\\\\plugins\\\\deskling.js"';
   call('/api/routine').then((r) => { if (r.routine) { $('rurl').value = r.routine.url; $('rmsg').textContent = 'Saved (token ' + r.routine.token + ')'; } }).catch(() => {});
   poll(); setInterval(poll, 3000);
 }

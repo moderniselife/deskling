@@ -16,7 +16,7 @@
 // OpenCode, local ones included (Ollama, LM Studio, llama.cpp…). It keeps one `opencode serve`
 // running on this computer (only reachable from this computer) for them, and installs the
 // Deskling plugin for OpenCode so they show up on the screen. See them in OpenCode with
-// `opencode attach http://127.0.0.1:4097`.
+// `opencode attach http://127.0.0.1:4097 --password "$(cat ~/.deskling/opencode-password)"`.
 //
 // Settings: ~/.deskling/config (or the environment):
 //   DESKLING_URL, DESKLING_TOKEN   your relay
@@ -138,7 +138,26 @@ function has(cmd) {
 }
 
 // ---- OpenCode: one server on this computer for the sessions Deskling starts
-const oc = { url: `http://127.0.0.1:${OC_PORT}`, password: randomBytes(18).toString("base64url"), proc: null, ok: false };
+// Its password stays the same between runs (~/.deskling/opencode-password), so `opencode attach`
+// can use it.
+function ocPassword() {
+  const f = join(HOME, ".deskling", "opencode-password");
+  try {
+    const p = readFileSync(f, "utf8").trim();
+    if (p) return p;
+  } catch {
+    /* first run */
+  }
+  const p = randomBytes(18).toString("base64url");
+  try {
+    mkdirSync(join(HOME, ".deskling"), { recursive: true });
+    writeFileSync(f, p + "\n", { mode: 0o600 });
+  } catch {
+    /* keep it in memory */
+  }
+  return p;
+}
+const oc = { url: `http://127.0.0.1:${OC_PORT}`, password: "", proc: null, ok: false };
 const ocHeaders = () => ({ "content-type": "application/json", authorization: "Basic " + Buffer.from(`opencode:${oc.password}`).toString("base64") });
 async function ocFetch(path, init = {}) {
   const res = await fetch(oc.url + path, { ...init, headers: { ...ocHeaders(), ...(init.headers ?? {}) }, signal: AbortSignal.timeout(init.timeout ?? 20_000) });
@@ -178,6 +197,7 @@ async function installPlugin() {
 }
 
 async function ensureOpenCode() {
+  oc.password ||= ocPassword();
   if (oc.ok) {
     try {
       await ocFetch("/config", { timeout: 5000 });
@@ -209,7 +229,7 @@ async function ensureOpenCode() {
     try {
       await ocFetch("/config", { timeout: 3000 });
       oc.ok = true;
-      log(`OpenCode server on ${oc.url} (attach with: opencode attach ${oc.url})`);
+      log(`OpenCode server on ${oc.url}. Open its sessions with: opencode attach ${oc.url} --password "$(cat ~/.deskling/opencode-password)"`);
       return true;
     } catch {
       if (!oc.proc) break;
