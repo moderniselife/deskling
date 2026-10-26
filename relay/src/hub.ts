@@ -53,8 +53,16 @@ interface Channel {
   lastPoll: number;
 }
 
+/**
+ * A lookup table keyed by ids that come from outside (session ids, bridge ids, machine names).
+ * No prototype, so an id like "__proto__" or "constructor" is just a key.
+ */
+function dict<T>(o?: Record<string, T> | null): Record<string, T> {
+  return Object.assign(Object.create(null) as Record<string, T>, o ?? {});
+}
+
 function emptyState(): State {
-  return { agents: {}, feed: [], reminders: [], pending: [], chats: {}, focus: false, pingWhenDone: false };
+  return { agents: dict(), feed: [], reminders: [], pending: [], chats: dict(), machines: dict(), focus: false, pingWhenDone: false };
 }
 
 /** What the screen calls each kind of agent in its notifications. */
@@ -269,7 +277,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       const saved = await ctx.storage.get<State>("state");
-      if (saved) this.state = { ...emptyState(), ...saved, pending: [] };
+      if (saved) this.state = { ...emptyState(), ...saved, agents: dict(saved.agents), chats: dict(saved.chats), machines: dict(saved.machines), pending: [] };
     });
   }
 
@@ -782,7 +790,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const agent = this.state.agents[oneLine(b.id, 72)];
     if (!agent) return json({ error: "unknown session" }, 404);
     const kind = b.kind === "question" ? "question" : "permission";
-    const wait = Math.min(MAX_WAIT_S, Math.max(5, Number(b.wait ?? MAX_WAIT_S) || MAX_WAIT_S));
+    const w = Number(b.wait ?? MAX_WAIT_S);
+    const wait = Math.min(MAX_WAIT_S, Math.max(5, Number.isFinite(w) ? w : MAX_WAIT_S));
     const questions = kind === "question" ? parseQuestions({ questions: b.questions }) : [];
     const r = await this.ask(agent, kind, oneLine(b.tool, 40) || (kind === "question" ? "Question" : "Tool"), clip(b.summary, 200), oneLine(b.detail, 120), questions, wait, oneLine(b.key, 80));
     return json(r);
@@ -868,7 +877,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       JSON.stringify(known.projects) !== JSON.stringify(projects) ||
       JSON.stringify(known.engines ?? []) !== JSON.stringify(engines) ||
       Date.now() - known.seen > MACHINE_GONE_MS;
-    (this.state.machines ??= {})[id] = { id, os: oneLine(b.os, 20), projects, seen: Date.now(), ...(engines.length ? { engines } : {}) };
+    (this.state.machines ??= dict())[id] = { id, os: oneLine(b.os, 20), projects, seen: Date.now(), ...(engines.length ? { engines } : {}) };
     if (changed) await this.commit({ kind: "agent" });
     else await this.save();
     return json({ ok: true });

@@ -5,6 +5,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
+import { createServer as netServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,7 +106,9 @@ writeFileSync(
 const proj = join(T, "web-app");
 mkdirSync(proj);
 mkdirSync(join(T, "home"));
-const port = 30000 + Math.floor(Math.random() * 20000);
+// A port nothing else is using right now.
+const freePort = () => new Promise((r) => { const sv = netServer().listen(0, "127.0.0.1", () => { const p = sv.address().port; sv.close(() => r(p)); }); });
+const port = await freePort();
 const env = {
   ...process.env,
   HOME: join(T, "home"),
@@ -252,7 +255,7 @@ try {
   rmSync(join(cfg, "plugins", "deskling.js"));
   rmSync(join(cfg, "agents"), { recursive: true });
   relay.updates.length = 0;
-  const runnerPort = 30000 + Math.floor(Math.random() * 20000);
+  const runnerPort = await freePort();
   runner = spawn(process.execPath, [join(here, "..", "..", "runner", "deskling-runner.mjs")], {
     env: { ...env, DESKLING_OPENCODE: BIN, DESKLING_CLAUDE: "off", DESKLING_OPENCODE_PORT: String(runnerPort), DESKLING_PROJECTS: proj, DESKLING_ACP: `OC ACP=${BIN} acp` },
     stdio: ["ignore", "pipe", "pipe"],
