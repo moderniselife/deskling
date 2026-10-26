@@ -65,6 +65,16 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
     <details><summary class="muted">Details</summary><pre id="log"></pre></details>
   </section>
 
+  <section>
+    <h2>Something not right?</h2>
+    <p class="muted">Black screen, or stuck? This restarts Deskling and shows what it says while it starts up. Plug into the same USB-C port you installed through, click the button, pick the port, and send the log to whoever's helping you.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="mon" style="font-size:17px;min-height:48px;padding:10px 20px">Show the log</button>
+      <button id="moncopy" style="font-size:17px;min-height:48px;padding:10px 20px;background:var(--card);color:var(--ink);border:3px solid var(--ink)" hidden>Copy log</button>
+    </div>
+    <pre id="monlog" hidden style="max-height:420px"></pre>
+  </section>
+
   <section id="next" hidden>
     <h2>4 · Say hi</h2>
     <p>Deskling is restarting. In a few seconds it'll ask you to pick your Wi-Fi on the screen, then show you an address to open on this computer, where you paste your relay details. Get them from <a href="/setup">your relay's setup page</a>.</p>
@@ -77,13 +87,52 @@ const $ = (id) => document.getElementById(id);
 const log = (m) => { $('log').textContent += m + "\\n"; $('log').scrollTop = 1e9; };
 const status = (m, cls = '') => { $('status').textContent = m; $('status').className = 'status ' + cls; };
 
-if (!('serial' in navigator)) { $('nosupport').hidden = false; $('go').disabled = true; }
+if (!('serial' in navigator)) { $('nosupport').hidden = false; $('go').disabled = true; $('mon').disabled = true; }
 
 let manifest = null;
 fetch(FIRMWARE + 'manifest.json', { cache: 'no-store' })
   .then((r) => r.ok ? r.json() : Promise.reject(r.status))
   .then((m) => { manifest = m; $('version').textContent = 'Latest firmware: ' + m.version + ' (' + (m.date || '') + ')'; })
   .catch(() => { $('version').textContent = 'Couldn\\u2019t load the firmware list. Has a release been published yet?'; });
+
+// Serial monitor: restart the board and stream its boot log (UART0 through the CH340, 115200 baud).
+let monPort = null, monStop = false;
+$('mon').onclick = async () => {
+  if (monPort) { monStop = true; return; }
+  const out = $('monlog');
+  const add = (t) => { out.textContent = (out.textContent + t).slice(-60000); out.scrollTop = 1e9; };
+  try {
+    monPort = await navigator.serial.requestPort();
+    await monPort.open({ baudRate: 115200 });
+    out.hidden = false; out.textContent = ''; $('moncopy').hidden = false;
+    $('mon').textContent = 'Stop';
+    add('[restarting Deskling\\u2026]\\n');
+    await monPort.setSignals({ dataTerminalReady: false, requestToSend: true });
+    await new Promise((r) => setTimeout(r, 120));
+    await monPort.setSignals({ dataTerminalReady: false, requestToSend: false });
+    monStop = false;
+    const reader = monPort.readable.getReader();
+    const dec = new TextDecoder();
+    const stopper = setInterval(() => { if (monStop) reader.cancel(); }, 200);
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        add(dec.decode(value, { stream: true }).replace(/\\x1b\\[[0-9;]*m/g, ''));
+      }
+    } finally {
+      clearInterval(stopper);
+      reader.releaseLock();
+    }
+  } catch (e) {
+    add('\\n[' + (e && e.message ? e.message : e) + ']\\n');
+  } finally {
+    try { await monPort?.close(); } catch {}
+    monPort = null;
+    $('mon').textContent = 'Show the log';
+  }
+};
+$('moncopy').onclick = async () => { await navigator.clipboard.writeText($('monlog').textContent); $('moncopy').textContent = 'Copied!'; setTimeout(() => $('moncopy').textContent = 'Copy log', 1200); };
 
 $('go').onclick = async () => {
   if (!manifest) return status('No firmware to install yet.', 'bad');
