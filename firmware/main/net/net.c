@@ -470,6 +470,10 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         // mDNS also hooks GOT_IP itself; doing it here too makes sure the STA side is on and
         // announced even if its handler raced ours.
         mdns_netif_action(s_sta, MDNS_EVENT_ENABLE_IP4 | MDNS_EVENT_ANNOUNCE_IP4);
+        // Answer with the IPv4 address only. The board's pages are served over IPv4; a browser
+        // that picks an IPv6 answer (Chrome tends to) would just time out.
+        mdns_netif_action(s_sta, MDNS_EVENT_DISABLE_IP6);
+        if (s_ap) mdns_netif_action(s_ap, MDNS_EVENT_DISABLE_IP4 | MDNS_EVENT_DISABLE_IP6);
         if (s_announce && !esp_timer_is_active(s_announce)) esp_timer_start_periodic(s_announce, 60 * 1000000ULL);
         net_check_local_name();
         if (s_trial.active) trial_finish(true, NULL);
