@@ -23,6 +23,7 @@ add_executable(deskling_sim
   sim_main.c
   ${UI_SRC}
   ${MAIN}/app/model.c
+  ${MAIN}/app/sound_synth.c
   ${CJSON_DIR}/cJSON.c
 )
 target_include_directories(deskling_sim PRIVATE ${MAIN}/ui ${MAIN}/app ${CJSON_DIR} ${STB_DIR})

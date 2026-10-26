@@ -1,6 +1,7 @@
 // Guition JC8012P4A1C: 10.1" 800x1280 MIPI-DSI panel (JD9365), GSL3680 touch, LEDC backlight.
 #pragma once
 
+#include "driver/i2c_master.h"
 #include "esp_err.h"
 #include "lvgl.h"
 
@@ -21,3 +22,5 @@
 lv_display_t *board_init(void);
 /** 0..100 */
 void board_set_backlight(uint8_t percent);
+/** The I2C bus the touch controller and audio codec share (NULL if it failed). */
+i2c_master_bus_handle_t board_i2c_bus(void);

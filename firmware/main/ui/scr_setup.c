@@ -420,10 +420,12 @@ void scr_setup_connect_result(bool ok, const char *message)
     if (!su.scr) return;
     if (ok) {
         deskling_celebrate(su.face, 1500);
+        ui_sound(DK_SND_DONE);
         if (!g_info.relay_configured) show_page(P_PAIR);
         else if (ui_current() == SCR_SETUP) ui_go(SCR_HOME);
         return;
     }
+    ui_sound(DK_SND_OOPS);
     lv_label_set_text(su.pw_error, message && message[0] ? message : "Couldn't join. Check the password?");
     if (su.chosen_secure) show_page(P_PASSWORD);
     else show_page(P_WIFI);

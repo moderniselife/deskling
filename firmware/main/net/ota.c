@@ -34,6 +34,8 @@ static const char *TAG = "ota";
 
 static char s_latest[32];
 static char s_app_file[96];
+static const char *const UPDATE_BASES[] = {CONFIG_DESKLING_UPDATE_URL, CONFIG_DESKLING_UPDATE_FALLBACK_URL};
+static const char *s_base = CONFIG_DESKLING_UPDATE_URL; // the one that answered last
 static bool s_busy, s_healthy;
 static esp_timer_handle_t s_periodic, s_watchdog;
 
@@ -71,10 +73,10 @@ static bool is_newer(const char *latest, const char *current)
 
 // ---------------------------------------------------------------- check
 
-static esp_err_t fetch_manifest(char **out)
+static esp_err_t fetch_manifest_from(const char *base, char **out)
 {
     char url[192];
-    snprintf(url, sizeof(url), "%smanifest.json", CONFIG_DESKLING_UPDATE_URL);
+    snprintf(url, sizeof(url), "%smanifest.json", base);
     esp_http_client_config_t cfg = {
         .url = url,
         .crt_bundle_attach = esp_crt_bundle_attach,
@@ -107,6 +109,20 @@ static esp_err_t fetch_manifest(char **out)
     }
     esp_http_client_cleanup(c);
     return err;
+}
+
+/** Try the update server, then the fallback. Remembers which one answered for the download. */
+static esp_err_t fetch_manifest(char **out)
+{
+    for (size_t i = 0; i < sizeof(UPDATE_BASES) / sizeof(UPDATE_BASES[0]); i++) {
+        if (!UPDATE_BASES[i][0]) continue;
+        if (fetch_manifest_from(UPDATE_BASES[i], out) == ESP_OK && *out) {
+            s_base = UPDATE_BASES[i];
+            return ESP_OK;
+        }
+        ESP_LOGW(TAG, "no manifest at %s", UPDATE_BASES[i]);
+    }
+    return ESP_FAIL;
 }
 
 static void check_task(void *arg)
@@ -177,7 +193,7 @@ static void install_task(void *arg)
 {
     (void)arg;
     char url[192];
-    snprintf(url, sizeof(url), "%s%s", CONFIG_DESKLING_UPDATE_URL, s_app_file);
+    snprintf(url, sizeof(url), "%s%s", s_base, s_app_file);
     ESP_LOGI(TAG, "installing %s", url);
     status(UI_UPDATE_DOWNLOADING, 0, NULL);
     esp_http_client_config_t http = {

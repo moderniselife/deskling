@@ -1,4 +1,5 @@
 // Deskling: a cute animated desk screen for your AI agents.
+#include "audio.h"
 #include "board.h"
 #include "device.h"
 #include "esp_log.h"
@@ -23,6 +24,13 @@ static void restart(void)
     esp_restart();
 }
 
+void device_set_sound(uint8_t volume, bool quiet_night)
+{
+    settings_set_sound(volume, quiet_night);
+    audio_set_volume(volume);
+    net_push_info();
+}
+
 // What the UI can ask the device to do. Each call just queues work and returns.
 static const ui_platform_t s_platform = {
     .wifi_scan = net_request_scan,
@@ -32,6 +40,8 @@ static const ui_platform_t s_platform = {
     .start_update = ota_request_install,
     .set_brightness = device_set_brightness,
     .restart = restart,
+    .play_sound = audio_play,
+    .set_sound = device_set_sound,
 };
 
 void app_main(void)
@@ -46,6 +56,8 @@ void app_main(void)
     ota_init();
 
     board_init();
+    audio_init(board_i2c_bus());
+    audio_set_volume(settings()->volume);
 
     lvgl_port_lock(0);
     ui_set_backlight_cb(board_set_backlight);
@@ -54,6 +66,7 @@ void app_main(void)
     lvgl_port_unlock();
     board_set_backlight(100);
     ESP_LOGI(TAG, "hello from Deskling %s", ota_variant());
+    if (settings()->volume) audio_play(DK_SND_HELLO); // a little hello on power-up
 
     net_start();
 }

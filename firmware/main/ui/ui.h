@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "model.h"
+#include "sound.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,6 +48,8 @@ typedef struct {
     char version[32];
     char variant[24];
     uint8_t brightness; // 10..100
+    uint8_t volume;     // 0..100
+    bool quiet_night;
 } ui_device_info_t;
 
 typedef enum {
@@ -68,6 +71,8 @@ typedef struct {
     void (*start_update)(void);
     void (*set_brightness)(uint8_t percent); // also saves it
     void (*restart)(void);
+    void (*play_sound)(dk_sound_t s);
+    void (*set_sound)(uint8_t volume, bool quiet_night); // also saves it
 } ui_platform_t;
 
 void ui_set_platform(const ui_platform_t *p);
@@ -75,6 +80,8 @@ void ui_set_device_info(const ui_device_info_t *info);
 void ui_wifi_scan_done(const ui_wifi_ap_t *aps, int n);
 void ui_wifi_connect_result(bool ok, const char *message);
 void ui_update_status(ui_update_state_t state, int progress, const char *latest, const char *message);
+/** Play a sound, unless muted or it's quiet hours. */
+void ui_sound(dk_sound_t s);
 
 #ifdef __cplusplus
 }

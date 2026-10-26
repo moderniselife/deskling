@@ -122,6 +122,13 @@ static esp_err_t panel_init(esp_lcd_panel_io_handle_t *out_io, esp_lcd_panel_han
     return ESP_OK;
 }
 
+static i2c_master_bus_handle_t s_i2c; // shared by touch and the audio codec
+
+i2c_master_bus_handle_t board_i2c_bus(void)
+{
+    return s_i2c;
+}
+
 static esp_lcd_touch_handle_t touch_init(void)
 {
     i2c_master_bus_handle_t i2c;
@@ -137,6 +144,7 @@ static esp_lcd_touch_handle_t touch_init(void)
         ESP_LOGE(TAG, "I2C bus failed: no touch");
         return NULL;
     }
+    s_i2c = i2c;
     esp_lcd_panel_io_handle_t io;
     const esp_lcd_panel_io_i2c_config_t io_cfg = {
         .dev_addr = GSL3680_I2C_ADDRESS,

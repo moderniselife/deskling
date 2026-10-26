@@ -1,4 +1,5 @@
 #include "anim.h"
+#include "ui.h"
 
 static void set_opa(void *o, int32_t v)
 {
@@ -193,6 +194,12 @@ void dk_anim_shake(lv_obj_t *o)
     lv_anim_start(&a);
 }
 
+static void press_sound(lv_event_t *e)
+{
+    (void)e;
+    ui_sound(DK_SND_TAP);
+}
+
 void dk_press_style(lv_obj_t *o)
 {
     static lv_style_t pressed;
@@ -209,5 +216,6 @@ void dk_press_style(lv_obj_t *o)
     center_pivot(o);
     lv_obj_set_style_transition(o, &tr, 0);
     lv_obj_add_style(o, &pressed, LV_STATE_PRESSED);
+    lv_obj_add_event_cb(o, press_sound, LV_EVENT_PRESSED, NULL);
     (void)set_tx;
 }

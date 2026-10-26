@@ -354,7 +354,10 @@ static void tick_cb(lv_timer_t *t)
         localtime_r(&now, &tm);
         bool late = tm.tm_hour >= NIGHT_FROM_HOUR || tm.tm_hour < NIGHT_UNTIL_HOUR;
         bool calm = g_model->pending_n == 0 && ui_count_state(DK_NEEDS_YOU) == 0;
-        if (late && calm && lv_display_get_inactive_time(NULL) > NIGHT_AFTER_IDLE_MS) ui_go(SCR_NIGHT);
+        if (late && calm && lv_display_get_inactive_time(NULL) > NIGHT_AFTER_IDLE_MS) {
+            ui_sound(DK_SND_SLEEPY);
+            ui_go(SCR_NIGHT);
+        }
     }
 }
 
@@ -415,20 +418,38 @@ void ui_apply_model(const dk_model_t *m)
     }
 
     switch (m->cause) {
+    case DK_CAUSE_PERMISSION:
+        ui_sound(DK_SND_PERMISSION);
+        break;
+    case DK_CAUSE_QUESTION:
+        ui_sound(DK_SND_QUESTION);
+        break;
+    case DK_CAUSE_REMINDER_DONE:
+        ui_sound(DK_SND_CHEER);
+        break;
+    case DK_CAUSE_CHAT: {
+        // Only a reply from the agent, not the echo of what you just sent.
+        const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
+        if (a && a->chat_n > 0 && !a->chat[a->chat_n - 1].from_you) ui_sound(DK_SND_MESSAGE);
+        break;
+    }
     case DK_CAUSE_REMINDER_DUE: {
         const dk_reminder_t *r = find_reminder(m->cause_id);
         if (s_cur == SCR_NIGHT) ui_go(SCR_HOME);
         set_backlight(100);
+        ui_sound(DK_SND_REMINDER);
         ui_banner("Reminder", r ? r->title : "", DK_BUTTER);
         break;
     }
     case DK_CAUSE_PING: {
         const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
         set_backlight(100);
+        ui_sound(DK_SND_DONE);
         ui_banner("Claude finished!", a ? a->name : "", DK_GOOD_BG);
         break;
     }
     case DK_CAUSE_DONE:
+        ui_sound(DK_SND_DONE);
         if (s_cur != SCR_HOME && s_cur != SCR_NIGHT) {
             const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
             if (a) ui_banner(a->source == DK_SRC_CURSOR ? "Cursor finished" : "Claude finished", a->name, DK_GOOD_BG);
@@ -437,6 +458,26 @@ void ui_apply_model(const dk_model_t *m)
     default:
         break;
     }
+}
+
+// ------------------------------------------------------------- sound
+
+static bool quiet_hours(void)
+{
+    time_t now = time(NULL);
+    if (now < 1700000000) return false; // clock not set yet
+    struct tm tm;
+    localtime_r(&now, &tm);
+    return tm.tm_hour >= NIGHT_FROM_HOUR || tm.tm_hour < NIGHT_UNTIL_HOUR;
+}
+
+void ui_sound(dk_sound_t s)
+{
+    if (!g_platform || !g_platform->play_sound || s == DK_SND_NONE) return;
+    if (g_info.volume == 0) return;
+    // Quiet hours: only reminders (you asked for those) may make a sound.
+    if (g_info.quiet_night && s != DK_SND_REMINDER && quiet_hours()) return;
+    g_platform->play_sound(s);
 }
 
 // ------------------------------------------------- device setup & settings
@@ -480,6 +521,7 @@ void ui_set_device_info(const ui_device_info_t *info)
         ui_go(SCR_SETUP);
     } else if (ready && s_cur == SCR_SETUP && !was_ready) {
         ui_go(SCR_HOME);
+        ui_sound(DK_SND_HELLO);
         ui_banner("All set!", "I'm online and listening for your agents.", DK_GOOD_BG);
     }
 }

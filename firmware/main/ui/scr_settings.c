@@ -1,4 +1,4 @@
-// Settings: Wi-Fi, relay, firmware updates, brightness, restart.
+// Settings: Wi-Fi, relay, firmware updates, brightness, sound, restart.
 #include <stdio.h>
 #include <string.h>
 
@@ -9,7 +9,7 @@ static struct {
     lv_obj_t *wifi_name, *wifi_detail;
     lv_obj_t *relay_url, *relay_state, *portal_url, *portal_code, *qr_slot;
     lv_obj_t *fw_version, *fw_status, *fw_bar, *fw_button;
-    lv_obj_t *bright;
+    lv_obj_t *bright, *volume, *quiet;
     char qr_for[64];
 } st;
 
@@ -43,6 +43,42 @@ static void bright_cb(lv_event_t *e)
     lv_obj_t *s = lv_event_get_target(e);
     int v = lv_slider_get_value(s);
     if (lv_event_get_code(e) == LV_EVENT_RELEASED && g_platform && g_platform->set_brightness) g_platform->set_brightness((uint8_t)v);
+}
+
+static void sound_cb(lv_event_t *e)
+{
+    (void)e;
+    uint8_t vol = (uint8_t)lv_slider_get_value(st.volume);
+    bool quiet = lv_obj_has_state(st.quiet, LV_STATE_CHECKED);
+    if (g_platform && g_platform->set_sound) g_platform->set_sound(vol, quiet);
+    g_info.volume = vol;
+    g_info.quiet_night = quiet;
+    if (lv_event_get_target(e) == st.volume && g_platform && g_platform->play_sound && vol > 0) g_platform->play_sound(DK_SND_DONE);
+}
+
+static lv_obj_t *slider_row(lv_obj_t *parent, const char *label, int32_t lo, int32_t hi)
+{
+    lv_obj_t *row = dk_box(parent);
+    lv_obj_set_size(row, lv_pct(100), 48);
+    dk_row(row, 18);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *l = dk_label(row, DK_FONT_S, DK_INK_SOFT, label);
+    lv_obj_set_width(l, 110);
+    lv_obj_t *sl = lv_slider_create(row);
+    lv_obj_set_flex_grow(sl, 1);
+    lv_obj_set_height(sl, 12);
+    lv_slider_set_range(sl, lo, hi);
+    lv_obj_set_style_radius(sl, 6, 0);
+    lv_obj_set_style_radius(sl, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(sl, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(sl, DK_LINE, 0);
+    lv_obj_set_style_bg_color(sl, DK_PURPLE, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(sl, DK_INK, LV_PART_KNOB);
+    lv_obj_set_style_radius(sl, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(sl, 9, LV_PART_KNOB);
+    lv_obj_add_flag(sl, LV_OBJ_FLAG_ADV_HITTEST);
+    lv_obj_set_ext_click_area(sl, 16);
+    return sl;
 }
 
 static void restart_cb(lv_event_t *e)
@@ -135,18 +171,26 @@ lv_obj_t *scr_settings_create(void)
     lv_obj_add_event_cb(st.fw_button, fw_button_cb, LV_EVENT_CLICKED, NULL);
 
     // Screen
-    lv_obj_t *s = section(c2, "SCREEN BRIGHTNESS");
+    lv_obj_t *s = section(c2, "BRIGHTNESS & SOUND");
     lv_obj_set_width(s, lv_pct(100));
-    st.bright = lv_slider_create(s);
-    lv_obj_set_width(st.bright, lv_pct(100));
-    lv_obj_set_height(st.bright, 18);
-    lv_obj_set_style_pad_ver(st.bright, 18, 0);
-    lv_slider_set_range(st.bright, 10, 100);
-    lv_obj_set_style_bg_color(st.bright, DK_LINE, 0);
-    lv_obj_set_style_bg_color(st.bright, DK_PURPLE, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(st.bright, DK_INK, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(st.bright, 8, LV_PART_KNOB);
+    st.bright = slider_row(s, "Brightness", 10, 100);
     lv_obj_add_event_cb(st.bright, bright_cb, LV_EVENT_RELEASED, NULL);
+    st.volume = slider_row(s, "Volume", 0, 100);
+    lv_obj_add_event_cb(st.volume, sound_cb, LV_EVENT_RELEASED, NULL);
+
+    lv_obj_t *qrow = dk_box(s);
+    lv_obj_set_size(qrow, lv_pct(100), LV_SIZE_CONTENT);
+    dk_row(qrow, 12);
+    lv_obj_set_flex_align(qrow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *ql = dk_label(qrow, DK_FONT_S, DK_INK_SOFT, "Quiet at night (10pm-7am), except reminders");
+    lv_obj_set_flex_grow(ql, 1);
+    lv_label_set_long_mode(ql, LV_LABEL_LONG_MODE_WRAP);
+    st.quiet = lv_switch_create(qrow);
+    lv_obj_set_size(st.quiet, 64, 34);
+    lv_obj_set_style_bg_color(st.quiet, DK_LINE, 0);
+    lv_obj_set_style_bg_color(st.quiet, DK_PURPLE, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(st.quiet, lv_color_white(), LV_PART_KNOB);
+    lv_obj_add_event_cb(st.quiet, sound_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     lv_obj_t *rs = dk_button(c2, LV_SYMBOL_POWER "  Restart Deskling", false, DK_FONT_M);
     lv_obj_add_event_cb(rs, restart_cb, LV_EVENT_CLICKED, NULL);
@@ -213,4 +257,7 @@ void scr_settings_refresh(void)
         lv_obj_remove_state(st.fw_button, LV_STATE_DISABLED);
     }
     if (!lv_slider_is_dragged(st.bright)) lv_slider_set_value(st.bright, g_info.brightness ? g_info.brightness : 90, LV_ANIM_OFF);
+    if (!lv_slider_is_dragged(st.volume)) lv_slider_set_value(st.volume, g_info.volume, LV_ANIM_OFF);
+    if (g_info.quiet_night) lv_obj_add_state(st.quiet, LV_STATE_CHECKED);
+    else lv_obj_remove_state(st.quiet, LV_STATE_CHECKED);
 }

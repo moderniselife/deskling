@@ -38,6 +38,8 @@ void settings_init(void)
     load_str(h, "tz", s.tz, sizeof(s.tz), CONFIG_DESKLING_TZ);
     uint8_t b = 0;
     s.brightness = (h && nvs_get_u8(h, "bright", &b) == ESP_OK && b >= 10 && b <= 100) ? b : CONFIG_DESKLING_BRIGHTNESS;
+    s.volume = (h && nvs_get_u8(h, "vol", &b) == ESP_OK && b <= 100) ? b : CONFIG_DESKLING_VOLUME;
+    s.quiet_night = (h && nvs_get_u8(h, "quiet", &b) == ESP_OK) ? b != 0 : true;
     if (h) nvs_close(h);
     apply_tz();
     ESP_LOGI(TAG, "wifi %s, relay %s", s.wifi_ssid[0] ? s.wifi_ssid : "(none)", s.relay_url[0] ? s.relay_url : "(none)");
@@ -105,6 +107,21 @@ esp_err_t settings_set_brightness(uint8_t percent)
     esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
     if (err != ESP_OK) return err;
     err = nvs_set_u8(h, "bright", percent);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+esp_err_t settings_set_sound(uint8_t volume, bool quiet_night)
+{
+    if (volume > 100) volume = 100;
+    s.volume = volume;
+    s.quiet_night = quiet_night;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u8(h, "vol", volume);
+    if (err == ESP_OK) err = nvs_set_u8(h, "quiet", quiet_night ? 1 : 0);
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     return err;

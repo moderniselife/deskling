@@ -33,6 +33,16 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 1.1.6
+  espressif/esp_codec_dev:
+    component_hash: 4779f31a3ba3f9b38aee1afe6ccb9ba8f6108dc3a6e77d39d7d714e9a215371b
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.6.2
   espressif/esp_hosted:
     component_hash: c88052665d8df3c7185cb5e34327d77674599006bbbbe4bfdb43c44f9a2a73a3
     dependencies:
@@ -211,6 +221,7 @@ dependencies:
     version: 9.6.0~1
 direct_dependencies:
 - espressif/cjson
+- espressif/esp_codec_dev
 - espressif/esp_hosted
 - espressif/esp_lcd_jd9365
 - espressif/esp_lcd_touch
@@ -221,6 +232,6 @@ direct_dependencies:
 - guition-jc/esp_lcd_touch_gsl3680
 - idf
 - lvgl/lvgl
-manifest_hash: b2f77c2acd70187fedc2178e01c41ea7fdbcd7b6e39e1f797ff0b752726cf517
+manifest_hash: 53bce6914d389ff5c3c517b706fa7398e2b0900757699b777100d86195fca9e1
 target: esp32p4
 version: 3.0.0

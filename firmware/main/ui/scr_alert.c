@@ -55,6 +55,7 @@ static void decide_cb(lv_event_t *e)
     const char *d = lv_event_get_user_data(e);
     dk_send_decision(a.cur.id, d);
     remember(a.cur.id);
+    ui_sound(strcmp(d, "allow") == 0 ? DK_SND_ALLOW : strcmp(d, "deny") == 0 ? DK_SND_DENY : DK_SND_MESSAGE);
     if (strcmp(d, "allow") == 0) show_result("Sent! Back to work.", "Claude is carrying on.", DK_GOOD_BG);
     else if (strcmp(d, "deny") == 0) show_result("Okay, told Claude no.", "It'll stop and wait for you.", DK_LILAC_SOFT);
     else show_result("Over to your computer.", "The prompt is waiting there for you.", DK_BUTTER_BG);
@@ -77,6 +78,7 @@ static void submit_answers(void)
     }
     dk_send_answer(&a.cur, labels);
     remember(a.cur.id);
+    ui_sound(DK_SND_ALLOW);
     char title[96];
     if (a.cur.question_n == 1 && !a.cur.questions[0].multi) snprintf(title, sizeof(title), "Going with %.80s!", joined[0]);
     else snprintf(title, sizeof(title), "Answers sent!");

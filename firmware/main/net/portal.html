@@ -86,8 +86,14 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
   </section>
 
   <section>
-    <h2>Screen brightness</h2>
-    <input id="bright" type="range" min="10" max="100" aria-label="Brightness">
+    <h2>Brightness &amp; sound</h2>
+    <label for="bright">Screen brightness</label>
+    <input id="bright" type="range" min="10" max="100">
+    <label for="vol">Volume</label>
+    <input id="vol" type="range" min="0" max="100">
+    <label style="display:flex;gap:10px;align-items:center"><input id="quiet" type="checkbox" style="width:auto"> Quiet at night (10pm to 7am), except reminders</label>
+    <p class="muted" style="margin-top:14px">Hear Deskling:</p>
+    <div id="sounds" style="display:flex;flex-wrap:wrap;gap:8px"></div>
   </section>
 
   <section>
@@ -155,6 +161,8 @@ async function refresh() {
   $('wifistate').className = 'pill ' + (s.wifi.connected ? 'ok' : 'bad');
   $('wifiinfo').textContent = s.wifi.ssid ? `${s.wifi.ssid}${s.wifi.ip ? ' · ' + s.wifi.ip : ''}` : '';
   if (document.activeElement !== $('bright')) $('bright').value = s.brightness;
+  if (document.activeElement !== $('vol')) $('vol').value = s.volume;
+  if (document.activeElement !== $('quiet')) $('quiet').checked = s.quiet_night;
   if (!$('tzraw').value) $('tzraw').placeholder = s.tz;
 }
 
@@ -193,6 +201,15 @@ $('savetz').onclick = async () => {
   try { await post('/api/tz', { tz }); say('tzmsg', 'Saved!', true); } catch (e) { say('tzmsg', e.message, false); }
 };
 $('bright').onchange = () => post('/api/brightness', { value: +$('bright').value }).catch(() => {});
+const saveSound = (play) => post('/api/sound', { volume: +$('vol').value, quiet_night: $('quiet').checked, play }).catch(() => {});
+$('vol').onchange = () => saveSound('done');
+$('quiet').onchange = () => saveSound();
+for (const name of ['hello', 'permission', 'question', 'done', 'reminder', 'message', 'cheer', 'allow', 'deny', 'sleepy', 'oops']) {
+  const b = document.createElement('button');
+  b.className = 'ghost'; b.textContent = name; b.style.cssText = 'width:auto;padding:8px 14px;margin:0';
+  b.onclick = () => post('/api/sound', { play: name }).catch(() => {});
+  $('sounds').append(b);
+}
 
 $('upload').onclick = () => {
   const f = $('fwfile').files[0];

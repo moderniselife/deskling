@@ -97,6 +97,8 @@ void net_push_info(void)
     snprintf(info.version, sizeof(info.version), "%s", esp_app_get_description()->version);
     snprintf(info.variant, sizeof(info.variant), "%s", ota_variant());
     info.brightness = st->brightness;
+    info.volume = st->volume;
+    info.quiet_night = st->quiet_night;
     if (lvgl_port_lock(1000)) {
         ui_set_device_info(&info);
         lvgl_port_unlock();

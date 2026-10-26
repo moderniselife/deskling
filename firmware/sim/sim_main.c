@@ -251,7 +251,23 @@ static void fake_check(void) { ui_update_status(UI_UPDATE_CHECKING, 0, NULL, NUL
 static void fake_start(void) { ui_update_status(UI_UPDATE_DOWNLOADING, 0, "v0.3.0", NULL); s_pending_update = 2; }
 static void fake_bright(uint8_t v) { printf("  -> brightness %u\n", v); }
 static void fake_restart(void) { printf("  -> restart\n"); }
-static const ui_platform_t s_fake = {fake_scan, fake_connect, fake_relay_set, fake_check, fake_start, fake_bright, fake_restart};
+static char s_last_sound[24];
+static void fake_sound(dk_sound_t snd)
+{
+    if (snd == DK_SND_TAP) return; // every press; too noisy to log
+    snprintf(s_last_sound, sizeof(s_last_sound), "%s", sound_name(snd));
+    printf("  -> sound %s\n", s_last_sound);
+}
+static void fake_set_sound(uint8_t vol, bool quiet) { printf("  -> sound settings %u quiet=%d\n", vol, quiet); }
+static const ui_platform_t s_fake = {fake_scan, fake_connect, fake_relay_set, fake_check, fake_start, fake_bright, fake_restart, fake_sound, fake_set_sound};
+
+static void expect_sound(const char *name)
+{
+    bool ok = strcmp(s_last_sound, name) == 0;
+    printf("%s  plays the %s sound%s%s\n", ok ? "PASS" : "FAIL", name, ok ? "" : ", got ", ok ? "" : s_last_sound);
+    if (!ok) s_failures++;
+    s_last_sound[0] = 0;
+}
 
 // Deliver the fake device's async results after a little delay, like the real one.
 static void device_tick(void)
@@ -311,6 +327,8 @@ int main(int argc, char **argv)
     snprintf(s_info.version, sizeof(s_info.version), "v0.2.0");
     snprintf(s_info.variant, sizeof(s_info.variant), "p4r1-lcd1");
     s_info.brightness = 90;
+    s_info.volume = 60;
+    s_info.quiet_night = false;
     ui_set_device_info(&s_info);
     ui_set_connection(DK_CONN_SETUP, NULL);
     run(1200);
@@ -336,6 +354,7 @@ int main(int argc, char **argv)
     run(900);
     shot("00f_setup_done");
     expect_text("All set!");
+    expect_sound("hello");
     ui_set_connection(DK_CONN_RELAY, NULL);
     run(5000);
     shot("01_home_connecting");
@@ -353,6 +372,7 @@ int main(int argc, char **argv)
 
     apply("done");
     run(200);
+    expect_sound("done");
     if (want_frames) frames("home_done", 2000, 100);
     run(900);
     shot("04_home_done_cheer");
@@ -391,10 +411,12 @@ int main(int argc, char **argv)
     run(1200);
     shot("09_permission");
     expect_text("Claude wants to run a command");
+    expect_sound("permission");
     if (want_frames) frames("permission", 2500, 100);
     tap("Allow once");
     run(500);
     expect_sent("\"decision\":\"allow\"");
+    expect_sound("allow");
     shot("10_permission_allowed");
     apply("busy");
     run(2500);
@@ -403,6 +425,7 @@ int main(int argc, char **argv)
     run(1200);
     shot("11_question");
     expect_text("Which database");
+    expect_sound("question");
     if (want_frames) frames("question", 2000, 100);
     tap("SQLite");
     run(500);
@@ -415,6 +438,7 @@ int main(int argc, char **argv)
     run(900);
     shot("13_reminder_banner");
     expect_text("Reminder");
+    expect_sound("reminder");
 
     run(5000);
     tap("Sessions");
@@ -423,6 +447,7 @@ int main(int argc, char **argv)
     run(800);
     shot("16_settings");
     expect_text("Settings");
+    expect_text("Quiet at night (10pm-7am), except reminders");
     tap("Check for updates");
     run(300);
     expect_text("Version v0.3.0 is available.");

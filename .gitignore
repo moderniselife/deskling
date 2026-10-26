@@ -30,3 +30,5 @@ firmware/build-sim-dbg/
 firmware/build-p4r*
 firmware/build-p4r*.log
 firmware/dist/
+site/node_modules/
+site/.wrangler/

@@ -30,9 +30,13 @@ menu "Deskling"
 
     config DESKLING_UPDATE_URL
         string "Where to look for firmware updates"
-        default "https://raw.githubusercontent.com/moderniselife/deskling/firmware-dist/"
+        default "https://deskling.mojolayers.com/firmware/"
         help
             Folder holding manifest.json and the app images (tools/release.sh publishes them).
+
+    config DESKLING_UPDATE_FALLBACK_URL
+        string "Fallback update folder (used if the first one can't be reached)"
+        default "https://raw.githubusercontent.com/moderniselife/deskling/firmware-dist/"
 
     choice DESKLING_LCD
         prompt "LCD revision"
@@ -50,6 +54,11 @@ menu "Deskling"
         int "Daytime brightness (%)"
         range 10 100
         default 90
+
+    config DESKLING_VOLUME
+        int "Sound volume (%) (0 = silent)"
+        range 0 100
+        default 60
 
     config DESKLING_TOUCH_SWAP_XY
         bool "Touch: swap X and Y"

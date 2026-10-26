@@ -16,7 +16,9 @@
 #include "freertos/task.h"
 #include "net.h"
 #include "ota.h"
+#include "audio.h"
 #include "settings.h"
+#include "sound.h"
 
 static const char *TAG = "portal";
 
@@ -114,6 +116,8 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddStringToObject(o, "ip", net_ip());
     cJSON_AddStringToObject(o, "tz", st->tz);
     cJSON_AddNumberToObject(o, "brightness", st->brightness);
+    cJSON_AddNumberToObject(o, "volume", st->volume);
+    cJSON_AddBoolToObject(o, "quiet_night", st->quiet_night);
     cJSON *w = cJSON_AddObjectToObject(o, "wifi");
     cJSON_AddStringToObject(w, "ssid", st->wifi_ssid);
     cJSON_AddBoolToObject(w, "connected", net_wifi_connected());
@@ -203,6 +207,25 @@ static esp_err_t set_brightness(httpd_req_t *req)
     return ok(req);
 }
 
+/** {"volume":0..100, "quiet_night":bool, "play":"<sound name>"}: any subset. */
+static esp_err_t set_sound(httpd_req_t *req)
+{
+    if (!authorised(req)) return ESP_OK;
+    cJSON *b = read_json(req);
+    const cJSON *v = cJSON_GetObjectItem(b, "volume");
+    const cJSON *q = cJSON_GetObjectItem(b, "quiet_night");
+    if (cJSON_IsNumber(v) || cJSON_IsBool(q)) {
+        const dk_settings_t *st = settings();
+        device_set_sound(cJSON_IsNumber(v) ? (uint8_t)v->valueint : st->volume, cJSON_IsBool(q) ? cJSON_IsTrue(q) : st->quiet_night);
+    }
+    const char *play = str(b, "play");
+    for (int i = DK_SND_NONE + 1; play[0] && i < DK_SND_COUNT; i++) {
+        if (strcmp(play, sound_name((dk_sound_t)i)) == 0) audio_play((dk_sound_t)i);
+    }
+    cJSON_Delete(b);
+    return ok(req);
+}
+
 static void restart_later(void *arg)
 {
     (void)arg;
@@ -284,6 +307,7 @@ void portal_start(void)
         {.uri = "/api/scan", .method = HTTP_GET, .handler = scan_results},
         {.uri = "/api/tz", .method = HTTP_POST, .handler = set_tz},
         {.uri = "/api/brightness", .method = HTTP_POST, .handler = set_brightness},
+        {.uri = "/api/sound", .method = HTTP_POST, .handler = set_sound},
         {.uri = "/api/restart", .method = HTTP_POST, .handler = restart},
         {.uri = "/api/update", .method = HTTP_POST, .handler = update},
     };
