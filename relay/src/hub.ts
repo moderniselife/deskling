@@ -395,7 +395,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
 
     if (req.method === "GET" && path === "/api/state") {
       this.prune();
-      return json(this.state);
+      // The routine's own token never leaves the relay.
+      return json({ ...this.state, routine: this.state.routine ? { ...this.state.routine, token: "…" + this.state.routine.token.slice(-4) } : null });
     }
 
     if (req.method === "POST" && path === "/channel/register") return this.onChannelRegister((await readJson()) ?? {});
