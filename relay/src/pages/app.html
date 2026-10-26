@@ -273,6 +273,8 @@ function askCard(p) {
 // Pictures need the token, so they're fetched rather than linked.
 function picture(id) {
   var img = el("img", { alt: "Picture from the session" });
+  // Pictures arrive after the text: stay at the bottom if you were there.
+  img.addEventListener("load", function () { var l = img.closest(".lines"); if (l && l.dataset.follow === "1") l.scrollTop = l.scrollHeight; });
   if (imgs[id]) { img.src = imgs[id]; return img; }
   fetch("/img/" + encodeURIComponent(id), { headers: { authorization: "Bearer " + token } })
     .then(function (r) { return r.ok ? r.blob() : null; })
@@ -362,6 +364,8 @@ function renderChat(force) {
   main.replaceChildren(head, list, compose);
   if (focused) { var t2 = main.querySelector("textarea"); if (t2) { t2.focus(); t2.setSelectionRange(t2.value.length, t2.value.length); } }
   list.scrollTop = atBottom ? list.scrollHeight : keep;
+  list.dataset.follow = atBottom ? "1" : "0";
+  list.addEventListener("scroll", function () { list.dataset.follow = list.scrollHeight - list.scrollTop - list.clientHeight < 80 ? "1" : "0"; });
 }
 
 // ---- new session
