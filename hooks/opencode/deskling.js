@@ -187,7 +187,7 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
   async function onPermission(p) {
     const meta = p.metadata || {};
     const summary = meta.command || meta.filePath || meta.filepath || (p.patterns || []).join(" ") || p.permission;
-    const r = await ask(p.sessionID, { key: p.id, kind: "permission", tool: p.permission === "bash" ? "Bash" : p.permission === "edit" ? "Edit" : p.permission, summary, detail: meta.description || "" });
+    const r = await ask(p.sessionID, { key: p.id, kind: "permission", tool: { bash: "Bash", edit: "Edit", write: "Write", read: "Read", webfetch: "WebFetch", websearch: "WebSearch", task: "Task", external_directory: "Folder access", doom_loop: "Keep going" }[p.permission] || p.permission, summary, detail: meta.description || "" });
     if (r.decision !== "allow" && r.decision !== "deny") return; // answered on the computer, or no answer: OpenCode's own prompt stays
     const reply = r.decision === "allow" ? "once" : "reject";
     const ok = await oc(`/permission/${p.id}/reply`, { reply }).then((x) => x.ok).catch(() => false);

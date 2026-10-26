@@ -289,7 +289,7 @@ try {
   await until("an ACP permission ask", () => relay.asks.length > asksBefore3, 60000);
   const pa = relay.asks[relay.asks.length - 1];
   check("OpenCode's own Deskling plugin stays quiet when the runner drives it", !relay.updates.some((u) => u.id.startsWith("oc-ses_") && (u.lines || []).some((l) => l.text === "please run echo hi")));
-  check("its permission prompts are asked on the screen", pa.id === aid && pa.kind === "permission", JSON.stringify(pa));
+  check("its permission prompts are asked on the screen", pa.id === aid && pa.kind === "permission" && pa.tool === "Bash", JSON.stringify(pa));
   await until("the ACP reply", () => acpLines().some((l) => l.from === "agent" && /printed hi/.test(l.text)), 60000);
   const al = acpLines();
   check("your prompt, its steps and its reply are in the chat", al.some((l) => l.from === "you" && l.text === "please run echo hi") && al.some((l) => l.from === "tool") && al.some((l) => l.from === "agent" && /Running it now/.test(l.text)), JSON.stringify(al));

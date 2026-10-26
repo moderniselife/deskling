@@ -353,6 +353,9 @@ function acpAgents() {
   return list;
 }
 
+// ACP tool kinds, named the way the screen words its requests ("wants to run a command").
+const ACP_TOOL = { execute: "Bash", edit: "Edit", read: "Read", delete: "Delete", move: "Move", search: "Search", fetch: "WebFetch", think: "Think", other: "Tool" };
+
 const acpSessions = new Map(); // relay agent id -> AcpSession
 const ACP_IDLE_MS = (Number(get("DESKLING_ACP_IDLE_HOURS", "4")) || 4) * 3600_000;
 
@@ -490,7 +493,7 @@ class AcpSession {
     let decision = null;
     while (!decision && Date.now() < until && acpSessions.has(this.id)) {
       await this.flush();
-      const r = await relay("/agent/ask", { method: "POST", body: JSON.stringify({ id: this.id, key, kind: "permission", tool: tc.kind ? tc.kind[0].toUpperCase() + tc.kind.slice(1) : "Tool", summary, detail: tc.title ?? "", wait: 110 }) }).catch(() => ({}));
+      const r = await relay("/agent/ask", { method: "POST", body: JSON.stringify({ id: this.id, key, kind: "permission", tool: ACP_TOOL[tc.kind] || "Tool", summary, detail: tc.title ?? "", wait: 110 }) }).catch(() => ({}));
       if (r.decision === "allow" || r.decision === "deny") decision = r.decision;
       else if (!r.timeout) await new Promise((res) => setTimeout(res, 5000));
     }
