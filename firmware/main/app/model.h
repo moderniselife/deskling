@@ -15,7 +15,7 @@ extern "C" {
 #define DK_MAX_FEED 12
 #define DK_MAX_REMINDERS 12
 #define DK_MAX_PENDING 4
-#define DK_MAX_CHAT 16
+#define DK_MAX_CHAT 30
 #define DK_MAX_HELPERS 4
 #define DK_MAX_QUESTIONS 4
 #define DK_MAX_OPTIONS 6

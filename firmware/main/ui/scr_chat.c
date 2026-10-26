@@ -465,7 +465,9 @@ static const char *chat_meta(const dk_agent_t *a, const dk_chat_t *line)
 static void rebuild_chat(const dk_agent_t *a, bool animate_new)
 {
     const dk_chat_t *tail = a && a->chat_n ? &a->chat[a->chat_n - 1] : NULL;
-    bool typing_on = tail && (tail->step || (tail->from_you && tail->status != DK_CHAT_QUEUED)) && a->state == DK_WORKING;
+    // "Typing" only while it's actually busy: not on a session that's gone quiet.
+    bool recent = !g_model->now || !a->updated || g_model->now - a->updated < 3 * 60 * 1000;
+    bool typing_on = tail && recent && (tail->step || (tail->from_you && tail->status != DK_CHAT_QUEUED)) && a->state == DK_WORKING;
     uint32_t sig = dk_hash_str(DK_HASH0, c.agent_id);
     if (a) {
         for (int i = 0; i < a->chat_n; i++) {

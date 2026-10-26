@@ -22,8 +22,8 @@ import type {
 const FEED_MAX = 40;
 const CHAT_MAX = 80; // messages and tool steps kept per session
 const CHAT_TEXT_MAX = 1200; // the screen keeps this much of each chat line
-const SNAPSHOT_CHAT = 16; // chat lines per session sent to the screen
-const STEPS_SHOWN = 4; // tool steps shown in a row before they collapse into a count
+const SNAPSHOT_CHAT = 30; // chat lines per session sent to the screen
+const STEPS_SHOWN = 3; // tool steps shown in a row before they collapse into a count
 const HELPER_MAX = 4; // helpers per session the screen shows
 const HELPER_KEEP_MS = 10 * 60 * 1000; // finished helpers stay listed this long
 const QUIET_MS = 2 * 60 * 60 * 1000; // "working" with no news for this long is shown as idle
