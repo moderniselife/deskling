@@ -1,5 +1,6 @@
 #include "portal.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +8,7 @@
 #include "cJSON.h"
 #include "device.h"
 #include "esp_app_desc.h"
+#include "esp_app_format.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -17,6 +19,7 @@
 #include "net.h"
 #include "ota.h"
 #include "audio.h"
+#include "board.h"
 #include "esp_lvgl_port.h"
 #include "ui.h"
 #include "settings.h"
@@ -130,6 +133,12 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddStringToObject(m, "name", "deskling.local");
     cJSON_AddNumberToObject(m, "heard", net_local_name_heard(&ex));
     cJSON_AddStringToObject(m, "example", ex);
+    board_display_stats_t ds = board_display_stats();
+    cJSON *d = cJSON_AddObjectToObject(o, "display");
+    cJSON_AddNumberToObject(d, "frames", ds.frames);
+    cJSON_AddNumberToObject(d, "avg_ms", (int)(ds.avg_ms * 10) / 10.0);
+    cJSON_AddNumberToObject(d, "worst_ms", (int)(ds.worst_ms * 10) / 10.0);
+    cJSON_AddNumberToObject(d, "busy_pct", ds.busy_pct);
     cJSON *r = cJSON_AddObjectToObject(o, "relay");
     cJSON_AddStringToObject(r, "url", st->relay_url);
     cJSON_AddBoolToObject(r, "configured", settings_relay_configured());
@@ -270,7 +279,22 @@ static esp_err_t restart(httpd_req_t *req)
     return ESP_OK;
 }
 
-/** Firmware upload: the body is the raw app .bin. */
+static void show_progress(ui_update_state_t st, int pct, const char *version, const char *msg)
+{
+    if (lvgl_port_lock(500)) {
+        ui_update_status(st, pct, version, msg);
+        lvgl_port_unlock();
+    }
+}
+
+static void restart_after_cheer(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(2500)); // long enough for Deskling's "All done!"
+    esp_restart();
+}
+
+/** Firmware upload: the body is the raw app .bin. Deskling shows its install screen meanwhile. */
 static esp_err_t update(httpd_req_t *req)
 {
     if (!authorised(req)) return ESP_OK;
@@ -284,6 +308,8 @@ static esp_err_t update(httpd_req_t *req)
     int left = req->content_len;
     esp_err_t err = ESP_OK;
     bool checked = false;
+    int shown = -1;
+    char version[32] = "";
     while (left > 0 && err == ESP_OK) {
         int r = httpd_req_recv(req, buf, left < 4096 ? left : 4096);
         if (r == HTTPD_SOCK_ERR_TIMEOUT) continue;
@@ -297,9 +323,24 @@ static esp_err_t update(httpd_req_t *req)
                 err = ESP_ERR_INVALID_ARG;
                 break;
             }
+            // The app description (with its version) follows the image and first segment
+            // headers: 24 + 8 bytes in, version at offset 16 of it.
+            const int at = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + offsetof(esp_app_desc_t, version);
+            if (r >= at + (int)sizeof(version)) {
+                memcpy(version, buf + at, sizeof(version) - 1);
+                version[sizeof(version) - 1] = 0;
+                for (char *c = version; *c; c++)
+                    if ((unsigned char)*c < 0x20 || (unsigned char)*c > 0x7e) *c = 0; // not a version after all
+            }
+            show_progress(UI_UPDATE_DOWNLOADING, 0, version[0] ? version : NULL, NULL);
         }
         err = esp_ota_write(h, buf, r);
         left -= r;
+        int pct = (int)((int64_t)(req->content_len - left) * 100 / req->content_len);
+        if (pct / 2 != shown / 2) {
+            shown = pct;
+            show_progress(UI_UPDATE_DOWNLOADING, pct, NULL, NULL);
+        }
     }
     free(buf);
     if (err == ESP_OK) err = esp_ota_end(h);
@@ -307,11 +348,14 @@ static esp_err_t update(httpd_req_t *req)
     if (err == ESP_OK) err = esp_ota_set_boot_partition(part);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "upload failed: %s", esp_err_to_name(err));
-        return send_error(req, "400 Bad Request", err == ESP_ERR_INVALID_ARG ? "That isn't a Deskling app image." : "The firmware didn't check out. Try downloading it again.");
+        const char *why = err == ESP_ERR_INVALID_ARG ? "That isn't a Deskling app image." : "The firmware didn't check out. Try downloading it again.";
+        if (checked) show_progress(UI_UPDATE_FAILED, 0, NULL, why);
+        return send_error(req, "400 Bad Request", why);
     }
     ESP_LOGI(TAG, "firmware uploaded, restarting");
+    show_progress(UI_UPDATE_DONE, 100, NULL, NULL);
     ok(req);
-    xTaskCreate(restart_later, "restart", 2048, NULL, 5, NULL);
+    xTaskCreate(restart_after_cheer, "restart", 2048, NULL, 5, NULL);
     return ESP_OK;
 }
 

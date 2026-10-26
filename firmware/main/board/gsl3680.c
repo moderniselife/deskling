@@ -176,8 +176,12 @@ static void to_panel(esp_lcd_touch_handle_t tp, int32_t a, int32_t b, uint16_t *
 
 static esp_err_t read_data(esp_lcd_touch_handle_t tp)
 {
+    // This runs inside LVGL's task every refresh and blocks it for the whole I2C transfer, so
+    // read just the header and first finger (8 bytes, ~0.2 ms) and fetch the full packet only
+    // when more than one finger is down, instead of all 44 bytes (~1.1 ms) every time.
     uint8_t pkt[PACKET_SIZE] = {0};
-    esp_err_t err = esp_lcd_panel_io_rx_param(tp->io, DATA_REG, pkt, sizeof(pkt));
+    esp_err_t err = esp_lcd_panel_io_rx_param(tp->io, DATA_REG, pkt, 8);
+    if (err == ESP_OK && pkt[0] > 1 && pkt[0] <= MAX_CONTACTS) err = esp_lcd_panel_io_rx_param(tp->io, DATA_REG, pkt, 4 + 4 * pkt[0]);
     uint8_t n = 0;
     esp_lcd_touch_point_data_t pts[MAX_POINTS] = {0};
     if (err == ESP_OK && pkt[0] <= MAX_CONTACTS) {

@@ -253,6 +253,117 @@ static void set_backlight(uint8_t pct)
     s_backlight_pct = pct;
 }
 
+
+// ------------------------------------------------------- screen changes
+// Same motion as lv_screen_load_anim (linear fade / slide / cover), but the outgoing screen
+// is captured once as a picture (the "ghost") instead of being re-rendered on every frame of
+// the transition. LVGL would redraw both screens in full for every frame of a fade, with the
+// incoming one blended on top; this way only the incoming screen is live, so its own entrance
+// animations still play, and the outgoing one costs a single image blit per frame.
+static lv_draw_buf_t *s_ghost_buf;
+static lv_obj_t *s_ghost, *s_trans_scr;
+
+static void trans_x(void *o, int32_t v) { lv_obj_set_x(o, v); }
+static void trans_y(void *o, int32_t v) { lv_obj_set_y(o, v); }
+static void trans_opa(void *o, int32_t v) { dk_style(o, LV_STYLE_OPA, v); }
+
+static void trans_finish(void)
+{
+    if (s_ghost) {
+        lv_anim_delete(s_ghost, NULL);
+        lv_obj_add_flag(s_ghost, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (s_trans_scr) {
+        lv_anim_delete(s_trans_scr, trans_x);
+        lv_anim_delete(s_trans_scr, trans_y);
+        lv_obj_set_pos(s_trans_scr, 0, 0);
+        s_trans_scr = NULL;
+    }
+}
+
+static void trans_done(lv_anim_t *a)
+{
+    (void)a;
+    trans_finish();
+}
+
+/** Capture the current screen into the ghost picture. False if there's no memory for it. */
+static bool ghost_capture(lv_obj_t *scr)
+{
+#if !LV_USE_SNAPSHOT
+    (void)scr;
+    return false;
+#else
+    int32_t w = lv_display_get_horizontal_resolution(NULL), h = lv_display_get_vertical_resolution(NULL);
+    if (!s_ghost_buf) {
+        s_ghost_buf = lv_draw_buf_create(w, h, LV_COLOR_FORMAT_RGB565, LV_STRIDE_AUTO);
+        if (!s_ghost_buf) return false;
+    }
+    if (lv_snapshot_take_to_draw_buf(scr, LV_COLOR_FORMAT_RGB565, s_ghost_buf) != LV_RESULT_OK) return false;
+    if (!s_ghost) {
+        s_ghost = lv_image_create(lv_layer_top());
+        lv_obj_remove_flag(s_ghost, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(s_ghost, LV_OBJ_FLAG_HIDDEN | LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
+#if LV_CACHE_DEF_SIZE > 0
+    lv_image_cache_drop(s_ghost_buf); // same buffer, new picture
+#endif
+    lv_image_set_src(s_ghost, s_ghost_buf);
+    lv_obj_invalidate(s_ghost);
+    return true;
+#endif
+}
+
+static void ghost_anim(lv_obj_t *o, lv_anim_exec_xcb_t cb, int32_t from, int32_t to, uint32_t ms, bool last)
+{
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, o);
+    lv_anim_set_exec_cb(&a, cb);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_set_duration(&a, ms);
+    lv_anim_set_early_apply(&a, true);
+    if (last) lv_anim_set_completed_cb(&a, trans_done);
+    lv_anim_start(&a);
+}
+
+static void show_screen(lv_obj_t *scr, lv_screen_load_anim_t how, uint32_t ms)
+{
+    trans_finish();
+    lv_obj_t *old = lv_screen_active();
+    if (!old || old == scr || !ghost_capture(old)) {
+        lv_screen_load_anim(scr, how, ms, 0, false);
+        return;
+    }
+    int32_t w = lv_display_get_horizontal_resolution(NULL), h = lv_display_get_vertical_resolution(NULL);
+    // Fades put the ghost over the new screen; slides and covers put it underneath.
+    bool over = how == LV_SCREEN_LOAD_ANIM_FADE_IN;
+    lv_obj_set_parent(s_ghost, over ? lv_layer_top() : lv_layer_bottom());
+    lv_obj_move_to_index(s_ghost, 0);
+    lv_obj_set_pos(s_ghost, 0, 0);
+    lv_obj_remove_local_style_prop(s_ghost, LV_STYLE_OPA, 0);
+    lv_obj_remove_flag(s_ghost, LV_OBJ_FLAG_HIDDEN);
+
+    lv_screen_load(scr);
+    s_trans_scr = scr;
+    switch (how) {
+    case LV_SCREEN_LOAD_ANIM_MOVE_LEFT:
+        ghost_anim(s_ghost, trans_x, 0, -w, ms, false);
+        ghost_anim(scr, trans_x, w, 0, ms, true);
+        break;
+    case LV_SCREEN_LOAD_ANIM_MOVE_RIGHT:
+        ghost_anim(s_ghost, trans_x, 0, w, ms, false);
+        ghost_anim(scr, trans_x, -w, 0, ms, true);
+        break;
+    case LV_SCREEN_LOAD_ANIM_OVER_TOP:
+        ghost_anim(scr, trans_y, h, 0, ms, true);
+        break;
+    default: // fade
+        ghost_anim(s_ghost, trans_opa, LV_OPA_COVER, LV_OPA_TRANSP, ms, true);
+        break;
+    }
+}
+
 // While the boot animation or touch setup is showing, anything else that wants the screen
 // waits its turn: the latest request is remembered and shown afterwards.
 static bool s_holding;
@@ -260,7 +371,7 @@ static scr_id_t s_after_hold = SCR_HOME;
 
 void ui_go(scr_id_t id)
 {
-    if (s_holding && id != SCR_BOOT && id != SCR_CALIB) {
+    if (s_holding && id != SCR_BOOT && id != SCR_CALIB && id != SCR_UPDATE) {
         s_after_hold = id;
         return;
     }
@@ -280,7 +391,7 @@ void ui_go(scr_id_t id)
     if (id == SCR_SETTINGS) scr_settings_refresh();
     if (id == SCR_SETUP) scr_setup_refresh();
     if (id == SCR_HOME) scr_home_refresh(DK_CAUSE_HELLO, "");
-    lv_screen_load_anim(s_scr[id], how, ms, 0, false);
+    show_screen(s_scr[id], how, ms);
     ui_gestures_on_screen(id);
 }
 
@@ -325,7 +436,7 @@ static void banner_gone(lv_anim_t *a)
 
 static void banner_opa(void *o, int32_t v)
 {
-    lv_obj_set_style_opa(o, (lv_opa_t)v, 0);
+    dk_style(o, LV_STYLE_OPA, (lv_opa_t)v);
 }
 
 void ui_banner(const char *title, const char *body, lv_color_t bg)
@@ -404,6 +515,13 @@ static void calib_done(void)
     release_hold();
 }
 
+static void update_back(void)
+{
+    g_update_state = UI_UPDATE_IDLE;
+    scr_settings_refresh();
+    release_hold();
+}
+
 static void boot_done(void)
 {
     bool need_cal = g_platform && g_platform->touch_raw && g_platform->touch_calibrated && !g_platform->touch_calibrated();
@@ -440,6 +558,7 @@ void ui_init(void)
     s_scr[SCR_SETTINGS] = scr_settings_create();
     s_scr[SCR_BOOT] = scr_boot_create();
     s_scr[SCR_CALIB] = scr_calib_create();
+    s_scr[SCR_UPDATE] = scr_update_create(update_back);
     lv_timer_create(tick_cb, 1000, NULL);
     ui_gestures_init();
 
@@ -616,6 +735,19 @@ void ui_update_status(ui_update_state_t state, int progress, const char *latest,
     if (latest) snprintf(g_update_latest, sizeof(g_update_latest), "%s", latest);
     snprintf(g_update_message, sizeof(g_update_message), "%s", message ? message : "");
     scr_settings_refresh();
+    // Installing takes over the screen; anything else that wants it waits until it's over.
+    if (state == UI_UPDATE_DOWNLOADING || state == UI_UPDATE_DONE || (state == UI_UPDATE_FAILED && s_cur == SCR_UPDATE)) {
+        if (s_cur != SCR_UPDATE && state != UI_UPDATE_FAILED) {
+            if (!s_holding) {
+                s_after_hold = (s_cur == SCR_BOOT || s_cur == SCR_CALIB) ? SCR_HOME : s_cur;
+                s_holding = true;
+            }
+            scr_update_refresh();
+            ui_go(SCR_UPDATE);
+        } else {
+            scr_update_refresh();
+        }
+    }
     if (state == UI_UPDATE_AVAILABLE && s_cur == SCR_HOME) {
         char body[96];
         snprintf(body, sizeof(body), "Version %s is ready. Install it from Settings.", g_update_latest);

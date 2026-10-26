@@ -43,14 +43,14 @@ static struct {
 static bool allowed(gkind_t k)
 {
     scr_id_t s = ui_current();
-    if (s == SCR_ALERT || s == SCR_SETUP || s == SCR_BOOT || s == SCR_CALIB) return false;
+    if (s == SCR_ALERT || s == SCR_SETUP || s == SCR_BOOT || s == SCR_CALIB || s == SCR_UPDATE) return false;
     if (k == G_LEFT) return s == SCR_CHAT || s == SCR_SESSIONS || s == SCR_SETTINGS || s == SCR_NIGHT;
     return true;
 }
 
 static void set_opa(void *o, int32_t v)
 {
-    lv_obj_set_style_opa(o, (lv_opa_t)v, 0);
+    dk_style(o, LV_STYLE_OPA, (lv_opa_t)v);
 }
 
 static void set_y(void *o, int32_t v)
@@ -61,7 +61,7 @@ static void set_y(void *o, int32_t v)
 
 static void set_translate_y(void *o, int32_t v)
 {
-    lv_obj_set_style_translate_y(o, v, 0);
+    dk_style(o, LV_STYLE_TRANSLATE_Y, v);
 }
 
 static void anim(lv_obj_t *o, lv_anim_exec_xcb_t cb, int32_t from, int32_t to, uint32_t ms, lv_anim_path_cb_t path)
@@ -435,7 +435,7 @@ void ui_gestures_init(void)
 void ui_gestures_on_screen(scr_id_t id)
 {
     if (!g.pill) return;
-    bool show = id != SCR_SETUP && id != SCR_ALERT && id != SCR_BOOT && id != SCR_CALIB;
+    bool show = id != SCR_SETUP && id != SCR_ALERT && id != SCR_BOOT && id != SCR_CALIB && id != SCR_UPDATE;
     if (show) lv_obj_remove_flag(g.pill, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(g.pill, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_bg_color(g.pill, id == SCR_NIGHT ? DK_NIGHT_TEXT : DK_INK, 0);

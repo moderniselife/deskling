@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 
+#include "anim.h"
 #include "theme.h"
 
 // All geometry is in the 200-unit space of the design's SVG, scaled to `s`.
@@ -74,7 +75,10 @@ lv_obj_t *deskling_create(lv_obj_t *parent, int32_t size, lv_color_t body)
 
     f->body_g = dk_box(f->root);
     lv_obj_set_size(f->body_g, size, size);
-    dk_overflow(f->body_g, size / 4);
+    // Children all sit inside the body box; only a sliver of margin is needed for anti-aliasing.
+    // (This box is what gets rotated or scaled in some moods, and LVGL renders it through a
+    // layer the size of the box plus this margin, so a big margin multiplies that work.)
+    dk_overflow(f->body_g, K(4));
     lv_obj_set_style_transform_pivot_x(f->body_g, lv_pct(50), 0);
     lv_obj_set_style_transform_pivot_y(f->body_g, lv_pct(88), 0);
 
@@ -217,11 +221,11 @@ static void anim(lv_obj_t *o, lv_anim_exec_xcb_t cb, int32_t from, int32_t to, u
     lv_anim_start(&a);
 }
 
-static void ex_ty(void *o, int32_t v) { lv_obj_set_style_translate_y(o, v, 0); }
-static void ex_tx(void *o, int32_t v) { lv_obj_set_style_translate_x(o, v, 0); }
-static void ex_opa(void *o, int32_t v) { lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
-static void ex_rot(void *o, int32_t v) { lv_obj_set_style_transform_rotation(o, v, 0); }
-static void ex_scale(void *o, int32_t v) { lv_obj_set_style_transform_scale(o, v, 0); }
+static void ex_ty(void *o, int32_t v) { dk_style(o, LV_STYLE_TRANSLATE_Y, v); }
+static void ex_tx(void *o, int32_t v) { dk_style(o, LV_STYLE_TRANSLATE_X, v); }
+static void ex_opa(void *o, int32_t v) { dk_style(o, LV_STYLE_OPA, (lv_opa_t)v); }
+static void ex_rot(void *o, int32_t v) { dk_style(o, LV_STYLE_TRANSFORM_ROTATION, v); }
+static void ex_scale(void *o, int32_t v) { dk_style_scale(o, v); }
 
 static void ex_blink(void *o, int32_t v)
 {
@@ -251,36 +255,36 @@ static void ex_glance(void *o, int32_t v)
     // Look right, then left, then back: v is 0..1000 over 7 s; values are in 1/100 px of k.
     face_t *f = lv_obj_get_user_data(lv_obj_get_parent(lv_obj_get_parent(o)));
     static const int32_t keys[][2] = {{0, 0}, {280, 0}, {340, 700}, {520, 700}, {580, -600}, {780, -600}, {840, 0}, {1000, 0}};
-    lv_obj_set_style_translate_x(o, (lerp_keys(v, keys, 8) * f->s) / 20000, 0);
+    dk_style(o, LV_STYLE_TRANSLATE_X, (lerp_keys(v, keys, 8) * f->s) / 20000);
 }
 
 static void ex_dart(void *o, int32_t v)
 {
     face_t *f = lv_obj_get_user_data(lv_obj_get_parent(lv_obj_get_parent(o)));
     static const int32_t keys[][2] = {{0, 0}, {200, 0}, {300, -700}, {450, -700}, {550, 700}, {700, 700}, {800, 0}, {1000, 0}};
-    lv_obj_set_style_translate_x(o, (lerp_keys(v, keys, 8) * f->s) / 20000, 0);
+    dk_style(o, LV_STYLE_TRANSLATE_X, (lerp_keys(v, keys, 8) * f->s) / 20000);
 }
 
 static void ex_sweat(void *o, int32_t v)
 {
     face_t *f = lv_obj_get_user_data(lv_obj_get_parent(o));
-    lv_obj_set_style_translate_y(o, K(-6) + (K(40) * v) / 1000, 0);
-    lv_obj_set_style_opa(o, (lv_opa_t)(v < 200 ? (v * 255) / 200 : (255 * (1000 - v)) / 800), 0);
+    dk_style(o, LV_STYLE_TRANSLATE_Y, K(-6) + (K(40) * v) / 1000);
+    dk_style(o, LV_STYLE_OPA, (lv_opa_t)(v < 200 ? (v * 255) / 200 : (255 * (1000 - v)) / 800));
 }
 
 static void ex_z(void *o, int32_t v)
 {
     face_t *f = lv_obj_get_user_data(lv_obj_get_parent(o));
-    lv_obj_set_style_translate_x(o, (K(30) * v) / 1000, 0);
-    lv_obj_set_style_translate_y(o, -(K(64) * v) / 1000, 0);
-    lv_obj_set_style_opa(o, (lv_opa_t)(v < 250 ? (v * 255) / 250 : (255 * (1000 - v)) / 750), 0);
+    dk_style(o, LV_STYLE_TRANSLATE_X, (K(30) * v) / 1000);
+    dk_style(o, LV_STYLE_TRANSLATE_Y, -(K(64) * v) / 1000);
+    dk_style(o, LV_STYLE_OPA, (lv_opa_t)(v < 250 ? (v * 255) / 250 : (255 * (1000 - v)) / 750));
 }
 
 static void ex_spark(void *o, int32_t v)
 {
-    lv_obj_set_style_transform_scale(o, 50 + (290 * v) / 1000, 0);
-    lv_obj_set_style_transform_rotation(o, 450 + (600 * v) / 1000, 0);
-    lv_obj_set_style_opa(o, (lv_opa_t)(v < 400 ? (v * 255) / 400 : (255 * (1000 - v)) / 600), 0);
+    dk_style_scale(o, 50 + (290 * v) / 1000);
+    dk_style(o, LV_STYLE_TRANSFORM_ROTATION, 450 + (600 * v) / 1000);
+    dk_style(o, LV_STYLE_OPA, (lv_opa_t)(v < 400 ? (v * 255) / 400 : (255 * (1000 - v)) / 600));
 }
 
 static void ex_eye_tick(void *o, int32_t v)

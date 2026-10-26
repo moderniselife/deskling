@@ -56,12 +56,15 @@ static void sender(const char *json)
 }
 
 static void device_tick(void);
+static void frame_hook(void);
+static double handler_ms(void);
 static void run(uint32_t ms)
 {
     for (uint32_t t = 0; t < ms; t += 5) {
         s_tick += 5;
         device_tick();
-        lv_timer_handler();
+        handler_ms();
+        frame_hook();
     }
 }
 
@@ -204,6 +207,17 @@ static void drag(int x0, int y0, int x1, int y1, uint32_t ms, uint32_t hold_ms)
     if (hold_ms) run(hold_ms);
     s_ptr_state = LV_INDEV_STATE_RELEASED;
     run(80);
+}
+
+static bool gesture_allowed_here(void)
+{
+    // The home-indicator pill is shown exactly where edge gestures work.
+    lv_obj_t *top = lv_layer_top();
+    for (uint32_t i = 0; i < lv_obj_get_child_count(top); i++) {
+        lv_obj_t *c = lv_obj_get_child(top, i);
+        if (lv_obj_get_width(c) == 150 && lv_obj_get_height(c) <= 10) return !lv_obj_has_flag(c, LV_OBJ_FLAG_HIDDEN);
+    }
+    return false;
 }
 
 static void expect_screen(scr_id_t id, const char *name)
@@ -357,6 +371,214 @@ static void device_tick(void)
     }
 }
 
+
+#ifdef DK_BENCH
+// ---- render benchmark ------------------------------------------------------------------
+// Device-like setup (RGB565, two 1280x100 partial buffers) and per-frame timings of the main
+// interactions. The host is many times faster than the ESP32-P4, so read the numbers as
+// relative cost: the per-frame "px" column is what the device has to push, and ms/frame
+// compared between scenarios shows which ones are heavy.
+#include <time.h>
+
+static uint16_t s_bench_buf[2][W * 100];
+static double s_t0, s_frame_ms_sum, s_frame_ms_max;
+static uint64_t s_px_sum, s_px_frame, s_px_max;
+static int s_frames;
+
+static double now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
+}
+
+static int s_dump_areas;
+static void bench_invalidate(lv_event_t *e)
+{
+    if (!s_dump_areas) return;
+    lv_area_t *a = lv_event_get_param(e);
+    printf("    invalidate %4d,%4d %4dx%-4d\n", (int)a->x1, (int)a->y1, (int)lv_area_get_width(a), (int)lv_area_get_height(a));
+}
+
+// The partial flushes assembled into one picture, for frame dumps (DK_FRAMES=<dir>).
+static uint16_t s_fb565[W * H];
+static const char *s_frames_dir;
+static int s_frame_no;
+static char s_scene_tag[32];
+
+static void bench_flush(lv_display_t *d, const lv_area_t *area, uint8_t *px)
+{
+    int32_t w = lv_area_get_width(area);
+    for (int32_t y = area->y1; y <= area->y2; y++)
+        memcpy(&s_fb565[y * W + area->x1], (uint16_t *)px + (y - area->y1) * w, w * 2);
+    s_px_frame += (uint64_t)lv_area_get_size(area);
+    lv_display_flush_ready(d);
+}
+
+static void bench_event(lv_event_t *e)
+{
+    lv_event_code_t c = lv_event_get_code(e);
+    if (c == LV_EVENT_REFR_START) {
+        s_t0 = now_ms();
+        s_px_frame = 0;
+    } else if (c == LV_EVENT_REFR_READY) {
+        if (!s_px_frame) return; // nothing was redrawn
+        double ms = now_ms() - s_t0;
+        s_frames++;
+        s_frame_ms_sum += ms;
+        if (ms > s_frame_ms_max) s_frame_ms_max = ms;
+        s_px_sum += s_px_frame;
+        if (s_px_frame > s_px_max) s_px_max = s_px_frame;
+    }
+}
+
+static double s_cpu_ms;
+static void bench_reset(void)
+{
+    s_cpu_ms = 0;
+    s_frames = 0;
+    s_frame_ms_sum = s_frame_ms_max = 0;
+    s_px_sum = s_px_max = 0;
+}
+
+static void dump_frame(void)
+{
+    static uint8_t rgb[W * H * 3];
+    for (int i = 0; i < W * H; i++) {
+        uint16_t p = s_fb565[i];
+        rgb[i * 3 + 0] = (uint8_t)(((p >> 11) & 0x1F) * 255 / 31);
+        rgb[i * 3 + 1] = (uint8_t)(((p >> 5) & 0x3F) * 255 / 63);
+        rgb[i * 3 + 2] = (uint8_t)((p & 0x1F) * 255 / 31);
+    }
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%04d_%s.png", s_frames_dir, s_frame_no++, s_scene_tag);
+    stbi_write_png(path, W, H, 3, rgb, W * 3);
+}
+
+static double s_total_ms, s_total_cpu;
+static void bench_report(const char *name, uint32_t sim_ms)
+{
+    double avg = s_frames ? s_frame_ms_sum / s_frames : 0;
+    s_total_ms += s_frame_ms_sum;
+    s_total_cpu += s_cpu_ms;
+    printf("%-28s %4d fr  draw %6.2f ms/fr avg %6.2f max  %5.0fk px/fr  | cpu %6.1f ms total, %5.2f ms per 16 ms\n", name, s_frames, avg,
+           s_frame_ms_max, s_frames ? s_px_sum / 1000.0 / s_frames : 0, s_cpu_ms, s_cpu_ms * 16.0 / sim_ms);
+}
+
+#define SCENE(name, ms, body)                                                                                                   \
+    do {                                                                                                                        \
+        bench_reset();                                                                                                          \
+        scene_tag(name);                                                                                                        \
+        double t0_ = now_ms();                                                                                                  \
+        body;                                                                                                                   \
+        s_cpu_ms = now_ms() - t0_;                                                                                              \
+        bench_report(name, ms);                                                                                                 \
+    } while (0)
+
+static void scene_tag(const char *name)
+{
+    int j = 0;
+    for (int i = 0; name[i] && j < (int)sizeof(s_scene_tag) - 1; i++) {
+        char ch = name[i];
+        s_scene_tag[j++] = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ? ch : '_';
+    }
+    s_scene_tag[j] = 0;
+}
+
+static int bench(void)
+{
+    s_frames_dir = getenv("DK_FRAMES");
+    if (s_frames_dir) mkdir(s_frames_dir, 0755);
+    lv_display_t *disp = lv_display_create(W, H);
+    lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
+    lv_display_set_buffers(disp, s_bench_buf[0], s_bench_buf[1], sizeof(s_bench_buf[0]), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(disp, bench_flush);
+    lv_display_add_event_cb(disp, bench_event, LV_EVENT_ALL, NULL);
+    lv_display_add_event_cb(disp, bench_invalidate, LV_EVENT_INVALIDATE_AREA, NULL);
+    lv_indev_t *ptr = lv_indev_create();
+    lv_indev_set_type(ptr, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(ptr, read_cb);
+
+    dk_set_sender(sender);
+    s_calibrated = true;
+    ui_init();
+    ui_set_platform(&s_fake);
+    snprintf(s_info.version, sizeof(s_info.version), "v0.3.2");
+    snprintf(s_info.ip, sizeof(s_info.ip), "192.168.1.42");
+    snprintf(s_info.hostname, sizeof(s_info.hostname), "deskling.local");
+    s_info.wifi_configured = s_info.wifi_connected = s_info.relay_configured = true;
+    s_info.brightness = 90;
+    ui_set_device_info(&s_info);
+    ui_set_connection(DK_CONN_ONLINE, NULL);
+    run(3200);
+    apply("busy");
+    run(1500);
+
+    printf("\nhost timings: compare scenes and before/after, not absolute numbers\n");
+    SCENE("home, idle 3 s", 3000, run(3000));
+    if (getenv("DK_AREAS")) { puts("  home idle, one frame:"); s_dump_areas = 1; run(17); s_dump_areas = 0; }
+    SCENE("home -> sessions (fade)", 600, (ui_go(SCR_SESSIONS), run(600)));
+    SCENE("sessions, idle 2 s", 2000, run(2000));
+    SCENE("sessions -> chat (slide)", 700, (ui_go(SCR_CHAT), run(700)));
+    SCENE("chat -> sessions (slide)", 700, (ui_go(SCR_SESSIONS), run(700)));
+    SCENE("sessions -> home (fade)", 600, (ui_go(SCR_HOME), run(600)));
+    SCENE("pull down notifications", 900, (drag(640, 4, 640, 620, 300, 200), run(500)));
+    SCENE("notifications open, idle", 1500, run(1500));
+    if (getenv("DK_AREAS")) { puts("  notifications idle, one frame:"); s_dump_areas = 1; run(17); s_dump_areas = 0; }
+    SCENE("push notifications away", 900, (drag(640, 560, 640, 40, 250, 0), run(600)));
+    SCENE("home -> settings (fade)", 600, (ui_go(SCR_SETTINGS), run(600)));
+    SCENE("settings -> home (fade)", 600, (ui_go(SCR_HOME), run(600)));
+    SCENE("permission alert (over top)", 900, (apply("permission"), run(900)));
+    SCENE("alert, idle 2 s", 2000, run(2000));
+    if (getenv("DK_AREAS")) { puts("  alert idle, one frame:"); s_dump_areas = 1; run(17); s_dump_areas = 0; }
+    SCENE("alert -> home (fade)", 900, (apply("busy"), run(900)));
+    SCENE("question alert, idle 2 s", 2600, (apply("question"), run(600), bench_reset(), run(2000)));
+    SCENE("question -> home", 900, (apply("busy"), run(900)));
+    SCENE("home -> night (fade 700)", 1200, (ui_go(SCR_NIGHT), run(1200)));
+    SCENE("night, idle 3 s", 3000, run(3000));
+    SCENE("wake to home", 900, (ui_go(SCR_HOME), run(900)));
+    SCENE("done: celebrate", 2500, (apply("done"), run(2500)));
+    SCENE("reminder due", 2500, (apply("busy"), run(300), apply("reminder_due"), run(2200)));
+    printf("\ntotal drawing: %.0f ms   total cpu: %.0f ms\n", s_total_ms, s_total_cpu);
+    return 0;
+}
+// A fixed clock (10:00 UTC, advancing with the simulated tick) so frame dumps repeat exactly.
+time_t __wrap_time(time_t *out)
+{
+    time_t v = (time_t)1793008800 + s_tick / 1000;
+    if (out) *out = v;
+    return v;
+}
+int __wrap_gettimeofday(struct timeval *tv, void *tz)
+{
+    (void)tz;
+    tv->tv_sec = (time_t)1793008800 + s_tick / 1000;
+    tv->tv_usec = (s_tick % 1000) * 1000;
+    return 0;
+}
+
+static double handler_ms(void)
+{
+    double t = now_ms();
+    lv_timer_handler();
+    double d = now_ms() - t;
+    s_cpu_ms += d;
+    return d;
+}
+
+static void frame_hook(void)
+{
+    if (s_frames_dir && s_scene_tag[0] && s_tick % 50 == 0) dump_frame();
+}
+#else
+static void frame_hook(void) {}
+static double handler_ms(void)
+{
+    lv_timer_handler();
+    return 0;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     if (argc < 3) {
@@ -365,6 +587,13 @@ int main(int argc, char **argv)
     }
     s_fixtures = argv[1];
     s_out = argv[2];
+#ifdef DK_BENCH
+    setenv("TZ", "UTC", 1);
+    tzset();
+    lv_init();
+    lv_tick_set_cb(tick_cb);
+    return bench();
+#endif
     bool want_frames = argc > 3 && strcmp(argv[3], "--frames") == 0;
     mkdir(s_out, 0755);
 
@@ -536,7 +765,26 @@ int main(int argc, char **argv)
     expect_text("Version v0.3.0 is available.");
     tap("Update now");
     run(500);
-    shot("17_settings_updating");
+    expect_screen(SCR_UPDATE, "installing an update takes over the screen");
+    expect_text("Getting an upgrade");
+    expect_text("v0.2.0  " LV_SYMBOL_RIGHT "  v0.3.0");
+    shot("17_update_installing");
+    if (want_frames) frames("update", 1500, 50);
+    run(1500); // the fake download reaches 100%
+    expect_text("100%");
+    check(!gesture_allowed_here(), "no gestures while installing");
+    ui_update_status(UI_UPDATE_DONE, 100, "v0.3.0", NULL);
+    run(900);
+    expect_text("All done!");
+    expect_sound("done");
+    shot("17b_update_done");
+    ui_update_status(UI_UPDATE_FAILED, 0, NULL, "The download failed. Try again?");
+    run(700);
+    expect_text("Hmm, that didn't work");
+    shot("17c_update_failed");
+    tap("Back");
+    run(600);
+    expect_screen(SCR_SETTINGS, "back to settings after a failed update");
     tap("Night");
     run(1500);
     shot("14_night");

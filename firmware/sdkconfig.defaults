@@ -41,11 +41,17 @@ CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
 # ---- TLS + WebSocket
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# Cloudflare's Google Trust Services chains end in a GTS root cross-signed by the old
+# GlobalSign Root CA, which isn't in the bundle any more. Let the chain stop at the GTS
+# root (which is in the bundle) instead of failing the handshake.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 CONFIG_LWIP_SNTP_MAX_SERVERS=2
 
 # ---- LVGL
 CONFIG_LV_COLOR_DEPTH_16=y
+# Screen changes capture the outgoing screen once instead of redrawing it every frame.
+CONFIG_LV_USE_SNAPSHOT=y
 CONFIG_LV_OS_FREERTOS=y
 CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_CLIB_STRING=y

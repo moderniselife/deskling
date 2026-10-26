@@ -3,6 +3,13 @@
 
 #include "lvgl.h"
 
+/** Set a numeric style on an object, but only if it actually changes. Animations call this
+ *  every frame; LVGL redraws (and may re-lay-out) on every style set, even to the same value,
+ *  so slow loops would otherwise repaint their area 60 times a second for nothing. */
+void dk_style(lv_obj_t *o, lv_style_prop_t prop, int32_t v);
+/** dk_style for transform_scale (both axes). */
+void dk_style_scale(lv_obj_t *o, int32_t v);
+
 /** Fade + rise into place after `delay_ms` (card entrances). */
 void dk_anim_rise(lv_obj_t *o, uint32_t delay_ms);
 /** Pop in from small with overshoot. */

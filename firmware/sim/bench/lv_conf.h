@@ -1,0 +1,41 @@
+// LVGL config for the render benchmark: matches the device (RGB565, layer and cache sizes).
+#ifndef LV_CONF_H
+#define LV_CONF_H
+
+#define LV_COLOR_DEPTH 16
+#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB
+#define LV_USE_STDLIB_STRING LV_STDLIB_CLIB
+#define LV_USE_STDLIB_SPRINTF LV_STDLIB_CLIB
+#define LV_DEF_REFR_PERIOD 16
+#define LV_DPI_DEF 160
+#define LV_USE_OS LV_OS_NONE
+#define LV_USE_DRAW_SW 1
+#define LV_DRAW_SW_COMPLEX 1
+#define LV_USE_ASSERT_NULL 0
+#define LV_USE_ASSERT_MALLOC 0
+#define LV_FONT_MONTSERRAT_14 1
+#define LV_FONT_MONTSERRAT_20 1
+#define LV_FONT_MONTSERRAT_28 1
+#define LV_FONT_DEFAULT &lv_font_montserrat_14
+#define LV_USE_FLEX 1
+#define LV_USE_GRID 1
+#define LV_USE_ARC 1
+#define LV_USE_LABEL 1
+#define LV_USE_BUTTON 1
+#define LV_USE_TEXTAREA 1
+#define LV_USE_KEYBOARD 1
+#define LV_USE_BUTTONMATRIX 1
+#define LV_LABEL_TEXT_SELECTION 1
+#define LV_USE_THEME_DEFAULT 1
+#define LV_USE_QRCODE 1
+#define LV_USE_SLIDER 1
+#define LV_USE_BAR 1
+#define LV_USE_SPINNER 1
+
+#define LV_DRAW_LAYER_SIMPLE_BUF_SIZE (24 * 1024)
+#define LV_DRAW_SW_SHADOW_CACHE_SIZE 0
+#define LV_DRAW_SW_CIRCLE_CACHE_SIZE 4
+#define LV_USE_SNAPSHOT 1
+#define LV_USE_LOG 0
+
+#endif

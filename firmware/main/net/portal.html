@@ -102,6 +102,7 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
   <section>
     <h2>Firmware</h2>
     <p class="muted">Running <b id="fwver"></b> (<span id="fwvar"></span>). Deskling checks for updates by itself; you can also install a <code>.bin</code> from the <code>firmware-dist</code> branch here.</p>
+    <p class="muted" id="perf"></p>
     <input id="fwfile" type="file" accept=".bin">
     <button id="upload">Install firmware</button>
     <progress id="fwprog" max="100" value="0" hidden></progress>
@@ -163,6 +164,7 @@ async function refresh() {
   const s = await api('/api/status');
   $('ver').textContent = `${s.version} · ${s.ip || 'hotspot'}`;
   $('fwver').textContent = s.version; $('fwvar').textContent = s.variant;
+  if (s.display && s.display.frames) $('perf').textContent = `Screen: ${s.display.avg_ms} ms per redraw on average, worst ${s.display.worst_ms} ms (${s.display.frames} redraws in the last 5 s that had anything to draw).`;
   $('relaystate').textContent = s.relay.online ? 'Connected' : s.relay.configured ? 'Not connected' : 'Not set up';
   $('relaystate').className = 'pill ' + (s.relay.online ? 'ok' : 'bad');
   $('relayurl').textContent = s.relay.url + (s.relay.token_end ? ` \u00b7 token \u2026${s.relay.token_end}` : '');

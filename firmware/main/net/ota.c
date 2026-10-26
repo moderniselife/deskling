@@ -230,7 +230,7 @@ static void install_task(void *arg)
     }
     if (err == ESP_OK) {
         status(UI_UPDATE_DONE, 100, NULL);
-        vTaskDelay(pdMS_TO_TICKS(1500));
+        vTaskDelay(pdMS_TO_TICKS(2500)); // long enough for Deskling's "All done!"
         esp_restart();
     }
     ESP_LOGE(TAG, "update failed: %s", esp_err_to_name(err));

@@ -11,7 +11,7 @@
 #include "theme.h"
 #include "ui.h"
 
-typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_BOOT, SCR_CALIB, SCR_COUNT } scr_id_t;
+typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_BOOT, SCR_CALIB, SCR_UPDATE, SCR_COUNT } scr_id_t;
 
 /** The latest snapshot (never NULL after ui_init). */
 extern const dk_model_t *g_model;
@@ -95,6 +95,9 @@ void scr_boot_play(void (*done)(void));
 #define CALIB_POINTS 5
 extern const lv_point_t g_calib_targets[CALIB_POINTS];
 lv_obj_t *scr_calib_create(void);
+// Installing an update (scr_update.c): shows g_update_state / g_update_progress.
+lv_obj_t *scr_update_create(void (*on_back)(void));
+void scr_update_refresh(void);
 void scr_calib_start(void (*done)(void));
 void scr_settings_refresh(void);
 

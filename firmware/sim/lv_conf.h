@@ -34,5 +34,6 @@
 #define LV_USE_SLIDER 1
 #define LV_USE_BAR 1
 #define LV_USE_SPINNER 1
+#define LV_USE_SNAPSHOT 1
 
 #endif

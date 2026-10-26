@@ -27,6 +27,7 @@ Canvas resolution is **1280×800 landscape**. The panel is natively 800×1280 po
 4. **Sessions.** A nav rail (Home / Sessions / Night) and filter tabs (All, Needs you, Working, Done). A 3-column grid of session cards, each with a source badge (Claude Code, Cursor, Agent), name, machine, current task, state pill and time since the last update. Cards that need you are tinted and wiggle.
 5. **Session chat.** Who it is on the left, with the delivery mode: live channel, next step, or can't message. Chat bubbles on the right (queued, delivered, Claude's replies, with a typing indicator), quick replies ("Yes please", "Continue", "Run the tests", "Wrap up and summarise"), and a message box with an on-screen keyboard.
 6. **Question.** Butter-yellow takeover: a curious Deskling with a "?" bubble, the question, and 2–4 big answer buttons with descriptions. Multi-select and multi-question flows step through with Next/Send. "Answer on my computer instead" hands it back to the terminal.
+7. **Installing an update.** Over the air or uploaded from the setup page: a busy Deskling on its lilac card, "Getting an upgrade", the old and new version, and a big rounded progress bar with a shine sweeping along it. When it's done Deskling cheers, the bar turns green and it restarts; if it fails there's a gentle message and Back. Nothing else takes the screen meanwhile.
 
 Banners drop in from the top for due reminders and finished tasks.
 
@@ -56,5 +57,7 @@ A rounded blob with eyes, blush cheeks and a mouth. Built from primitive shapes 
 | buttons | press scales to 0.94 |
 | primary action on needs-you | pulsing glow ring |
 | night stars | twinkle out of phase |
+
+Keep motion cheap to draw: LVGL renders anything scaled or rotated through an offscreen layer and resamples it, so prefer translate, opacity and size changes (a ping ring grows its own size and border rather than scaling), keep boxes that do get transformed tight, and only set a style in an animation when its value changes (`dk_style`). Screen changes capture the outgoing screen once and animate that picture rather than redrawing both screens every frame. `tools/bench_ui.sh` times every interaction and `tools/frame_diff.py` checks an optimisation didn't change a pixel of the motion.
 
 All of these are translate, scale, rotate or opacity changes, which map onto `lv_anim_t` with ease-in-out or overshoot paths. The ESP32-P4's PPA (2D accelerator) and the 32 MB PSRAM should handle full-screen double buffering. Target 30 fps or better.

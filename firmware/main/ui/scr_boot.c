@@ -18,22 +18,22 @@ static struct {
 
 static void set_scale(void *o, int32_t v)
 {
-    lv_obj_set_style_transform_scale(o, v, 0);
+    dk_style_scale(o, v);
 }
 
 static void set_scale_y(void *o, int32_t v)
 {
-    lv_obj_set_style_transform_scale_y(o, v, 0);
+    dk_style(o, LV_STYLE_TRANSFORM_SCALE_Y, v);
 }
 
 static void set_ty(void *o, int32_t v)
 {
-    lv_obj_set_style_translate_y(o, v, 0);
+    dk_style(o, LV_STYLE_TRANSLATE_Y, v);
 }
 
 static void set_opa(void *o, int32_t v)
 {
-    lv_obj_set_style_opa(o, (lv_opa_t)v, 0);
+    dk_style(o, LV_STYLE_OPA, (lv_opa_t)v);
 }
 
 static void go(lv_obj_t *o, lv_anim_exec_xcb_t cb, int32_t from, int32_t to, uint32_t ms, uint32_t delay, lv_anim_path_cb_t path)

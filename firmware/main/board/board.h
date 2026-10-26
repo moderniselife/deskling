@@ -24,3 +24,12 @@ lv_display_t *board_init(void);
 void board_set_backlight(uint8_t percent);
 /** The I2C bus the touch controller and audio codec share (NULL if it failed). */
 i2c_master_bus_handle_t board_i2c_bus(void);
+
+typedef struct {
+    uint32_t frames;  // redraws in the last 5 s that had something to draw
+    float avg_ms;     // average time per redraw (render + rotate + copy)
+    float worst_ms;
+    uint8_t busy_pct; // share of those 5 s spent redrawing
+} board_display_stats_t;
+/** Redraw timings from the last 5-second window with any drawing. */
+board_display_stats_t board_display_stats(void);

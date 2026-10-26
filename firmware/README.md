@@ -102,6 +102,8 @@ firmware/tools/run_sim.sh sim-out --frames
 
 This builds the same UI code for Linux or macOS, plays the fixture snapshots in `sim/fixtures/`, taps the buttons, checks that the right messages go to the relay, and writes screenshots plus animation frames to `sim-out/`. It needs cmake and a C compiler.
 
+`tools/bench_ui.sh` builds the same UI with device-like rendering and times every frame of the main interactions (screen changes, the notification pull-down, alerts, moods). `tools/bench_ui.sh frames before/` dumps the frames too, and `tools/frame_diff.py before/ after/` shows exactly which frames a change touched. On the board, the log prints redraw timings every 5 s while things move, and the setup page shows the latest ones.
+
 ## Fonts
 
 `tools/gen_fonts.sh` regenerates `main/ui/fonts/` from Nunito and JetBrains Mono. Both are SIL Open Font License; see `main/ui/fonts/OFL-Nunito.txt`.
