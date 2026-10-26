@@ -1,0 +1,30 @@
+{
+  "version": "v0.3.1",
+  "date": "2026-10-26",
+  "builds": {
+    "p4r1-lcd1": {
+      "app": "deskling-v0.3.1-p4r1-lcd1.bin",
+      "full": "deskling-v0.3.1-p4r1-lcd1-full.bin",
+      "app_sha256": "46c0180710ff90a5a3d609fe144578a928aece07b90133e367918b3090ad033c",
+      "full_sha256": "96bd9c8a5e7e5a3f5b632579bb6af6468b36479573b9a0afa31e62ac752e7505"
+    },
+    "p4r1-lcd2": {
+      "app": "deskling-v0.3.1-p4r1-lcd2.bin",
+      "full": "deskling-v0.3.1-p4r1-lcd2-full.bin",
+      "app_sha256": "154231fa5f464e3be3adbad1fcda8a6434b9ebefe0e505d7769c424c22604345",
+      "full_sha256": "8b631fba34a7bd7e95c02801de4a17dffa038326b945d9e2fd03ef42fe795b80"
+    },
+    "p4r3-lcd1": {
+      "app": "deskling-v0.3.1-p4r3-lcd1.bin",
+      "full": "deskling-v0.3.1-p4r3-lcd1-full.bin",
+      "app_sha256": "6bd75a50e91363e84cdfc08217a5b7b788eb443af27f7f7507b98ed887b662bf",
+      "full_sha256": "9c360e6e4ab1a618e9fc54e34b1e9d18facd6a6ebfbb9987ed16877aa023008d"
+    },
+    "p4r3-lcd2": {
+      "app": "deskling-v0.3.1-p4r3-lcd2.bin",
+      "full": "deskling-v0.3.1-p4r3-lcd2-full.bin",
+      "app_sha256": "9e6cedbea26afa594240d39165daee9898cd3b43dfb9c482bf93b86028c475a7",
+      "full_sha256": "b3acb6e83b5470175b55afa0aa7a7f1d69beb6c50499efb37a60a24d2c3fb759"
+    }
+  }
+}
