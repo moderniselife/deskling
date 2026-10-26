@@ -691,7 +691,9 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const projects = (Array.isArray(b.projects) ? b.projects : [])
       .slice(0, 40)
       .map((p) => ({ name: oneLine((p as Record<string, unknown>).name, 48), path: String((p as Record<string, unknown>).path ?? "").slice(0, 300) }))
-      .filter((p) => p.name && p.path);
+      .filter((p) => p.name && p.path)
+      // One entry per name: the screen picks projects by name (older runners could list a folder twice).
+      .filter((p, i, all) => all.findIndex((q) => q.name === p.name) === i);
     const known = this.state.machines?.[id];
     const changed = !known || JSON.stringify(known.projects) !== JSON.stringify(projects) || Date.now() - known.seen > MACHINE_GONE_MS;
     (this.state.machines ??= {})[id] = { id, os: oneLine(b.os, 20), projects, seen: Date.now() };

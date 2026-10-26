@@ -21,12 +21,12 @@
 //   DESKLING_CLAUDE                the claude command (default: claude)
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, hostname, platform } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 const HOME = homedir();
 
 function fileConfig() {
@@ -74,19 +74,35 @@ function projects() {
       }
     }
   }
+  // The same folder can turn up twice: ~/Projects and ~/projects are one folder on a Mac, and
+  // links point at folders listed elsewhere. Compare real paths (case-blind where the disk is).
+  const caseBlind = platform() === "darwin" || platform() === "win32";
   const seen = new Set();
-  return dirs
-    .map((d) => resolve(d))
-    .filter((d) => existsSync(d) && !seen.has(d) && seen.add(d))
-    .sort((a, b) => {
-      try {
-        return statSync(b).mtimeMs - statSync(a).mtimeMs; // recently touched first
-      } catch {
-        return 0;
-      }
-    })
-    .slice(0, 40)
-    .map((path) => ({ name: basename(path), path }));
+  const list = [];
+  for (const d of dirs) {
+    let real;
+    try {
+      real = realpathSync.native(resolve(d));
+    } catch {
+      continue;
+    }
+    const key = caseBlind ? real.toLowerCase() : real;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    list.push(real);
+  }
+  const mtime = (p) => {
+    try {
+      return statSync(p).mtimeMs;
+    } catch {
+      return 0;
+    }
+  };
+  const picked = list.sort((a, b) => mtime(b) - mtime(a)).slice(0, 40); // recently touched first
+  // Two different folders with the same name: say which is which, "deskling (GitHub)".
+  const count = {};
+  for (const p of picked) count[basename(p)] = (count[basename(p)] ?? 0) + 1;
+  return picked.map((path) => ({ name: count[basename(path)] > 1 ? `${basename(path)} (${basename(dirname(path))})` : basename(path), path }));
 }
 
 async function relay(path, init = {}) {
