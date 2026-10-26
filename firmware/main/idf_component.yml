@@ -1,0 +1,13 @@
+dependencies:
+  idf: ">=6.1,<6.2"
+  lvgl/lvgl: "9.6.*"
+  espressif/esp_lvgl_port: "^2.9.0"
+  espressif/esp_lcd_jd9365: "^2.0.2"
+  espressif/esp_lcd_touch: "1.2.1"
+  # Only for the GSL3680 controller firmware table, which has no license we can
+  # redistribute under; our own driver (board/gsl3680.c) includes it at build time.
+  guition-jc/esp_lcd_touch_gsl3680: "0.1.0"
+  espressif/esp_websocket_client: "^1.8.0"
+  espressif/cjson: "^1.7.19"
+  espressif/esp_hosted: "^3.0.10"
+  espressif/esp_wifi_remote: "^1.6.5"

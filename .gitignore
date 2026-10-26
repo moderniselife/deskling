@@ -3,7 +3,7 @@ firmware/build/
 firmware/managed_components/
 firmware/sdkconfig
 firmware/sdkconfig.old
-firmware/dependencies.lock
+
 
 # Node / Wrangler
 node_modules/
@@ -20,3 +20,10 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+
+# Firmware
+firmware/build-sim/
+firmware/.sim-deps/
+firmware/sim-out/
+firmware/sdkconfig.defaults.local
+firmware/build-sim-dbg/

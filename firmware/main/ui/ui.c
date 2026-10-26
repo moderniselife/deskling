@@ -1,0 +1,425 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <time.h>
+
+#include "ui_internal.h"
+
+#define NIGHT_AFTER_IDLE_MS (5 * 60 * 1000)
+#define NIGHT_FROM_HOUR 22
+#define NIGHT_UNTIL_HOUR 7
+
+static dk_model_t *s_model;
+const dk_model_t *g_model;
+dk_conn_t g_conn = DK_CONN_WIFI;
+char g_conn_detail[96];
+
+static lv_obj_t *s_scr[SCR_COUNT];
+static scr_id_t s_cur = SCR_HOME;
+static scr_id_t s_before_alert = SCR_HOME;
+static int64_t s_relay_offset;
+static ui_backlight_fn s_backlight;
+static uint8_t s_backlight_pct = 100;
+static lv_obj_t *s_banner;
+
+// --------------------------------------------------------------- time
+
+int64_t ui_now_ms(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+int64_t ui_relay_offset_ms(void)
+{
+    return s_relay_offset;
+}
+
+void ui_ago(int64_t ts_ms, char *buf, size_t n)
+{
+    int64_t s = (ui_now_ms() + s_relay_offset - ts_ms) / 1000;
+    if (s < 60) snprintf(buf, n, "now");
+    else if (s < 3600) snprintf(buf, n, "%dm", (int)(s / 60));
+    else if (s < 86400) snprintf(buf, n, "%dh", (int)(s / 3600));
+    else snprintf(buf, n, "%dd", (int)(s / 86400));
+}
+
+void ui_since(int64_t ts_ms, char *buf, size_t n)
+{
+    int64_t s = (ui_now_ms() + s_relay_offset - ts_ms) / 1000;
+    if (s < 60) snprintf(buf, n, "just now");
+    else if (s < 3600) snprintf(buf, n, "%d min ago", (int)(s / 60));
+    else snprintf(buf, n, "%d h ago", (int)(s / 3600));
+}
+
+void ui_clock_parts(char *hh, char *mm, char *ampm, char *date, size_t date_n)
+{
+    time_t t = time(NULL);
+    struct tm tm;
+    localtime_r(&t, &tm);
+    int h = tm.tm_hour % 12;
+    sprintf(hh, "%d", h == 0 ? 12 : h);
+    sprintf(mm, "%02d", tm.tm_min);
+    strcpy(ampm, tm.tm_hour < 12 ? "am" : "pm");
+    if (date) {
+        static const char *days[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+        static const char *months[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
+        snprintf(date, date_n, "%s %d %s", days[tm.tm_wday], tm.tm_mday, months[tm.tm_mon]);
+    }
+}
+
+void ui_due_text(int64_t due_ms, char *buf, size_t n)
+{
+    if (due_ms <= 0) {
+        snprintf(buf, n, "Any time");
+        return;
+    }
+    time_t t = (time_t)((due_ms - s_relay_offset) / 1000);
+    struct tm tm, now_tm;
+    localtime_r(&t, &tm);
+    time_t now = time(NULL);
+    localtime_r(&now, &now_tm);
+    int h = tm.tm_hour % 12;
+    const char *day = (tm.tm_yday == now_tm.tm_yday) ? "" : (tm.tm_yday == now_tm.tm_yday + 1 ? "Tomorrow " : "");
+    snprintf(buf, n, "%s%d:%02d %s", day, h == 0 ? 12 : h, tm.tm_min, tm.tm_hour < 12 ? "am" : "pm");
+}
+
+// ------------------------------------------------------------ helpers
+
+const dk_agent_t *ui_lead_agent(void)
+{
+    // The relay already sorts: needs you, waiting, working, done, idle; newest first.
+    return g_model->agent_n ? &g_model->agents[0] : NULL;
+}
+
+int ui_count_state(dk_state_t s)
+{
+    int n = 0;
+    for (int i = 0; i < g_model->agent_n; i++) n += g_model->agents[i].state == s;
+    return n;
+}
+
+dk_mood_t ui_mood_for(const dk_agent_t *a)
+{
+    if (!a) return DK_MOOD_CALM;
+    switch (a->state) {
+    case DK_WORKING: return DK_MOOD_BUSY;
+    case DK_NEEDS_YOU: return DK_MOOD_WORRIED;
+    case DK_WAITING: return DK_MOOD_CURIOUS;
+    default: return DK_MOOD_CALM;
+    }
+}
+
+const char *ui_headline_for(const dk_agent_t *a, char *buf, size_t n)
+{
+    if (!a) {
+        snprintf(buf, n, "All quiet");
+        return buf;
+    }
+    const char *who = a->source == DK_SRC_CUSTOM ? a->name : (a->source == DK_SRC_CLAUDE ? "Claude" : dk_source_label(a->source));
+    switch (a->state) {
+    case DK_WORKING:
+        if (ui_count_state(DK_WORKING) > 1) snprintf(buf, n, "%d agents busy", ui_count_state(DK_WORKING));
+        else snprintf(buf, n, "%s is busy", who);
+        break;
+    case DK_NEEDS_YOU: snprintf(buf, n, "%s needs you", who); break;
+    case DK_WAITING: snprintf(buf, n, "Your turn"); break;
+    case DK_DONE: snprintf(buf, n, "All done!"); break;
+    default: snprintf(buf, n, "Ready when you are"); break;
+    }
+    return buf;
+}
+
+lv_obj_t *ui_eq_bars(lv_obj_t *parent, int n, int32_t h, lv_color_t color)
+{
+    lv_obj_t *row = dk_box(parent);
+    lv_obj_set_height(row, h);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    lv_obj_set_style_pad_column(row, 5, 0);
+    static const uint16_t delays[] = {0, 200, 400, 100, 300, 150};
+    for (int i = 0; i < n; i++) {
+        lv_obj_t *b = dk_box(row);
+        lv_obj_set_size(b, 7, h);
+        lv_obj_set_style_radius(b, 4, 0);
+        lv_obj_set_style_bg_color(b, color, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        dk_anim_eq(b, h, 900, delays[i % 6]);
+    }
+    return row;
+}
+
+lv_obj_t *ui_source_badge(lv_obj_t *parent, dk_source_t src)
+{
+    lv_obj_t *pill = dk_card(parent, DK_CARD, LV_RADIUS_CIRCLE);
+    lv_obj_set_style_pad_left(pill, 6, 0);
+    lv_obj_set_style_pad_right(pill, 12, 0);
+    lv_obj_set_style_pad_ver(pill, 5, 0);
+    dk_row(pill, 8);
+    lv_obj_t *sq = dk_card(pill, src == DK_SRC_CURSOR ? DK_INK : (src == DK_SRC_CLAUDE ? lv_color_hex(0xF4C7AE) : DK_LILAC), 8);
+    lv_obj_set_size(sq, 26, 26);
+    lv_obj_set_style_pad_all(sq, 0, 0);
+    const char *init = src == DK_SRC_CURSOR ? "Cu" : src == DK_SRC_CODEX ? "Cx" : src == DK_SRC_GEMINI ? "G" : src == DK_SRC_CUSTOM ? "A" : "C";
+    lv_obj_t *l = dk_label(sq, DK_FONT_XS, src == DK_SRC_CURSOR ? DK_GROUND : DK_INK, init);
+    lv_obj_center(l);
+    dk_label(pill, DK_FONT_XS, DK_INK, dk_source_label(src));
+    return pill;
+}
+
+// Rail used by Sessions (and anything else that wants it).
+static void rail_click(lv_event_t *e)
+{
+    ui_go((scr_id_t)(intptr_t)lv_event_get_user_data(e));
+}
+
+lv_obj_t *ui_nav_rail(lv_obj_t *parent, scr_id_t active)
+{
+    lv_obj_t *rail = dk_box(parent);
+    lv_obj_set_width(rail, 104);
+    lv_obj_set_height(rail, lv_pct(100));
+    dk_col(rail, 14);
+    lv_obj_set_flex_align(rail, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_top(rail, 6, 0);
+    dk_label(rail, DK_FONT_XS, DK_PURPLE, "deskling");
+    static const struct {
+        scr_id_t id;
+        const char *icon;
+        const char *label;
+    } items[] = {{SCR_HOME, LV_SYMBOL_HOME, "Home"}, {SCR_SESSIONS, LV_SYMBOL_LIST, "Sessions"}, {SCR_NIGHT, LV_SYMBOL_EYE_CLOSE, "Night"}};
+    for (size_t i = 0; i < 3; i++) {
+        bool on = items[i].id == active;
+        lv_obj_t *b = lv_button_create(rail);
+        lv_obj_remove_style_all(b);
+        lv_obj_set_size(b, 80, 80);
+        lv_obj_set_style_radius(b, 26, 0);
+        lv_obj_set_style_bg_color(b, DK_INK, 0);
+        lv_obj_set_style_bg_opa(b, on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        dk_col(b, 2);
+        lv_obj_set_flex_align(b, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        dk_label(b, &lv_font_montserrat_28, on ? DK_GROUND : DK_MUTED, items[i].icon);
+        dk_label(b, DK_FONT_XS, on ? DK_GROUND : DK_MUTED, items[i].label);
+        lv_obj_add_event_cb(b, rail_click, LV_EVENT_CLICKED, (void *)(intptr_t)items[i].id);
+        dk_press_style(b);
+        if (items[i].id == SCR_SESSIONS) {
+            lv_obj_t *badge = dk_card(b, DK_ALERT_INK, LV_RADIUS_CIRCLE);
+            lv_obj_add_flag(badge, LV_OBJ_FLAG_FLOATING);
+            lv_obj_set_size(badge, 26, 26);
+            lv_obj_set_style_pad_all(badge, 0, 0);
+            lv_obj_align(badge, LV_ALIGN_TOP_RIGHT, -4, 4);
+            lv_obj_t *n = dk_label(badge, DK_FONT_XS, lv_color_white(), "");
+            lv_obj_center(n);
+            lv_obj_set_user_data(rail, badge);
+        }
+    }
+    ui_nav_rail_update(rail);
+    return rail;
+}
+
+void ui_nav_rail_update(lv_obj_t *rail)
+{
+    lv_obj_t *badge = lv_obj_get_user_data(rail);
+    if (!badge) return;
+    int need = ui_count_state(DK_NEEDS_YOU) + ui_count_state(DK_WAITING);
+    if (need == 0) {
+        lv_obj_add_flag(badge, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_obj_remove_flag(badge, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text_fmt(lv_obj_get_child(badge, 0), "%d", need);
+}
+
+// --------------------------------------------------------- navigation
+
+scr_id_t ui_current(void)
+{
+    return s_cur;
+}
+
+static void set_backlight(uint8_t pct)
+{
+    if (s_backlight && pct != s_backlight_pct) s_backlight(pct);
+    s_backlight_pct = pct;
+}
+
+void ui_go(scr_id_t id)
+{
+    if (id == s_cur) return;
+    if (id == SCR_ALERT && s_cur != SCR_ALERT) s_before_alert = s_cur;
+    lv_screen_load_anim_t how = LV_SCREEN_LOAD_ANIM_FADE_IN;
+    uint32_t ms = 250;
+    if (id == SCR_ALERT) how = LV_SCREEN_LOAD_ANIM_OVER_TOP, ms = 380;
+    else if (s_cur == SCR_ALERT) how = LV_SCREEN_LOAD_ANIM_FADE_IN, ms = 300;
+    else if (id == SCR_CHAT) how = LV_SCREEN_LOAD_ANIM_MOVE_LEFT, ms = 320;
+    else if (s_cur == SCR_CHAT) how = LV_SCREEN_LOAD_ANIM_MOVE_RIGHT, ms = 320;
+    else if (id == SCR_NIGHT || s_cur == SCR_NIGHT) how = LV_SCREEN_LOAD_ANIM_FADE_IN, ms = 700;
+    s_cur = id;
+    set_backlight(id == SCR_NIGHT ? 25 : 100);
+    if (id == SCR_SESSIONS) scr_sessions_refresh();
+    if (id == SCR_NIGHT) scr_night_refresh();
+    if (id == SCR_HOME) scr_home_refresh(DK_CAUSE_HELLO, "");
+    lv_screen_load_anim(s_scr[id], how, ms, 0, false);
+}
+
+void ui_alert_finished(void)
+{
+    if (!scr_alert_refresh() && s_cur == SCR_ALERT) ui_go(s_before_alert == SCR_NIGHT ? SCR_HOME : s_before_alert);
+}
+
+void ui_open_chat(const char *agent_id)
+{
+    scr_chat_show(agent_id);
+    ui_go(SCR_CHAT);
+}
+
+// ------------------------------------------------------------- banner
+
+static void banner_gone(lv_anim_t *a)
+{
+    lv_obj_t *o = lv_anim_get_user_data(a);
+    if (o == s_banner) s_banner = NULL;
+    lv_obj_delete(o);
+}
+
+static void banner_opa(void *o, int32_t v)
+{
+    lv_obj_set_style_opa(o, (lv_opa_t)v, 0);
+}
+
+void ui_banner(const char *title, const char *body, lv_color_t bg)
+{
+    if (s_banner) lv_obj_delete(s_banner);
+    s_banner = dk_card(lv_layer_top(), bg, 28);
+    lv_obj_set_style_pad_hor(s_banner, 26, 0);
+    lv_obj_set_style_pad_ver(s_banner, 16, 0);
+    lv_obj_set_style_shadow_width(s_banner, 30, 0);
+    lv_obj_set_style_shadow_opa(s_banner, LV_OPA_20, 0);
+    lv_obj_set_style_shadow_offset_y(s_banner, 8, 0);
+    dk_row(s_banner, 16);
+    lv_obj_align(s_banner, LV_ALIGN_TOP_MID, 0, 24);
+    lv_obj_t *icon = dk_card(s_banner, DK_INK, LV_RADIUS_CIRCLE);
+    lv_obj_set_size(icon, 48, 48);
+    lv_obj_set_style_pad_all(icon, 0, 0);
+    lv_obj_t *il = dk_label(icon, &lv_font_montserrat_20, DK_BUTTER, LV_SYMBOL_BELL);
+    lv_obj_center(il);
+    dk_anim_wiggle(icon);
+    lv_obj_t *txt = dk_box(s_banner);
+    dk_col(txt, 2);
+    dk_label(txt, DK_FONT_XL, DK_INK, title);
+    if (body && body[0]) {
+        lv_obj_t *b = dk_label(txt, DK_FONT_M, DK_INK_SOFT, body);
+        lv_label_set_long_mode(b, LV_LABEL_LONG_MODE_DOTS);
+        lv_obj_set_style_max_width(b, 760, 0);
+    }
+    dk_anim_drop_in(s_banner, -60, 0);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_banner);
+    lv_anim_set_exec_cb(&a, banner_opa);
+    lv_anim_set_values(&a, LV_OPA_COVER, LV_OPA_TRANSP);
+    lv_anim_set_duration(&a, 400);
+    lv_anim_set_delay(&a, 4500);
+    lv_anim_set_user_data(&a, s_banner);
+    lv_anim_set_completed_cb(&a, banner_gone);
+    lv_anim_start(&a);
+}
+
+// ---------------------------------------------------------- lifecycle
+
+static void tick_cb(lv_timer_t *t)
+{
+    (void)t;
+    scr_home_tick();
+    scr_night_tick();
+    scr_alert_tick();
+
+    // Drift to the night clock when it's late and nothing needs you.
+    if (s_cur == SCR_HOME || s_cur == SCR_SESSIONS) {
+        time_t now = time(NULL);
+        struct tm tm;
+        localtime_r(&now, &tm);
+        bool late = tm.tm_hour >= NIGHT_FROM_HOUR || tm.tm_hour < NIGHT_UNTIL_HOUR;
+        bool calm = g_model->pending_n == 0 && ui_count_state(DK_NEEDS_YOU) == 0;
+        if (late && calm && lv_display_get_inactive_time(NULL) > NIGHT_AFTER_IDLE_MS) ui_go(SCR_NIGHT);
+    }
+}
+
+void ui_init(void)
+{
+    s_model = calloc(1, sizeof(dk_model_t));
+    g_model = s_model;
+    dk_theme_init();
+    s_scr[SCR_HOME] = scr_home_create();
+    s_scr[SCR_SESSIONS] = scr_sessions_create();
+    s_scr[SCR_CHAT] = scr_chat_create();
+    s_scr[SCR_ALERT] = scr_alert_create();
+    s_scr[SCR_NIGHT] = scr_night_create();
+    s_cur = SCR_HOME;
+    lv_screen_load(s_scr[SCR_HOME]);
+    lv_timer_create(tick_cb, 1000, NULL);
+}
+
+void ui_set_backlight_cb(ui_backlight_fn fn)
+{
+    s_backlight = fn;
+}
+
+void ui_set_connection(dk_conn_t c, const char *detail)
+{
+    g_conn = c;
+    snprintf(g_conn_detail, sizeof(g_conn_detail), "%s", detail ? detail : "");
+    scr_home_refresh(DK_CAUSE_HELLO, "");
+}
+
+static const dk_reminder_t *find_reminder(const char *id)
+{
+    for (int i = 0; i < g_model->reminder_n; i++) {
+        if (strcmp(g_model->reminders[i].id, id) == 0) return &g_model->reminders[i];
+    }
+    return NULL;
+}
+
+void ui_apply_model(const dk_model_t *m)
+{
+    memcpy(s_model, m, sizeof(*m));
+    if (m->now) s_relay_offset = m->now - ui_now_ms();
+
+    bool alert = scr_alert_refresh();
+    scr_home_refresh(m->cause, m->cause_id);
+    scr_sessions_refresh();
+    scr_chat_refresh(m->cause);
+    scr_night_refresh();
+
+    if (alert && s_cur != SCR_ALERT) {
+        set_backlight(100);
+        ui_go(SCR_ALERT);
+    } else if (!alert && s_cur == SCR_ALERT) {
+        ui_go(s_before_alert == SCR_NIGHT ? SCR_HOME : s_before_alert);
+    }
+
+    switch (m->cause) {
+    case DK_CAUSE_REMINDER_DUE: {
+        const dk_reminder_t *r = find_reminder(m->cause_id);
+        if (s_cur == SCR_NIGHT) ui_go(SCR_HOME);
+        set_backlight(100);
+        ui_banner("Reminder", r ? r->title : "", DK_BUTTER);
+        break;
+    }
+    case DK_CAUSE_PING: {
+        const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
+        set_backlight(100);
+        ui_banner("Claude finished!", a ? a->name : "", DK_GOOD_BG);
+        break;
+    }
+    case DK_CAUSE_DONE:
+        if (s_cur != SCR_HOME && s_cur != SCR_NIGHT) {
+            const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
+            if (a) ui_banner(a->source == DK_SRC_CURSOR ? "Cursor finished" : "Claude finished", a->name, DK_GOOD_BG);
+        }
+        break;
+    default:
+        break;
+    }
+}

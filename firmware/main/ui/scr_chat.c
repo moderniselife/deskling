@@ -1,0 +1,293 @@
+// One session up close: what it's doing, its recent messages, quick replies and a keyboard.
+#include <stdio.h>
+#include <string.h>
+
+#include "ui_internal.h"
+
+static struct {
+    lv_obj_t *scr, *face, *badge_row, *name, *status, *delivery;
+    lv_obj_t *bubbles, *quick, *input_row, *ta, *kb;
+    char agent_id[72];
+    char last_line[16];
+} c;
+
+static const char *QUICK[] = {"Yes please", "Continue", "Run the tests", "Wrap up and summarise"};
+
+static void back_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_go(SCR_SESSIONS);
+}
+
+static void send_text(const char *text)
+{
+    if (!text || !text[0] || !c.agent_id[0]) return;
+    dk_send_message(c.agent_id, text);
+    deskling_celebrate(c.face, 900);
+}
+
+static void quick_cb(lv_event_t *e)
+{
+    send_text((const char *)lv_event_get_user_data(e));
+}
+
+static void kb_hide(void)
+{
+    lv_obj_add_flag(c.kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_state(c.ta, LV_STATE_FOCUSED);
+}
+
+static void send_cb(lv_event_t *e)
+{
+    (void)e;
+    send_text(lv_textarea_get_text(c.ta));
+    lv_textarea_set_text(c.ta, "");
+    kb_hide();
+}
+
+static void ta_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED || code == LV_EVENT_FOCUSED) {
+        if (lv_obj_has_flag(c.kb, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_remove_flag(c.kb, LV_OBJ_FLAG_HIDDEN);
+            dk_anim_drop_in(c.kb, 120, 0);
+        }
+    } else if (code == LV_EVENT_READY) {
+        send_cb(e);
+    } else if (code == LV_EVENT_CANCEL) {
+        kb_hide();
+    }
+}
+
+lv_obj_t *scr_chat_create(void)
+{
+    c.scr = lv_obj_create(NULL);
+    lv_obj_remove_flag(c.scr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(c.scr, DK_GROUND, 0);
+    lv_obj_set_style_pad_all(c.scr, 28, 0);
+    lv_obj_set_style_pad_hor(c.scr, 32, 0);
+    dk_row(c.scr, 24);
+    lv_obj_set_flex_align(c.scr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+
+    // ---- left: who this is
+    lv_obj_t *left = dk_card(c.scr, DK_LILAC, 36);
+    lv_obj_set_size(left, 340, lv_pct(100));
+    lv_obj_set_style_pad_hor(left, 26, 0);
+    lv_obj_set_style_pad_ver(left, 24, 0);
+    dk_col(left, 14);
+
+    lv_obj_t *back = lv_button_create(left);
+    lv_obj_remove_style_all(back);
+    lv_obj_set_style_bg_color(back, DK_CARD, 0);
+    lv_obj_set_style_bg_opa(back, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(back, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_pad_hor(back, 18, 0);
+    lv_obj_set_height(back, 52);
+    dk_row(back, 8);
+    dk_label(back, &lv_font_montserrat_20, DK_INK, LV_SYMBOL_LEFT);
+    dk_label(back, DK_FONT_S, DK_INK, "Sessions");
+    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, NULL);
+    dk_press_style(back);
+
+    lv_obj_t *fw = dk_box(left);
+    lv_obj_set_size(fw, lv_pct(100), 170);
+    dk_overflow(fw, 60);
+    c.face = deskling_create(fw, 160, DK_FACE);
+    lv_obj_align(c.face, LV_ALIGN_CENTER, 0, 0);
+
+    c.badge_row = dk_box(left);
+    dk_row(c.badge_row, 8);
+    c.name = dk_label(left, DK_FONT_H2, DK_INK, "");
+    lv_obj_set_width(c.name, lv_pct(100));
+    lv_label_set_long_mode(c.name, LV_LABEL_LONG_MODE_DOTS);
+    c.status = dk_label(left, DK_FONT_M, DK_INK_SOFT, "");
+    lv_obj_set_width(c.status, lv_pct(100));
+    lv_label_set_long_mode(c.status, LV_LABEL_LONG_MODE_WRAP);
+
+    lv_obj_t *info = dk_card(left, DK_CARD, 22);
+    lv_obj_set_width(info, lv_pct(100));
+    lv_obj_set_style_pad_all(info, 16, 0);
+    dk_col(info, 4);
+    dk_heading(info, "DELIVERY");
+    c.delivery = dk_label(info, DK_FONT_S, DK_INK, "");
+    lv_obj_set_width(c.delivery, lv_pct(100));
+    lv_label_set_long_mode(c.delivery, LV_LABEL_LONG_MODE_WRAP);
+
+    // ---- right: the conversation
+    lv_obj_t *right = dk_card(c.scr, DK_CARD, 36);
+    lv_obj_set_height(right, lv_pct(100));
+    lv_obj_set_flex_grow(right, 1);
+    lv_obj_set_style_pad_hor(right, 26, 0);
+    lv_obj_set_style_pad_ver(right, 22, 0);
+    dk_col(right, 14);
+
+    c.bubbles = dk_box(right);
+    lv_obj_set_width(c.bubbles, lv_pct(100));
+    lv_obj_set_flex_grow(c.bubbles, 1);
+    dk_col(c.bubbles, 12);
+    lv_obj_set_flex_align(c.bubbles, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_add_flag(c.bubbles, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(c.bubbles, LV_SCROLLBAR_MODE_OFF);
+
+    c.quick = dk_box(right);
+    lv_obj_set_width(c.quick, lv_pct(100));
+    lv_obj_set_flex_flow(c.quick, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_style_pad_column(c.quick, 10, 0);
+    lv_obj_set_style_pad_row(c.quick, 10, 0);
+    for (size_t i = 0; i < sizeof(QUICK) / sizeof(QUICK[0]); i++) {
+        lv_obj_t *b = dk_button(c.quick, QUICK[i], false, DK_FONT_S);
+        lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_height(b, 54);
+        lv_obj_add_event_cb(b, quick_cb, LV_EVENT_CLICKED, (void *)QUICK[i]);
+    }
+
+    c.input_row = dk_box(right);
+    lv_obj_set_width(c.input_row, lv_pct(100));
+    dk_row(c.input_row, 12);
+    c.ta = lv_textarea_create(c.input_row);
+    lv_textarea_set_one_line(c.ta, true);
+    lv_textarea_set_placeholder_text(c.ta, "Message this session…");
+    lv_obj_set_height(c.ta, 64);
+    lv_obj_set_flex_grow(c.ta, 1);
+    lv_obj_set_style_radius(c.ta, 22, 0);
+    lv_obj_set_style_border_width(c.ta, 3, 0);
+    lv_obj_set_style_border_color(c.ta, lv_color_hex(0xE4DCCF), 0);
+    lv_obj_set_style_border_color(c.ta, DK_PURPLE, LV_STATE_FOCUSED);
+    lv_obj_set_style_bg_color(c.ta, DK_GROUND, 0);
+    lv_obj_set_style_text_font(c.ta, DK_FONT_M, 0);
+    lv_obj_set_style_text_color(c.ta, DK_INK, 0);
+    lv_obj_set_style_pad_hor(c.ta, 20, 0);
+    lv_obj_set_style_pad_ver(c.ta, 18, 0);
+    lv_obj_add_event_cb(c.ta, ta_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *send = lv_button_create(c.input_row);
+    lv_obj_remove_style_all(send);
+    lv_obj_set_size(send, 64, 64);
+    lv_obj_set_style_radius(send, 22, 0);
+    lv_obj_set_style_bg_color(send, DK_INK, 0);
+    lv_obj_set_style_bg_opa(send, LV_OPA_COVER, 0);
+    lv_obj_t *sl = dk_label(send, &lv_font_montserrat_28, DK_GROUND, LV_SYMBOL_RIGHT);
+    lv_obj_center(sl);
+    lv_obj_add_event_cb(send, send_cb, LV_EVENT_CLICKED, NULL);
+    dk_press_style(send);
+
+    // Keyboard floats over the bottom of the screen while typing.
+    c.kb = lv_keyboard_create(c.scr);
+    lv_obj_add_flag(c.kb, LV_OBJ_FLAG_FLOATING);
+    lv_obj_set_size(c.kb, DK_W, 320);
+    lv_obj_align(c.kb, LV_ALIGN_BOTTOM_MID, 0, 28);
+    lv_keyboard_set_textarea(c.kb, c.ta);
+    lv_obj_set_style_bg_color(c.kb, lv_color_hex(0xEDE6DA), 0);
+    lv_obj_set_style_text_font(c.kb, DK_FONT_L, LV_PART_ITEMS);
+    lv_obj_set_style_radius(c.kb, 14, LV_PART_ITEMS);
+    lv_obj_add_event_cb(c.kb, ta_cb, LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(c.kb, ta_cb, LV_EVENT_CANCEL, NULL);
+    lv_obj_add_flag(c.kb, LV_OBJ_FLAG_HIDDEN);
+    return c.scr;
+}
+
+static lv_obj_t *bubble(const char *text, bool mine, const char *meta)
+{
+    lv_obj_t *wrap = dk_box(c.bubbles);
+    lv_obj_set_width(wrap, lv_pct(100));
+    dk_col(wrap, 4);
+    lv_obj_set_flex_align(wrap, LV_FLEX_ALIGN_START, mine ? LV_FLEX_ALIGN_END : LV_FLEX_ALIGN_START, mine ? LV_FLEX_ALIGN_END : LV_FLEX_ALIGN_START);
+    lv_obj_t *b = dk_card(wrap, mine ? DK_INK : DK_LINE, 24);
+    lv_obj_set_style_pad_hor(b, 18, 0);
+    lv_obj_set_style_pad_ver(b, 14, 0);
+    lv_obj_t *l = dk_label(b, DK_FONT_M, mine ? DK_GROUND : DK_INK, text);
+    lv_obj_set_style_max_width(l, 560, 0);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
+    if (meta) dk_label(wrap, DK_FONT_XS, DK_MUTED, meta);
+    return wrap;
+}
+
+static void typing(void)
+{
+    lv_obj_t *b = dk_card(c.bubbles, DK_LINE, 24);
+    lv_obj_set_style_pad_hor(b, 20, 0);
+    lv_obj_set_style_pad_ver(b, 16, 0);
+    dk_row(b, 6);
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *d = dk_box(b);
+        lv_obj_set_size(d, 10, 10);
+        lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(d, DK_INK, 0);
+        lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+        dk_anim_bob(d, 7, 600, i * 150);
+    }
+    dk_anim_pop(b, 0);
+}
+
+static void rebuild(bool animate_new)
+{
+    const dk_agent_t *a = dk_model_find_agent(g_model, c.agent_id);
+    lv_obj_clean(c.badge_row);
+    lv_obj_clean(c.bubbles);
+    if (!a) {
+        lv_label_set_text(c.name, "Session ended");
+        lv_label_set_text(c.status, "This session isn't running any more.");
+        lv_label_set_text(c.delivery, "");
+        deskling_set_mood(c.face, DK_MOOD_SLEEPY);
+        lv_obj_add_flag(c.quick, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(c.input_row, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    ui_source_badge(c.badge_row, a->source);
+    dk_label(c.badge_row, DK_FONT_S, DK_INK, a->host);
+    lv_label_set_text(c.name, a->name);
+    char st[160];
+    snprintf(st, sizeof(st), "%s%s%s", dk_state_label(a->state), a->task[0] ? " · " : "", a->task);
+    lv_label_set_text(c.status, st);
+    lv_label_set_text(c.delivery, a->channel ? "Live channel: messages arrive straight away."
+                                  : a->can_message ? "Messages arrive when Claude finishes its current step, or with your next prompt."
+                                                   : "This tool can't take messages from Deskling yet.");
+    dk_mood_t mood = ui_mood_for(a);
+    if (deskling_get_mood(c.face) != mood && deskling_get_mood(c.face) != DK_MOOD_HAPPY) deskling_set_mood(c.face, mood);
+
+    if (a->can_message) {
+        lv_obj_remove_flag(c.quick, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(c.input_row, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(c.quick, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(c.input_row, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (a->chat_n == 0) {
+        if (a->last_prompt[0]) bubble(a->last_prompt, true, "From your computer");
+        if (a->last_message[0]) bubble(a->last_message, false, dk_source_label(a->source));
+        if (!a->last_prompt[0] && !a->last_message[0]) {
+            lv_obj_t *l = dk_label(c.bubbles, DK_FONT_M, DK_MUTED, "Nothing said yet. Send a message or a quick reply.");
+            lv_obj_set_width(l, lv_pct(100));
+            lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
+        }
+    }
+    lv_obj_t *last = NULL;
+    for (int i = 0; i < a->chat_n; i++) {
+        const dk_chat_t *line = &a->chat[i];
+        const char *meta = line->from_you ? (line->status == DK_CHAT_QUEUED ? "Queued" : "Delivered") : (a->source == DK_SRC_CLAUDE ? "Claude" : dk_source_label(a->source));
+        last = bubble(line->text, line->from_you, meta);
+    }
+    const dk_chat_t *tail = a->chat_n ? &a->chat[a->chat_n - 1] : NULL;
+    if (tail && tail->from_you && tail->status == DK_CHAT_DELIVERED && a->state == DK_WORKING) typing();
+    if (animate_new && last && tail && strcmp(tail->id, c.last_line) != 0) dk_anim_pop(lv_obj_get_child(last, 0), 0);
+    snprintf(c.last_line, sizeof(c.last_line), "%s", tail ? tail->id : "");
+    lv_obj_update_layout(c.bubbles);
+    lv_obj_scroll_to_y(c.bubbles, LV_COORD_MAX, LV_ANIM_ON);
+}
+
+void scr_chat_show(const char *agent_id)
+{
+    snprintf(c.agent_id, sizeof(c.agent_id), "%s", agent_id ? agent_id : "");
+    c.last_line[0] = '\0';
+    lv_textarea_set_text(c.ta, "");
+    kb_hide();
+    rebuild(false);
+}
+
+void scr_chat_refresh(dk_cause_t cause)
+{
+    if (!c.scr || !c.agent_id[0]) return;
+    rebuild(cause == DK_CAUSE_CHAT);
+}

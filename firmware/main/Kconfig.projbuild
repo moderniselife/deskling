@@ -1,0 +1,64 @@
+menu "Deskling"
+
+    config DESKLING_WIFI_SSID
+        string "Wi-Fi network name"
+        default ""
+
+    config DESKLING_WIFI_PASSWORD
+        string "Wi-Fi password"
+        default ""
+
+    config DESKLING_RELAY_URL
+        string "Relay URL"
+        default ""
+        help
+            Your deployed relay, e.g. https://deskling-relay.you.workers.dev
+            (http:// works for a relay on your local network).
+
+    config DESKLING_TOKEN
+        string "Relay token"
+        default ""
+        help
+            The DESKLING_TOKEN secret set on the relay.
+
+    config DESKLING_TZ
+        string "Time zone (POSIX TZ string)"
+        default "AEST-10AEDT,M10.1.0,M4.1.0/3"
+        help
+            Sydney by default. Examples: "PST8PDT,M3.2.0,M11.1.0" (Los Angeles),
+            "GMT0BST,M3.5.0/1,M10.5.0" (London), "CET-1CEST,M3.5.0,M10.5.0/3" (Berlin).
+
+    choice DESKLING_LCD
+        prompt "LCD revision"
+        default DESKLING_LCD_V1
+        help
+            Look at the number in brackets on the label on the back ("SKU:10153001 (2521)").
+            Below 2624: V1. 2624 or later: V2. The wrong one shows coloured bars.
+        config DESKLING_LCD_V1
+            bool "V1 (batch before 2624)"
+        config DESKLING_LCD_V2
+            bool "V2 (batch 2624 and later)"
+    endchoice
+
+    config DESKLING_BRIGHTNESS
+        int "Daytime brightness (%)"
+        range 10 100
+        default 90
+
+    config DESKLING_TOUCH_SWAP_XY
+        bool "Touch: swap X and Y"
+        default n
+
+    config DESKLING_TOUCH_MIRROR_X
+        bool "Touch: mirror X"
+        default n
+
+    config DESKLING_TOUCH_MIRROR_Y
+        bool "Touch: mirror Y"
+        default n
+
+    config DESKLING_ROTATE_180
+        bool "Turn the picture upside down (USB ports on the other side)"
+        default n
+
+endmenu

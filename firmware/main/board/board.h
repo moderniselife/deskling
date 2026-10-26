@@ -1,0 +1,23 @@
+// Guition JC8012P4A1C: 10.1" 800x1280 MIPI-DSI panel (JD9365), GSL3680 touch, LEDC backlight.
+#pragma once
+
+#include "esp_err.h"
+#include "lvgl.h"
+
+// Pins from the vendor schematic (see docs/hardware.md).
+#define BOARD_LCD_RST_GPIO 27
+#define BOARD_LCD_BL_GPIO 23
+#define BOARD_TOUCH_SDA_GPIO 7
+#define BOARD_TOUCH_SCL_GPIO 8
+#define BOARD_TOUCH_RST_GPIO 22
+#define BOARD_TOUCH_INT_GPIO 21
+#define BOARD_MIPI_PHY_LDO_CHAN 3
+#define BOARD_MIPI_PHY_LDO_MV 2500
+
+#define BOARD_LCD_H_RES 800
+#define BOARD_LCD_V_RES 1280
+
+/** Bring up the panel, backlight, touch and LVGL. Returns the (landscape) display. */
+lv_display_t *board_init(void);
+/** 0..100 */
+void board_set_backlight(uint8_t percent);
