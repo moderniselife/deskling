@@ -77,7 +77,7 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
 
   <section id="next" hidden>
     <h2>4 · Say hi</h2>
-    <p>Deskling is restarting. In a few seconds it'll ask you to pick your Wi-Fi on the screen, then show you an address to open on this computer, where you paste your relay details. Get them from <a href="/setup">your relay's setup page</a>.</p>
+    <p>Deskling is restarting. Still dark after 10 seconds? Unplug it and plug it back in. In a few seconds it'll ask you to pick your Wi-Fi on the screen, then show you an address to open on this computer, where you paste your relay details. Get them from <a href="/setup">your relay's setup page</a>.</p>
   </section>
 </main>
 
@@ -95,6 +95,17 @@ fetch(FIRMWARE + 'manifest.json', { cache: 'no-store' })
   .then((m) => { manifest = m; $('version').textContent = 'Latest firmware: ' + m.version + ' (' + (m.date || '') + ')'; })
   .catch(() => { $('version').textContent = 'Couldn\\u2019t load the firmware list. Has a release been published yet?'; });
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Pulse EN (RTS) with the boot pin (DTR) released, so the chip starts the app. Leaves the port open if keepOpen. */
+async function resetBoard(p, keepOpen = false) {
+  if (!p.readable) await p.open({ baudRate: 115200 });
+  await p.setSignals({ dataTerminalReady: false, requestToSend: true });
+  await sleep(120);
+  await p.setSignals({ dataTerminalReady: false, requestToSend: false });
+  await sleep(50);
+  if (!keepOpen) await p.close();
+}
+
 // Serial monitor: restart the board and stream its boot log (UART0 through the CH340, 115200 baud).
 let monPort = null, monStop = false;
 $('mon').onclick = async () => {
@@ -103,13 +114,10 @@ $('mon').onclick = async () => {
   const add = (t) => { out.textContent = (out.textContent + t).slice(-60000); out.scrollTop = 1e9; };
   try {
     monPort = await navigator.serial.requestPort();
-    await monPort.open({ baudRate: 115200 });
     out.hidden = false; out.textContent = ''; $('moncopy').hidden = false;
     $('mon').textContent = 'Stop';
     add('[restarting Deskling\\u2026]\\n');
-    await monPort.setSignals({ dataTerminalReady: false, requestToSend: true });
-    await new Promise((r) => setTimeout(r, 120));
-    await monPort.setSignals({ dataTerminalReady: false, requestToSend: false });
+    await resetBoard(monPort, true);
     monStop = false;
     const reader = monPort.readable.getReader();
     const dec = new TextDecoder();
@@ -138,10 +146,10 @@ $('go').onclick = async () => {
   if (!manifest) return status('No firmware to install yet.', 'bad');
   const lcd = document.querySelector('input[name=lcd]:checked').value;
   $('go').disabled = true;
-  let transport, timer = null;
+  let transport, timer = null, port = null, flashed = false;
   try {
     const { ESPLoader, Transport } = await import('https://cdn.jsdelivr.net/npm/esptool-js@0.7.0/+esm');
-    const port = await navigator.serial.requestPort();
+    port = await navigator.serial.requestPort();
     transport = new Transport(port, true);
     const loader = new ESPLoader({
       transport, baudrate: 921600,
@@ -176,7 +184,7 @@ $('go').onclick = async () => {
       eraseAll: $('erase').checked, compress: true,
       reportProgress: (_i, written, total) => { if (timer) { clearInterval(timer); timer = null; } $('prog').value = (written / total) * 100; status('Installing\\u2026 ' + Math.round((written / total) * 100) + '%'); },
     });
-    await loader.after('hard_reset');
+    flashed = true;
     status('Done! Deskling is starting up.', 'ok');
     $('next').hidden = false;
   } catch (e) {
@@ -186,6 +194,9 @@ $('go').onclick = async () => {
   } finally {
     if (timer) clearInterval(timer);
     try { await transport?.disconnect(); } catch {}
+    // Restart into the new firmware ourselves: esptool's reset can leave the boot pin held,
+    // which parks the chip in download mode with a dark screen.
+    if (flashed && port) { try { await resetBoard(port); } catch (e) { log('reset: ' + e); } }
     $('go').disabled = false;
   }
 };
