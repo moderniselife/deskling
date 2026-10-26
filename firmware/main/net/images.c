@@ -11,6 +11,7 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "lvgl.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -20,9 +21,9 @@
 static const char *TAG = "images";
 #define MAX_BYTES (2 * 1024 * 1024)
 
-/* lodepng ships inside LVGL (LV_USE_LODEPNG); its allocations go through lv_malloc. */
+/* lodepng ships inside LVGL (LV_USE_LODEPNG). LVGL's copy hands back an lv_draw_buf_t through the
+   `out` pointer, not raw pixels; its bytes are still lodepng's R,G,B,A (LVGL swaps them later). */
 unsigned lodepng_decode32(unsigned char **out, unsigned *w, unsigned *h, const unsigned char *in, size_t insize);
-void lv_free(void *p);
 
 typedef struct {
     char id[24];
@@ -91,8 +92,9 @@ static void fit(int w, int h, int *ow, int *oh)
 
 static inline uint16_t pack(uint32_t r, uint32_t g, uint32_t b) { return (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)); }
 
-/* Box-filter shrink. src is RGBA8888 (rgba=true, blended onto white) or RGB565 with a stride. */
-static uint16_t *shrink(const uint8_t *src, bool rgba, int w, int h, int stride_px, int ow, int oh)
+/* Box-filter shrink. src is R,G,B,A bytes (argb=true, blended onto white) or RGB565;
+   stride_px is the source row length in pixels. */
+static uint16_t *shrink(const uint8_t *src, bool argb, int w, int h, int stride_px, int ow, int oh)
 {
     uint16_t *dst = ps_malloc((size_t)ow * oh * 2);
     if (!dst) return NULL;
@@ -105,7 +107,7 @@ static uint16_t *shrink(const uint8_t *src, bool rgba, int w, int h, int stride_
             uint32_t r = 0, g = 0, b = 0, n = 0;
             for (int sy = y0; sy < y1; sy++)
                 for (int sx = x0; sx < x1; sx++) {
-                    if (rgba) {
+                    if (argb) {
                         const uint8_t *p = src + ((size_t)sy * stride_px + sx) * 4;
                         uint32_t a = p[3];
                         r += (p[0] * a + 255 * (255 - a)) / 255;
@@ -127,15 +129,19 @@ static uint16_t *shrink(const uint8_t *src, bool rgba, int w, int h, int stride_
 
 static uint16_t *decode_png(const uint8_t *data, size_t len, int *ow, int *oh)
 {
-    unsigned char *px = NULL;
+    unsigned char *res = NULL;
     unsigned w = 0, h = 0;
-    if (lodepng_decode32(&px, &w, &h, data, len) || !px) {
+    if (lodepng_decode32(&res, &w, &h, data, len) || !res) {
         ESP_LOGW(TAG, "png decode failed");
         return NULL;
     }
-    fit((int)w, (int)h, ow, oh);
-    uint16_t *out = shrink(px, true, (int)w, (int)h, (int)w, *ow, *oh);
-    lv_free(px);
+    lv_draw_buf_t *buf = (lv_draw_buf_t *)res;
+    uint16_t *out = NULL;
+    if (buf->data && buf->header.w == w && buf->header.h == h && buf->header.stride >= w * 4) {
+        fit((int)w, (int)h, ow, oh);
+        out = shrink(buf->data, true, (int)w, (int)h, (int)(buf->header.stride / 4), *ow, *oh);
+    }
+    lv_draw_buf_destroy(buf);
     return out;
 }
 
@@ -198,7 +204,7 @@ void images_fetch(const char *id)
 {
     if (!s_jobs) {
         s_jobs = xQueueCreate(8, sizeof(job_t));
-        xTaskCreate(worker, "images", 10240, NULL, 3, NULL);
+        xTaskCreate(worker, "images", 16384, NULL, 3, NULL);
     }
     job_t j = {0};
     snprintf(j.id, sizeof(j.id), "%s", id);

@@ -41,3 +41,8 @@ target_link_libraries(deskling_sim PRIVATE lvgl m)
 if(DK_BENCH)
   target_link_options(deskling_sim PRIVATE -Wl,--wrap=time -Wl,--wrap=gettimeofday)
 endif()
+
+# Host check of the device's chat-picture decoding (net/images.c).
+add_executable(imgtest imgtest/imgtest.c)
+target_include_directories(imgtest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imgtest)
+target_link_libraries(imgtest PRIVATE lvgl m)
