@@ -16,6 +16,10 @@ Being tested as the `v0.3.2-testN` builds. Install the newest one over the air o
 - Faster drawing, and screens only redraw when something changed.
 - Snapshots are smaller: only the chat that's open is sent in full.
 
+### Deskling in your browser
+
+- `/app` on your relay is Deskling in a browser: sessions, whole conversations, approvals, questions, messages, reminders, notifications and New session. It works on a phone, can be added to the home screen, and can push notifications even when it's closed.
+
 ### The board
 
 - The board's page (deskling.local) keeps answering: more connections for the web server, IPv4-only answers for deskling.local (Chrome on a Mac timed out), and a page that stops retrying with an old code after a restart.
@@ -29,6 +33,8 @@ Being tested as the `v0.3.2-testN` builds. Install the newest one over the air o
 - The runner (`hooks/runner`) starts sessions from the screen: Claude Code, OpenCode, and any agent that speaks the Agent Client Protocol.
 - The Deskling plugin for OpenCode, the Deskling agents for OpenCode, and screen tools any OpenCode agent can use (notify, remind, ask).
 - A bridge API on the relay (`/agent/update`, `/agent/ask`, `/agent/poll`) so any agent can put a full session on the screen.
+- Ollama and LM Studio models on your computer are offered to OpenCode with no setup.
+- The relay can't be confused by ids like `__proto__`, and is fuzz-tested; the screen is chaos-tested with random snapshots under AddressSanitizer.
 - One command runs every test (`scripts/test-all.sh`), and a CI workflow runs them on pull requests.
 
 ## v0.3.1 (26 October 2026)
