@@ -1,14 +1,17 @@
 // Start a new session from the screen: pick where (the cloud, or a computer running the
-// Deskling runner) and which project, then say what you want. It starts listening for you.
+// Deskling runner), which agent (Claude Code, or OpenCode with any model set up on that computer,
+// local ones included) and which project, then say what you want. It starts listening for you.
 #include <stdio.h>
 #include <string.h>
 
 #include "ui_internal.h"
 
 static struct {
-    lv_obj_t *scr, *face, *where, *project_box, *projects, *ta, *kb, *start, *hint;
+    lv_obj_t *scr, *face, *where, *project_box, *projects, *engine_box, *engines, *model_box, *models, *ask, *ta, *kb, *start, *hint;
     char target[48];
     char project[48];
+    char engine[16];
+    char model[64];
     uint32_t sig;
 } n;
 
@@ -25,6 +28,25 @@ static const dk_target_t *current_target(void)
     return NULL;
 }
 
+static const dk_engine_t *current_engine(const dk_target_t *t)
+{
+    if (!t) return NULL;
+    for (int i = 0; i < t->engines_n; i++)
+        if (strcmp(t->engines[i].id, n.engine) == 0) return &t->engines[i];
+    return t->engines_n ? &t->engines[0] : NULL;
+}
+
+/* Keep the picked agent and model if the target still offers them; otherwise its first ones. */
+static void settle_engine(const dk_target_t *t)
+{
+    const dk_engine_t *e = current_engine(t);
+    snprintf(n.engine, sizeof(n.engine), "%s", e ? e->id : "");
+    bool have = false;
+    for (int i = 0; e && i < e->models_n; i++)
+        if (strcmp(e->models[i].id, n.model) == 0) have = true;
+    if (!have) snprintf(n.model, sizeof(n.model), "%s", e && e->models_n ? e->models[0].id : "");
+}
+
 static void build(void);
 
 static void target_cb(lv_event_t *e)
@@ -32,6 +54,27 @@ static void target_cb(lv_event_t *e)
     const dk_target_t *t = &g_model->targets[(intptr_t)lv_event_get_user_data(e)];
     snprintf(n.target, sizeof(n.target), "%s", t->id);
     snprintf(n.project, sizeof(n.project), "%s", t->projects_n ? t->projects[0] : "");
+    n.sig = 0;
+    build();
+}
+
+static void engine_cb(lv_event_t *e)
+{
+    const dk_target_t *t = current_target();
+    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    if (!t || i >= t->engines_n) return;
+    snprintf(n.engine, sizeof(n.engine), "%s", t->engines[i].id);
+    n.model[0] = 0;
+    n.sig = 0;
+    build();
+}
+
+static void model_cb(lv_event_t *e)
+{
+    const dk_engine_t *en = current_engine(current_target());
+    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    if (!en || i >= en->models_n) return;
+    snprintf(n.model, sizeof(n.model), "%s", en->models[i].id);
     n.sig = 0;
     build();
 }
@@ -57,7 +100,7 @@ static void start_cb(lv_event_t *e)
     (void)e;
     const char *text = lv_textarea_get_text(n.ta);
     if (!n.target[0] || !text || !text[0]) return;
-    dk_send_start(n.target, n.project, text);
+    dk_send_start(n.target, n.project, text, n.engine, n.model);
     lv_textarea_set_text(n.ta, "");
     kb_hide();
     deskling_celebrate(n.face, 900);
@@ -92,6 +135,8 @@ static void build(void)
 {
     uint32_t sig = dk_hash_str(DK_HASH0, n.target);
     sig = dk_hash_str(sig, n.project);
+    sig = dk_hash_str(sig, n.engine);
+    sig = dk_hash_str(sig, n.model);
     sig = dk_hash(sig, g_model->targets, sizeof(g_model->targets[0]) * g_model->targets_n);
     sig = dk_hash(sig, &g_model->targets_n, sizeof(g_model->targets_n));
     if (sig == n.sig) return;
@@ -108,6 +153,34 @@ static void build(void)
         lv_obj_add_event_cb(b, target_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
     const dk_target_t *t = current_target();
+    settle_engine(t);
+    const dk_engine_t *en = current_engine(t);
+    bool opencode = en && strcmp(en->id, "opencode") == 0;
+
+    // Which agent: only when the computer offers more than one.
+    lv_obj_clean(n.engines);
+    if (t && t->engines_n > 1) {
+        lv_obj_remove_flag(n.engine_box, LV_OBJ_FLAG_HIDDEN);
+        for (int i = 0; i < t->engines_n; i++) {
+            lv_obj_t *b = chip(n.engines, t->engines[i].name, en == &t->engines[i]);
+            lv_obj_add_event_cb(b, engine_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        }
+    } else {
+        lv_obj_add_flag(n.engine_box, LV_OBJ_FLAG_HIDDEN);
+    }
+    // Which model: OpenCode's, as set up on that computer.
+    lv_obj_clean(n.models);
+    if (en && en->models_n) {
+        lv_obj_remove_flag(n.model_box, LV_OBJ_FLAG_HIDDEN);
+        for (int i = 0; i < en->models_n; i++) {
+            lv_obj_t *b = chip(n.models, en->models[i].name, strcmp(en->models[i].id, n.model) == 0);
+            lv_obj_add_event_cb(b, model_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        }
+    } else {
+        lv_obj_add_flag(n.model_box, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_label_set_text(n.ask, opencode ? "WHAT SHOULD OPENCODE DO?" : "WHAT SHOULD CLAUDE DO?");
+
     lv_obj_clean(n.projects);
     if (t && t->projects_n) {
         lv_obj_remove_flag(n.project_box, LV_OBJ_FLAG_HIDDEN);
@@ -144,6 +217,7 @@ static void build(void)
         lv_obj_add_state(n.start, LV_STATE_DISABLED);
     } else {
         lv_label_set_text(n.hint, t && t->cloud ? "A new cloud session starts with this as its first message, and listens for you on Deskling."
+                                  : opencode    ? "OpenCode starts on that computer with this as its first message. Message it from here any time."
                                                 : "Claude starts in the background on that computer with this as its first message, and listens for you on Deskling.");
         lv_obj_remove_state(n.start, LV_STATE_DISABLED);
     }
@@ -192,7 +266,11 @@ lv_obj_t *scr_new_create(void)
     lv_obj_set_style_pad_ver(right, 26, 0);
     dk_col(right, 14);
 
-    dk_heading(right, "WHAT SHOULD CLAUDE DO?");
+    // Everything fits most of the time; with lots of models and projects, it scrolls.
+    lv_obj_add_flag(right, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scroll_dir(right, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(right, LV_SCROLLBAR_MODE_AUTO);
+    n.ask = dk_heading(right, "WHAT SHOULD CLAUDE DO?");
     lv_obj_t *row = dk_box(right);
     lv_obj_set_width(row, lv_pct(100));
     dk_row(row, 12);
@@ -223,6 +301,26 @@ lv_obj_t *scr_new_create(void)
     lv_obj_set_flex_flow(n.where, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_style_pad_column(n.where, 10, 0);
     lv_obj_set_style_pad_row(n.where, 10, 0);
+
+    n.engine_box = dk_box(right);
+    lv_obj_set_width(n.engine_box, lv_pct(100));
+    dk_col(n.engine_box, 14);
+    dk_heading(n.engine_box, "AGENT");
+    n.engines = dk_box(n.engine_box);
+    lv_obj_set_width(n.engines, lv_pct(100));
+    lv_obj_set_flex_flow(n.engines, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_style_pad_column(n.engines, 10, 0);
+    lv_obj_set_style_pad_row(n.engines, 10, 0);
+
+    n.model_box = dk_box(right);
+    lv_obj_set_width(n.model_box, lv_pct(100));
+    dk_col(n.model_box, 14);
+    dk_heading(n.model_box, "MODEL");
+    n.models = dk_box(n.model_box);
+    lv_obj_set_width(n.models, lv_pct(100));
+    lv_obj_set_flex_flow(n.models, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_style_pad_column(n.models, 10, 0);
+    lv_obj_set_style_pad_row(n.models, 10, 0);
 
     n.project_box = dk_box(right);
     lv_obj_set_width(n.project_box, lv_pct(100));

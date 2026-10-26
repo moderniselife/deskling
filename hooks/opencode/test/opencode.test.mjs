@@ -3,7 +3,7 @@
 //   node hooks/opencode/test/opencode.test.mjs            (finds `opencode` on PATH)
 //   OPENCODE_BIN=/path/to/opencode node hooks/opencode/test/opencode.test.mjs
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -27,7 +27,7 @@ try {
 }
 
 // ---- a fake relay that records what the plugin sends
-const relay = { updates: [], asks: [], outbox: [], resolved: [], answer: { decision: "allow" } };
+const relay = { updates: [], asks: [], outbox: [], resolved: [], answer: { decision: "allow" }, registered: null, job: null, done: null };
 const relayServer = createServer((req, res) => {
   let body = "";
   req.on("data", (d) => (body += d));
@@ -45,6 +45,20 @@ const relayServer = createServer((req, res) => {
     if (req.url === "/agent/ask") {
       relay.asks.push(JSON.parse(body));
       return send(relay.answer);
+    }
+    if (req.url === "/runner/register") {
+      relay.registered = JSON.parse(body);
+      return send({ ok: true });
+    }
+    if (req.url.startsWith("/runner/poll")) {
+      const job = relay.job;
+      relay.job = null;
+      if (!job) await sleep(300);
+      return send({ job });
+    }
+    if (req.url === "/runner/done") {
+      relay.done = JSON.parse(body);
+      return send({ ok: true });
     }
     if (req.url === "/agent/resolve") {
       relay.resolved.push(JSON.parse(body));
@@ -97,10 +111,19 @@ const env = {
   DESKLING_NAME: "test-mac",
 };
 let log = "";
-const oc = spawn(BIN, ["serve", "--port", String(port), "--hostname", "127.0.0.1"], { cwd: proj, env, stdio: ["ignore", "pipe", "pipe"] });
+const oc = spawn(BIN, ["serve", "--port", String(port), "--hostname", "127.0.0.1"], { cwd: proj, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+// `opencode` from npm is a launcher: stop the whole group.
+const stop = (p) => {
+  try {
+    process.kill(-p.pid, "SIGTERM");
+  } catch {
+    p.kill();
+  }
+};
 oc.stdout.on("data", (d) => (log += d));
 oc.stderr.on("data", (d) => (log += d));
 const OC = `http://127.0.0.1:${port}`;
+let runner = null;
 const api = async (method, path, body) => {
   const r = await fetch(OC + path, { signal: AbortSignal.timeout(20000), method, headers: { "content-type": "application/json", "x-opencode-directory": proj }, body: body ? JSON.stringify(body) : undefined });
   const t = await r.text();
@@ -180,12 +203,37 @@ try {
   await api("DELETE", `/session/${sid}?directory=${encodeURIComponent(proj)}`);
   await until("the end", () => relay.updates.some((u) => u.id === `oc-${sid}` && u.end), 10000);
   check("deleting the session removes it from the screen", true);
+
+  // The runner: offers OpenCode with its models, installs the plugin, starts a session from the screen.
+  stop(oc);
+  rmSync(join(cfg, "plugins", "deskling.js"));
+  relay.updates.length = 0;
+  const runnerPort = 30000 + Math.floor(Math.random() * 20000);
+  runner = spawn(process.execPath, [join(here, "..", "..", "runner", "deskling-runner.mjs")], {
+    env: { ...env, DESKLING_OPENCODE: BIN, DESKLING_CLAUDE: "off", DESKLING_OPENCODE_PORT: String(runnerPort), DESKLING_PROJECTS: proj },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  runner.stdout.on("data", (d) => (log += d));
+  runner.stderr.on("data", (d) => (log += d));
+  await until("the runner to register", () => relay.registered, 60000);
+  const eng = relay.registered.engines?.find((e) => e.id === "opencode");
+  check("the runner offers OpenCode", !!eng, JSON.stringify(relay.registered.engines));
+  check("with the models you set up, your default first", eng?.models?.[0]?.id === "mock/mock-coder" && eng.models[0].name === "Mock coder", JSON.stringify(eng?.models));
+  check("it installs the Deskling plugin for OpenCode", existsSync(join(cfg, "plugins", "deskling.js")));
+  relay.job = { id: "j2", machine: relay.registered.machine, project: proj, prompt: "say hello to the screen", engine: "opencode", model: "mock/mock-coder" };
+  await until("the job to start", () => relay.done, 30000);
+  check("it starts an OpenCode session for the screen", relay.done.ok === true && relay.done.id === "j2", JSON.stringify(relay.done));
+  await until("the new session's reply", () => relay.updates.some((u) => (u.lines || []).some((l) => l.from === "agent" && /say hello to the screen/.test(l.text))), 30000);
+  const started = relay.updates.find((u) => (u.lines || []).some((l) => l.from === "you" && l.text === "say hello to the screen"));
+  check("the session shows up with your prompt and its reply", started?.name === "web-app");
 } catch (e) {
   check(String(e.message || e), false);
   console.log(log.split("\n").slice(-40).join("\n"));
   console.log(JSON.stringify(relay.updates.slice(-8), null, 1).slice(0, 3000));
 } finally {
-  oc.kill();
+  stop(oc);
+  runner?.kill("SIGTERM");
+  await sleep(500);
   model.close();
   relayServer.close();
   rmSync(T, { recursive: true, force: true });

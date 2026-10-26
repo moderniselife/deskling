@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Deskling runner: lets your Deskling start new Claude Code sessions on this computer.
+// Deskling runner: lets your Deskling start new Claude Code and OpenCode sessions on this computer.
 // Zero dependencies, Node 18+. Mac, Windows and Linux.
 //
 //   node deskling-runner.mjs            run (keeps going; Ctrl+C to stop)
@@ -12,6 +12,12 @@
 // folder: a background session that shows up on Deskling (with the Deskling plugin installed),
 // listening for your next message. Attach to it any time with `claude attach`.
 //
+// With OpenCode installed it can start OpenCode sessions too, with any model you've set up in
+// OpenCode, local ones included (Ollama, LM Studio, llama.cpp…). It keeps one `opencode serve`
+// running on this computer (only reachable from this computer) for them, and installs the
+// Deskling plugin for OpenCode so they show up on the screen. See them in OpenCode with
+// `opencode attach http://127.0.0.1:4097`.
+//
 // Settings: ~/.deskling/config (or the environment):
 //   DESKLING_URL, DESKLING_TOKEN   your relay
 //   DESKLING_NAME                  this computer's name on Deskling (default: its hostname)
@@ -19,14 +25,17 @@
 //                                  the git repos one level inside ~/code, ~/Projects, ~/dev,
 //                                  ~/src, ~/Developer, ~/repos and ~/GitHub.
 //   DESKLING_CLAUDE                the claude command (default: claude)
+//   DESKLING_OPENCODE              the opencode command (default: opencode; "off" to not offer it)
+//   DESKLING_OPENCODE_PORT         the port for its OpenCode server (default: 4097)
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, hostname, platform } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.1.1";
+const VERSION = "0.2.0";
 const HOME = homedir();
 
 function fileConfig() {
@@ -47,6 +56,9 @@ const URL_BASE = get("DESKLING_URL").replace(/\/+$/, "");
 const TOKEN = get("DESKLING_TOKEN");
 const NAME = (get("DESKLING_NAME") || hostname()).split(".")[0];
 const CLAUDE = get("DESKLING_CLAUDE", "claude");
+const OPENCODE = get("DESKLING_OPENCODE", "opencode");
+const OC_PORT = Number(get("DESKLING_OPENCODE_PORT", "4097")) || 4097;
+const PLUGIN_URL = "https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/opencode/deskling.js";
 const OS = { darwin: "mac", win32: "windows", linux: "linux" }[platform()] ?? platform();
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
@@ -114,6 +126,154 @@ async function relay(path, init = {}) {
   return res.json();
 }
 
+// ---- which agents this computer can start
+function has(cmd) {
+  if (!cmd || cmd === "off") return false;
+  try {
+    const r = spawnSync(cmd, ["--version"], { shell: platform() === "win32", timeout: 15_000, stdio: "ignore", windowsHide: true });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+// ---- OpenCode: one server on this computer for the sessions Deskling starts
+const oc = { url: `http://127.0.0.1:${OC_PORT}`, password: randomBytes(18).toString("base64url"), proc: null, ok: false };
+const ocHeaders = () => ({ "content-type": "application/json", authorization: "Basic " + Buffer.from(`opencode:${oc.password}`).toString("base64") });
+async function ocFetch(path, init = {}) {
+  const res = await fetch(oc.url + path, { ...init, headers: { ...ocHeaders(), ...(init.headers ?? {}) }, signal: AbortSignal.timeout(init.timeout ?? 20_000) });
+  if (!res.ok) throw new Error(`OpenCode ${path}: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  const t = await res.text();
+  return t ? JSON.parse(t) : null;
+}
+
+/** The plugin that shows OpenCode sessions on Deskling, in OpenCode's global plugins folder. */
+async function installPlugin() {
+  const dir = join(process.env.XDG_CONFIG_HOME || join(HOME, ".config"), "opencode", "plugins");
+  const dest = join(dir, "deskling.js");
+  const local = join(dirname(fileURLToPath(import.meta.url)), "..", "opencode", "deskling.js");
+  let code = "";
+  if (existsSync(local)) code = readFileSync(local, "utf8");
+  else {
+    try {
+      const res = await fetch(PLUGIN_URL, { signal: AbortSignal.timeout(15_000) });
+      if (res.ok) code = await res.text();
+    } catch {
+      /* offline */
+    }
+  }
+  if (!code.includes("DesklingPlugin")) return existsSync(dest);
+  mkdirSync(dir, { recursive: true });
+  let old = "";
+  try {
+    old = readFileSync(dest, "utf8");
+  } catch {
+    /* new */
+  }
+  if (old !== code) {
+    writeFileSync(dest, code);
+    log(`installed the Deskling plugin for OpenCode: ${dest}`);
+  }
+  return true;
+}
+
+async function ensureOpenCode() {
+  if (oc.ok) {
+    try {
+      await ocFetch("/config", { timeout: 5000 });
+      return true;
+    } catch {
+      oc.ok = false;
+    }
+  }
+  stopOpenCode();
+  mkdirSync(join(HOME, ".deskling"), { recursive: true });
+  const fd = openSync(join(HOME, ".deskling", "opencode.log"), "a");
+  oc.proc = spawn(OPENCODE, ["serve", "--port", String(OC_PORT), "--hostname", "127.0.0.1"], {
+    cwd: HOME,
+    shell: platform() === "win32",
+    env: { ...process.env, OPENCODE_SERVER_PASSWORD: oc.password, OPENCODE_SERVER_USERNAME: "opencode" },
+    stdio: ["ignore", fd, fd],
+    windowsHide: true,
+    detached: platform() !== "win32", // its own process group, so it can be stopped as a whole
+  });
+  const child = oc.proc;
+  child.on("error", () => {});
+  child.on("exit", () => {
+    if (oc.proc !== child) return;
+    oc.proc = null;
+    oc.ok = false;
+  });
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      await ocFetch("/config", { timeout: 3000 });
+      oc.ok = true;
+      log(`OpenCode server on ${oc.url} (attach with: opencode attach ${oc.url})`);
+      return true;
+    } catch {
+      if (!oc.proc) break;
+    }
+  }
+  log("OpenCode didn't start: see ~/.deskling/opencode.log");
+  return false;
+}
+
+/** Up to 8 models to offer: your default first, then the ones you set up yourself (local ones). */
+async function openCodeModels() {
+  const [{ providers = [], default: defaults = {} }, config] = await Promise.all([ocFetch("/config/providers"), ocFetch("/config").catch(() => ({}))]);
+  const out = [];
+  const add = (pid, mid) => {
+    const p = providers.find((x) => x.id === pid);
+    const m = p?.models?.[mid];
+    const id = `${pid}/${mid}`;
+    if (!m || out.some((o) => o.id === id) || out.length >= 8) return;
+    out.push({ id, name: m.name || mid, provider: p.name || pid });
+  };
+  if (typeof config?.model === "string" && config.model.includes("/")) {
+    const i = config.model.indexOf("/");
+    add(config.model.slice(0, i), config.model.slice(i + 1));
+  }
+  for (const p of providers.filter((x) => x.source === "config")) for (const mid of Object.keys(p.models ?? {})) add(p.id, mid);
+  for (const p of providers.filter((x) => x.source !== "config")) if (defaults[p.id]) add(p.id, defaults[p.id]);
+  // The same name from two providers: say which is which.
+  return out.map((m) => ({ id: m.id, name: out.filter((o) => o.name === m.name).length > 1 ? `${m.name} (${m.provider})`.slice(0, 30) : m.name.slice(0, 30) }));
+}
+
+async function engines() {
+  const list = [];
+  if (has(CLAUDE)) list.push({ id: "claude", name: "Claude Code", models: [] });
+  if (has(OPENCODE) && (await ensureOpenCode())) {
+    await installPlugin();
+    let models = [];
+    try {
+      models = await openCodeModels();
+    } catch (e) {
+      log("couldn't list OpenCode's models:", e.message);
+    }
+    list.push({ id: "opencode", name: "OpenCode", models });
+  }
+  return list;
+}
+
+async function startOpenCode(job) {
+  log(`starting OpenCode in ${job.project}${job.model ? ` with ${job.model}` : ""}: ${job.prompt.slice(0, 80)}`);
+  if (!(await ensureOpenCode())) return { ok: false, error: "OpenCode didn't start" };
+  try {
+    const q = `?directory=${encodeURIComponent(job.project)}`;
+    const session = await ocFetch(`/session${q}`, { method: "POST", body: "{}" });
+    const body = { parts: [{ type: "text", text: job.prompt }] };
+    if (job.model?.includes("/")) {
+      const i = job.model.indexOf("/");
+      body.model = { providerID: job.model.slice(0, i), modelID: job.model.slice(i + 1) };
+    }
+    await ocFetch(`/session/${session.id}/prompt_async${q}`, { method: "POST", body: JSON.stringify(body) });
+    return { ok: true, mode: "opencode", session: session.id };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 /* Headless fallback when background sessions aren't available: `claude -p` in its own process.
    It still reports to Deskling, and with Keep listening on (sessions you start from Deskling
    listen straight away) it carries on with each message you send from the screen. */
@@ -128,6 +288,7 @@ function startHeadless(job) {
 }
 
 function start(job) {
+  if (job.engine === "opencode") return startOpenCode(job);
   return startBg(job).then((r) => (r.ok || r.missing ? r : (log(`background sessions unavailable (${r.error}); running headless`), startHeadless(job))));
 }
 
@@ -143,6 +304,27 @@ function startBg(job) {
   });
 }
 
+// Take the OpenCode server down with the runner (its whole process group: `opencode` from npm is a
+// small launcher that starts the real one).
+function stopOpenCode() {
+  const p = oc.proc;
+  oc.proc = null;
+  oc.ok = false;
+  if (!p?.pid) return;
+  try {
+    if (platform() === "win32") spawnSync("taskkill", ["/pid", String(p.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true });
+    else process.kill(-p.pid, "SIGTERM");
+  } catch {
+    p.kill();
+  }
+}
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"])
+  process.on(sig, () => {
+    stopOpenCode();
+    process.exit(0);
+  });
+process.on("exit", stopOpenCode);
+
 async function run() {
   if (!URL_BASE || !TOKEN) {
     console.error("Set DESKLING_URL and DESKLING_TOKEN in ~/.deskling/config first.");
@@ -151,9 +333,17 @@ async function run() {
   log(`Deskling runner ${VERSION} as "${NAME}" on ${URL_BASE}`);
   let list = projects();
   log(`offering ${list.length} project folder${list.length === 1 ? "" : "s"}${list.length ? ": " + list.map((p) => p.name).join(", ") : ""}`);
+  let engs = await engines();
+  let lastEngines = Date.now();
+  log(`can start: ${engs.map((e) => e.name + (e.models.length ? ` (${e.models.map((m) => m.id).join(", ")})` : "")).join(", ") || "nothing (install Claude Code or OpenCode)"}`);
   const register = async () => {
     list = projects();
-    await relay("/runner/register", { method: "POST", body: JSON.stringify({ machine: NAME, os: OS, projects: list, version: VERSION }) });
+    // What's installed and which models are set up changes rarely: check every 10 minutes.
+    if (Date.now() - lastEngines > 600_000) {
+      engs = await engines();
+      lastEngines = Date.now();
+    }
+    await relay("/runner/register", { method: "POST", body: JSON.stringify({ machine: NAME, os: OS, projects: list, engines: engs, version: VERSION }) });
   };
   let lastReg = 0;
   for (;;) {
@@ -181,7 +371,8 @@ const plist = join(HOME, "Library", "LaunchAgents", "com.deskling.runner.plist")
 const startup = join(process.env.APPDATA ?? "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "deskling-runner.vbs");
 const unit = join(HOME, ".config", "systemd", "user", "deskling-runner.service");
 
-function install() {
+async function install() {
+  if (has(OPENCODE)) await installPlugin();
   const node = process.execPath;
   const logFile = join(HOME, ".deskling", "runner.log");
   mkdirSync(join(HOME, ".deskling"), { recursive: true });
@@ -227,7 +418,7 @@ function uninstall() {
 }
 
 const arg = process.argv[2];
-if (arg === "--install") install();
+if (arg === "--install") await install();
 else if (arg === "--uninstall") uninstall();
 else if (arg === "--list") for (const p of projects()) console.log(`${p.name}\t${p.path}`);
 else run();

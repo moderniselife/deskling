@@ -207,6 +207,19 @@ await hook({ hook_event_name: "SessionStart", session_id: "s-new" });
 s = await waitFor((m) => m.agents.some((a) => a.id === "s-new"));
 check("the session it starts listens for you straight away", s.agents.find((a) => a.id === "s-new").listening === true);
 await hook({ hook_event_name: "SessionEnd", session_id: "s-new" });
+// A runner with OpenCode: the screen picks the agent and the model.
+const engines = [
+  { id: "claude", name: "Claude Code", models: [] },
+  { id: "opencode", name: "OpenCode", models: [{ id: "ollama/qwen3:8b", name: "Qwen3 8B" }, { id: "opencode/big-pickle", name: "Big Pickle" }] },
+];
+await fetch(`${URL_BASE}/runner/register`, { method: "POST", headers: auth, body: JSON.stringify({ machine: "test-mac", os: "mac", projects: [{ name: "web-app", path: "/Users/joe/code/web-app" }], engines }) });
+s = await waitFor((m) => m.targets?.some((t) => t.id === "test-mac" && t.engines?.length === 2));
+check("the screen sees which agents and models a computer offers", s.targets.find((t) => t.id === "test-mac").engines[1].models[0].id === "ollama/qwen3:8b");
+const jobP2 = fetch(`${URL_BASE}/runner/poll?machine=test-mac`, { headers: auth }).then((r) => r.json());
+await new Promise((r) => setTimeout(r, 300));
+ws.send(JSON.stringify({ type: "start", target: "test-mac", project: "web-app", prompt: "tidy the css", engine: "opencode", model: "opencode/big-pickle" }));
+const { job: job2 } = await jobP2;
+check("the runner is told to start OpenCode with that model", job2?.engine === "opencode" && job2.model === "opencode/big-pickle", JSON.stringify(job2));
 const badRoutine = await fetch(`${URL_BASE}/api/routine`, { method: "POST", headers: auth, body: JSON.stringify({ url: "https://example.com/fire", token: "x" }) });
 check("a routine URL that isn't Anthropic's is refused", badRoutine.status === 400);
 

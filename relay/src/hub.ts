@@ -3,6 +3,7 @@ import { makeZip, type ZipEntry } from "./zip";
 import type {
   Helper,
   Machine,
+  Engine,
   StartJob,
   Agent,
   AgentState,
@@ -834,9 +835,21 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       .filter((p) => p.name && p.path)
       // One entry per name: the screen picks projects by name (older runners could list a folder twice).
       .filter((p, i, all) => all.findIndex((q) => q.name === p.name) === i);
+    const engines: Engine[] = (Array.isArray(b.engines) ? (b.engines as Record<string, unknown>[]) : [])
+      .slice(0, 3)
+      .map((e) => ({
+        id: oneLine(e.id, 16),
+        name: oneLine(e.name, 24),
+        models: (Array.isArray(e.models) ? (e.models as Record<string, unknown>[]) : []).slice(0, 8).map((m) => ({ id: oneLine(m.id, 60), name: oneLine(m.name, 30) })).filter((m) => m.id),
+      }))
+      .filter((e) => e.id === "claude" || e.id === "opencode");
     const known = this.state.machines?.[id];
-    const changed = !known || JSON.stringify(known.projects) !== JSON.stringify(projects) || Date.now() - known.seen > MACHINE_GONE_MS;
-    (this.state.machines ??= {})[id] = { id, os: oneLine(b.os, 20), projects, seen: Date.now() };
+    const changed =
+      !known ||
+      JSON.stringify(known.projects) !== JSON.stringify(projects) ||
+      JSON.stringify(known.engines ?? []) !== JSON.stringify(engines) ||
+      Date.now() - known.seen > MACHINE_GONE_MS;
+    (this.state.machines ??= {})[id] = { id, os: oneLine(b.os, 20), projects, seen: Date.now(), ...(engines.length ? { engines } : {}) };
     if (changed) await this.commit({ kind: "agent" });
     else await this.save();
     return json({ ok: true });
@@ -871,7 +884,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
   }
 
   /** Start a new session from the screen: on a computer with the runner, or in the cloud. */
-  private async startSession(target: string, project: string, prompt: string): Promise<void> {
+  private async startSession(target: string, project: string, prompt: string, engine = "", model = ""): Promise<void> {
     if (!prompt) return;
     const now = Date.now();
     if (target === "cloud") {
@@ -910,9 +923,13 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       return;
     }
     const path = m.projects.find((p) => p.path === project || p.name === project)?.path ?? m.projects[0]?.path ?? "";
-    (this.state.jobs ??= []).push({ id: shortId(), machine: m.id, project: path, prompt, ts: now });
-    (this.state.expectNew ??= []).push({ host: m.id.toLowerCase(), until: now + 5 * 60 * 1000 });
-    this.addFeed("good", `Starting a session on ${m.id}`, oneLine(prompt, 100), null);
+    // Older runners only start Claude Code.
+    const eng = m.engines?.find((e) => e.id === engine) ?? m.engines?.[0] ?? { id: "claude", name: "Claude Code", models: [] };
+    const mdl = eng.models.find((x) => x.id === model)?.id ?? eng.models[0]?.id ?? "";
+    (this.state.jobs ??= []).push({ id: shortId(), machine: m.id, project: path, prompt, ts: now, engine: eng.id, ...(mdl ? { model: mdl } : {}) });
+    // A Claude Code session listens for you once it appears; OpenCode sessions always take messages.
+    if (eng.id === "claude") (this.state.expectNew ??= []).push({ host: m.id.toLowerCase(), until: now + 5 * 60 * 1000 });
+    this.addFeed("good", eng.id === "opencode" ? `Starting OpenCode on ${m.id}` : `Starting a session on ${m.id}`, oneLine(prompt, 100), null);
     await this.commit({ kind: "feed" });
     this.runnerPolls.get(m.id)?.();
   }
@@ -1401,7 +1418,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       return;
     }
     if (type === "start") {
-      await this.startSession(String(msg.target ?? ""), String(msg.project ?? ""), clip(msg.prompt, 2000));
+      await this.startSession(String(msg.target ?? ""), String(msg.project ?? ""), clip(msg.prompt, 2000), oneLine(msg.engine, 16), oneLine(msg.model, 60));
       return;
     }
     if (type === "listen") {
@@ -1646,7 +1663,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       // Where the screen can start a new session.
       targets: [
         ...(s.routine ? [{ id: "cloud", name: s.routine.name || "Cloud", kind: "cloud", projects: [] as string[] }] : []),
-        ...this.machinesOnline().map((m) => ({ id: m.id, name: m.id, kind: "computer", projects: m.projects.map((p) => p.name).slice(0, 12) })),
+        ...this.machinesOnline().map((m) => ({ id: m.id, name: m.id, kind: "computer", projects: m.projects.map((p) => p.name).slice(0, 12), engines: m.engines ?? [] })),
       ],
     });
   }

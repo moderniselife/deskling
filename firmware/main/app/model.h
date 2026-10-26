@@ -133,6 +133,23 @@ typedef struct {
 #define DK_MAX_TARGETS 6
 #define DK_MAX_PROJECTS 12
 
+#define DK_MAX_ENGINES 2
+#define DK_MAX_MODELS 8
+
+/* A model OpenCode can use on that computer ("ollama/qwen3:8b", "Qwen3 8B"). */
+typedef struct {
+    char id[64];
+    char name[32];
+} dk_model_choice_t;
+
+/* An agent a computer can start: "claude" (Claude Code) or "opencode" with its models. */
+typedef struct {
+    char id[16];
+    char name[24];
+    dk_model_choice_t models[DK_MAX_MODELS];
+    int models_n;
+} dk_engine_t;
+
 /* Somewhere the screen can start a new session: the cloud, or a computer running the runner. */
 typedef struct {
     char id[48];
@@ -140,6 +157,8 @@ typedef struct {
     bool cloud;
     char projects[DK_MAX_PROJECTS][48];
     int projects_n;
+    dk_engine_t engines[DK_MAX_ENGINES]; // none: Claude Code only (the cloud, older runners)
+    int engines_n;
 } dk_target_t;
 
 typedef struct {
@@ -175,8 +194,9 @@ void dk_send_answer(const dk_pending_t *p, const char *const *labels);
 void dk_send_message(const char *agent_id, const char *text);
 /* Keep listening for minutes (0 = stop): when the session finishes, it waits for a message from the screen. */
 void dk_send_listen(const char *agent_id, int minutes);
-/* Start a new session on a target ("cloud" or a computer), in one of its projects, with a first prompt. */
-void dk_send_start(const char *target, const char *project, const char *prompt);
+/* Start a new session on a target ("cloud" or a computer), in one of its projects, with a first
+   prompt; engine and model are optional ("" = Claude Code). */
+void dk_send_start(const char *target, const char *project, const char *prompt, const char *engine, const char *model);
 void dk_send_reminder_done(const char *reminder_id, bool done);
 void dk_send_action(const char *name); // "focus" | "snooze_all" | "ping_when_done"
 /** Remove one notification from the feed, or all of them when feed_id is NULL. */

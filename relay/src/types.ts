@@ -97,10 +97,18 @@ export interface ChatLine {
 }
 
 /** A computer running the Deskling runner: it can start sessions in its project folders. */
+/** An agent a runner can start: Claude Code, or OpenCode with the models set up on that computer. */
+export interface Engine {
+  id: string; // "claude" | "opencode"
+  name: string;
+  models: { id: string; name: string }[]; // OpenCode: "provider/model"
+}
+
 export interface Machine {
   id: string; // machine name
   os: string;
   projects: { name: string; path: string }[];
+  engines?: Engine[];
   seen: number; // last heartbeat
 }
 
@@ -116,6 +124,8 @@ export interface StartJob {
   machine: string;
   project: string; // folder path on that machine
   prompt: string;
+  engine?: string; // default "claude"
+  model?: string;
   ts: number;
 }
 

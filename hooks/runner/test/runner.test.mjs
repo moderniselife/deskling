@@ -60,13 +60,14 @@ const server = http.createServer((req, res) => {
   });
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const env = { ...process.env, HOME: home, DESKLING_URL: `http://127.0.0.1:${server.address().port}`, DESKLING_TOKEN: "t0k", DESKLING_NAME: "test-mac.local", DESKLING_CLAUDE: fake, DESKLING_PROJECTS: "" };
+const env = { ...process.env, HOME: home, DESKLING_URL: `http://127.0.0.1:${server.address().port}`, DESKLING_TOKEN: "t0k", DESKLING_NAME: "test-mac.local", DESKLING_CLAUDE: fake, DESKLING_OPENCODE: "off", DESKLING_PROJECTS: "" };
 const p = spawn(process.execPath, [RUNNER], { env, stdio: "ignore" });
 for (let i = 0; i < 50 && !done; i++) await new Promise((r) => setTimeout(r, 100));
 p.kill();
 check("registers this computer by its short name", registered?.machine === "test-mac" && registered.projects.length === 3);
-check("starts the session in that folder, in the background", existsSync(log) && readFileSync(log, "utf8").trim() === `${join(home, "code/web-app")}|--bg add a dark mode`);
+check("starts the session in that folder, in the background", existsSync(log) && readFileSync(log, "utf8").split("\n").filter((l) => l && !l.endsWith("|--version")).join("\n") === `${join(home, "code/web-app")}|--bg add a dark mode`);
 check("tells the relay it started", done?.ok === true && done.id === "j1");
+check("offers Claude Code when it's installed", registered?.engines?.length === 1 && registered.engines[0].id === "claude", JSON.stringify(registered?.engines));
 
 server.close();
 console.log(failures ? `\n${failures} failed` : "\nall passed");

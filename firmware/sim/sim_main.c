@@ -782,8 +782,23 @@ int main(int argc, char **argv)
     lv_textarea_set_text(find_class(lv_screen_active(), &lv_textarea_class), "Fix the flaky login test");
     tap("Start");
     run(900);
-    expect_sent("\"type\":\"start\",\"target\":\"MacBook\",\"project\":\"web-app\"");
+    expect_sent("\"type\":\"start\",\"target\":\"MacBook\",\"project\":\"web-app\",\"prompt\":\"Fix the flaky login test\",\"engine\":\"claude\"");
     expect_screen(SCR_SESSIONS, "sessions (after starting one)");
+
+    // OpenCode, with a local model.
+    tap("+  New session");
+    run(900);
+    tap("OpenCode");
+    run(300);
+    expect_text("WHAT SHOULD OPENCODE DO?");
+    tap("Qwen3 Coder 30B");
+    run(300);
+    shot("06c_new_session_opencode");
+    lv_textarea_set_text(find_class(lv_screen_active(), &lv_textarea_class), "Tidy the CSS");
+    tap("Start");
+    run(900);
+    expect_sent("\"engine\":\"opencode\",\"model\":\"ollama/qwen3-coder:30b\"");
+    expect_screen(SCR_SESSIONS, "sessions (after starting OpenCode)");
 
     tap("web-app");
     run(900);
