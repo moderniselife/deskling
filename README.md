@@ -53,7 +53,7 @@ From across the room you can:
 | [`firmware/`](firmware/README.md) | ESP-IDF 6.1 project for the screen, plus a host simulator that renders every screen to PNG |
 | [`case/`](case/README.md) | Parametric 3D-printable case: lilac Deskling bezel with ears and cheeks, back cover, 18° stand |
 | [`site/`](site/) | deskling.mojolayers.com: landing page, browser installer, and the firmware update server (`/firmware/`). A Worker with static assets, auto-deployed by Cloudflare from this repo |
-| `docs/` | Design and motion spec, hardware notes, screenshots |
+| `docs/` | Design and motion spec, brand guide, hardware notes, [testing](docs/testing.md), screenshots |
 
 ## Setting it up
 
