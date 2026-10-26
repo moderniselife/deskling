@@ -496,24 +496,33 @@ p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px
     <div class="wrap">
       <div class="sec-head" data-enter>
         <h2 id="works-title">Works with what you already use.</h2>
-        <p>Install one plugin and your sessions start showing up. Anything else can talk to it with a single command.</p>
+        <p>Install a plugin and your sessions show up. Start new ones from the screen with the agent, and the model, you like.</p>
       </div>
       <div class="works">
         <article class="card t-lilac wide" data-enter>
           <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><rect x="3" y="5" width="22" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M8 11l4 3-4 3M14 18h6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <h3>Claude Code</h3>
-          <p>In the terminal, the desktop app and cloud sessions, on Mac and Windows. Permissions, questions, messages and reminders.</p>
+          <p>In the terminal, the desktop app and cloud sessions, on Mac and Windows. The whole conversation as it happens, with permissions, questions, messages and reminders.</p>
           <p class="aside">Using Cowork or cloud sessions? Your relay's setup page has a personal plugin to upload in the Claude app, already filled in with your relay's details.</p>
           <div class="code"><pre><code>/plugin marketplace add moderniselife/deskling
 /plugin install deskling@deskling
 /plugin configure deskling@deskling</code></pre><button type="button" class="copy">Copy</button></div>
         </article>
-        <article class="card t-peach" data-enter style="--d:1">
-          <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M14 3l10 5.5v11L14 25 4 19.5v-11z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M14 14l10-5.5M14 14v11M14 14L4 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></span>
-          <h3>Cursor</h3>
-          <p>Hooks show what each chat is doing and let you approve shell commands from the screen.</p>
+        <article class="card t-peach wide" data-enter style="--d:1">
+          <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M10 8l-6 6 6 6M18 8l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <h3>OpenCode</h3>
+          <p>With any model OpenCode runs, local ones too through Ollama or LM Studio. The whole conversation, approvals, answers and messages, plus a small team of Deskling agents that plan, test, review and keep you posted while you're away.</p>
+          <p class="aside">The Deskling runner installs this for you, and lets you start OpenCode sessions from the screen with the model you pick.</p>
+          <div class="code"><pre><code>mkdir -p ~/.config/opencode/plugins
+curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/opencode/deskling.js \
+  -o ~/.config/opencode/plugins/deskling.js</code></pre><button type="button" class="copy">Copy</button></div>
         </article>
         <article class="card t-butter" data-enter style="--d:2">
+          <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M14 3l10 5.5v11L14 25 4 19.5v-11z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M14 14l10-5.5M14 14v11M14 14L4 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></span>
+          <h3>Gemini CLI, Cursor, Codex and more</h3>
+          <p>The Deskling runner starts them from the screen and shows the whole session. Copilot, Goose, Qwen Code, Kimi and Kiro work too. In the Cursor editor, hooks show each chat and let you approve shell commands.</p>
+        </article>
+        <article class="card t-lilac" data-enter style="--d:3">
           <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M7 21a5 5 0 01-.6-10A7 7 0 0120 9.5 5.5 5.5 0 0121 21z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/></svg></span>
           <h3>Everything else</h3>
           <p>Cron jobs, CI and other agents: if it can send a web request, it can ping Deskling.</p>
@@ -555,7 +564,7 @@ deskling remind "Stretch" --in 20m</code></pre><button type="button" class="copy
           <li><h3>Install the firmware</h3><p>Plug the board into your computer and install from the browser, in Chrome or Edge. It picks the right build for your board.</p>
             <p><a class="btn btn-bold btn-sm" href="/install">Install Deskling</a></p></li>
           <li><h3>Say hi</h3><p>Pick your Wi-Fi on the screen, then open the address it shows and paste your relay details.</p></li>
-          <li><h3>Connect your agents</h3><p>Add the Claude Code plugin on each computer, and the Cursor hooks if you use Cursor.</p></li>
+          <li><h3>Connect your agents</h3><p>Add the Claude Code plugin on each computer, and the OpenCode plugin if you use OpenCode. Run the Deskling runner to start sessions from the screen.</p></li>
           <li><h3>Print its body</h3><p>Lilac bezel with ears, peach cheeks and a cream stand with toes. It prints without supports, and splits in two for 256&nbsp;mm beds.</p></li>
         </ol>
         <figure class="case" data-enter>
@@ -579,6 +588,7 @@ deskling remind "Stretch" --in 20m</code></pre><button type="button" class="copy
         <details><summary>Do I have to host anything?</summary><p>Just the relay, and the Deploy button does it for you. It's a small Cloudflare Worker on your own account, and for one person it should fit in the free plan. Firmware updates come from this site.</p></details>
         <details><summary>What if I'm not at my desk?</summary><p>Nothing changes. If you don't answer on the screen within 30 seconds, Claude asks on your computer as usual. You can change the wait in the plugin settings.</p></details>
         <details><summary>Can it be quiet?</summary><p>Yes. There's a volume slider, and "Quiet at night" mutes everything between 10pm and 7am except the reminders you asked for.</p></details>
+        <details><summary>Which agents does it work with?</summary><p>Claude Code and OpenCode fully, with any model OpenCode can use, including local ones. The runner also starts Gemini CLI, Cursor, Codex, Copilot, Goose, Qwen Code, Kimi and Kiro from the screen. Anything else can send notifications, reminders and its status with one command.</p></details>
         <details><summary>Does it work with more than one computer?</summary><p>That's the point. Install the plugin on each one, and every session shows up with the name of the machine it's on.</p></details>
         <details><summary>I don't have a 3D printer.</summary><p>It works fine without the case, propped up on a little stand. Any print service can make the parts from the STL files in the repo.</p></details>
       </div>
