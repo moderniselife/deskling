@@ -388,8 +388,10 @@ function acpAgents() {
     if (i < 1) continue;
     const name = item.slice(0, i).trim();
     const [bin, ...args] = item.slice(i + 1).trim().split(/\s+/);
-    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 16) || "acp";
-    const known = ACP_KNOWN.find((a) => a.id === id);
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 16) || "acp";
+    // "Gemini CLI=…" or "gemini=…" replaces the built-in Gemini CLI.
+    const known = ACP_KNOWN.find((a) => a.id === slug || a.name.toLowerCase() === name.toLowerCase());
+    const id = known ? known.id : slug;
     const at = list.findIndex((a) => a.id === id);
     const def = { id, name: name.slice(0, 24), bin, args, source: known?.source ?? "custom" };
     if (at >= 0) list[at] = def;
@@ -438,6 +440,7 @@ class AcpSession {
     this.proc = runCmd(this.def.bin, this.def.args, { cwd: this.cwd, env: { ...process.env, DESKLING_BRIDGED: "1" }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: platform() !== "win32" });
     let buf = "";
     let err = "";
+    this.proc.stdout.setEncoding("utf8"); // a character split across two chunks stays whole
     this.proc.stdout.on("data", (d) => {
       buf += d;
       let i;
@@ -463,14 +466,23 @@ class AcpSession {
     );
     died.catch(() => {});
     this.proc.on("error", () => {});
-    const init = await Promise.race([
-      this.call("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: "deskling-runner", version: VERSION } }),
-      died,
-    ]);
-    const created = await Promise.race([this.call("session/new", { cwd: this.cwd, mcpServers: [] }), died]).catch((e) => {
-      if (init?.authMethods?.length) throw new Error(`${this.def.name} needs you to sign in on this computer first (${e.message})`);
+    // An agent that never answers mustn't hold up the runner: give up after 45 s.
+    const late = (what) => new Promise((_, reject) => setTimeout(() => reject(new Error(`${this.def.name} didn't answer (${what})`)), 45_000));
+    let init, created;
+    try {
+      init = await Promise.race([
+        this.call("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: "deskling-runner", version: VERSION } }),
+        died,
+        late("starting"),
+      ]);
+      created = await Promise.race([this.call("session/new", { cwd: this.cwd, mcpServers: [] }), died, late("new session")]).catch((e) => {
+        if (init?.authMethods?.length) throw new Error(`${this.def.name} needs you to sign in on this computer first (${e.message})`);
+        throw e;
+      });
+    } catch (e) {
+      this.kill();
       throw e;
-    });
+    }
     this.sessionId = created.sessionId;
     acpSessions.set(this.id, this);
     const model = created.models?.currentModelId;
@@ -549,28 +561,36 @@ class AcpSession {
 
   // ---- what we send the relay (batched: replies stream in many small pieces)
   line(l, fields = {}) {
+    if (this.closed) return;
     this.pending.lines.set(l.key, l);
     Object.assign(this.pending.fields, fields);
     this.schedule();
   }
   update(fields) {
+    if (this.closed) return;
     Object.assign(this.pending.fields, fields);
     this.schedule();
   }
   schedule() {
     if (!this.timer) this.timer = setTimeout(() => this.flush(), 300);
   }
-  async flush() {
+  // One upload at a time, in order, so an older state can't land after a newer one.
+  flush() {
     clearTimeout(this.timer);
     this.timer = null;
-    const { fields, lines } = this.pending;
-    this.pending = { fields: {}, lines: new Map() };
-    const body = { id: this.id, source: this.def.source, name: this.name, host: NAME, os: OS, ...fields, lines: [...lines.values()] };
-    await relay("/agent/update", { method: "POST", body: JSON.stringify(body) }).catch((e) => log("relay:", e.message));
+    this.flushing = (this.flushing ?? Promise.resolve()).then(() => {
+      const { fields, lines } = this.pending;
+      this.pending = { fields: {}, lines: new Map() };
+      if (!Object.keys(fields).length && !lines.size) return;
+      const body = { id: this.id, source: this.def.source, name: this.name, host: NAME, os: OS, ...fields, lines: [...lines.values()] };
+      return relay("/agent/update", { method: "POST", body: JSON.stringify(body) }).catch((e) => log("relay:", e.message));
+    });
+    return this.flushing;
   }
 
   // ---- prompts: yours from the screen, one turn at a time
   prompt(text) {
+    if (this.closed) return;
     this.used = Date.now();
     if (this.busy) return void this.queue.push(text);
     this.busy = true;
@@ -590,18 +610,23 @@ class AcpSession {
       });
   }
 
+  kill() {
+    if (!this.proc?.pid || this.proc.exitCode !== null) return;
+    try {
+      if (platform() === "win32") spawnSync("taskkill", ["/pid", String(this.proc.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true });
+      else process.kill(-this.proc.pid, "SIGTERM");
+    } catch {
+      this.proc.kill();
+    }
+  }
+
   close(kill = true) {
     if (!acpSessions.has(this.id)) return;
     acpSessions.delete(this.id);
-    if (kill && this.proc?.pid) {
-      try {
-        if (platform() === "win32") spawnSync("taskkill", ["/pid", String(this.proc.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true });
-        else process.kill(-this.proc.pid, "SIGTERM");
-      } catch {
-        this.proc.kill();
-      }
-    }
+    if (kill) this.kill();
+    // What's left goes out, then the session ends; nothing after that brings it back.
     this.flush().then(() => relay("/agent/update", { method: "POST", body: JSON.stringify({ id: this.id, end: true }) }).catch(() => {}));
+    this.closed = true;
   }
 }
 

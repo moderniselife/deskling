@@ -135,8 +135,15 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
     pending.set(sid, p);
     if (!timer) timer = setTimeout(flush, 300);
   }
-  async function flush() {
+  // One upload at a time, in order, so an older state can't land after a newer one.
+  let flushing = Promise.resolve();
+  function flush() {
+    clearTimeout(timer);
     timer = null;
+    flushing = flushing.then(send);
+    return flushing;
+  }
+  async function send() {
     const batch = [...pending.entries()];
     pending.clear();
     for (const [sid, p] of batch) {
@@ -161,9 +168,30 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
 
   // ---- messages typed on the screen become prompts here, straight away
   let polling = false;
+  // Sessions from before OpenCode (or this plugin) restarted: pick them up again so they still
+  // take messages from the screen.
+  async function rediscover() {
+    try {
+      const res = await fetch(new URL(`/session?directory=${encodeURIComponent(directory)}`, serverUrl), { headers: ocHeaders, signal: AbortSignal.timeout(10000) });
+      const list = res.ok ? await res.json() : [];
+      for (const info of Array.isArray(list) ? list : []) {
+        const updated = info?.time?.updated ?? 0;
+        if (!info?.id || info.parentID || Date.now() - updated > 86_400_000 || sessions.has(info.id)) continue;
+        const s = session(info.id);
+        s.directory = info.directory || directory;
+        s.title = info.title || "";
+        s.seen = updated;
+      }
+    } catch {
+      /* the server isn't answering yet: new events still register sessions */
+    }
+  }
+
   async function pollLoop() {
     if (polling) return;
     polling = true;
+    await new Promise((r) => setTimeout(r, 2000));
+    await rediscover();
     for (;;) {
       // Sessions used in the last day take messages from the screen (newest first).
       const ids = [...sessions.entries()]
@@ -211,10 +239,13 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
     const questions = (q.questions || []).map((x) => ({ question: x.question, header: x.header || "", multiSelect: !!x.multiple, options: (x.options || []).map((o) => ({ label: o.label, description: o.description || "" })) }));
     const r = await ask(q.sessionID, { key: q.id, kind: "question", tool: "Question", summary: questions[0]?.question || "", detail: questions[0]?.header || "", questions });
     if (!r.answers) return;
-    const answers = questions.map((x) => {
-      const a = r.answers[x.question];
-      return Array.isArray(a) ? a : a ? String(a).split("\n") : [];
+    // The relay keys answers by the question's text (tidied up), in the order asked.
+    const given = Object.values(r.answers);
+    const answers = questions.map((x, i) => {
+      const a = r.answers[x.question] ?? r.answers[String(x.question).trim()] ?? given[i];
+      return Array.isArray(a) ? a.map(String) : a ? String(a).split("\n") : [];
     });
+    if (!answers.some((a) => a.length)) return; // nothing picked: OpenCode's own question stays
     await oc(`/question/${q.id}/reply`, { answers }).catch(() => {});
   }
 

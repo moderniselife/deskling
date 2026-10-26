@@ -5,10 +5,15 @@
 # deskling-hook.ps1 runs it inside a try block, so a problem here never breaks the hook.
 #
 #   deskling-stream.ps1 -Url <relay> -Token <token> -Payload <hook JSON>
+#   deskling-stream.ps1 -Url <relay> -Token <token> -PayloadFile <file with the hook JSON>  (deleted after)
 
-param([string]$Url, [string]$Token, [string]$Payload)
+param([string]$Url, [string]$Token, [string]$Payload, [string]$PayloadFile)
 
 $ErrorActionPreference = "Stop"
+if ($PayloadFile) {
+  $Payload = [System.IO.File]::ReadAllText($PayloadFile)
+  Remove-Item -LiteralPath $PayloadFile -Force -ErrorAction SilentlyContinue
+}
 $info = $Payload | ConvertFrom-Json
 $sid = [string]$info.session_id
 $tp = [string]$info.transcript_path

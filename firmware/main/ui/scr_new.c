@@ -11,7 +11,7 @@ static struct {
     lv_obj_t *scr, *face, *where, *project_box, *projects, *engine_box, *engines, *model_box, *models, *ask, *ta, *kb, *start, *hint;
     char target[48];
     char project[48];
-    char engine[16];
+    char engine[24];
     char model[64];
     uint32_t sig;
 } n;

@@ -763,9 +763,10 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       const key = l.key ? oneLine(l.key, 80) : "";
       const same = key ? chat.find((c) => c.key === key) : undefined;
       if (same) {
+        // Streaming: the line grows in place. That's live activity, not a new message (no chime).
         if (same.text !== text) {
           same.text = text;
-          if (from === "agent") message = true;
+          if (from === "agent") agent.lastMessage = text;
         }
         continue;
       }
@@ -802,10 +803,10 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const id = oneLine(b.id, 72);
     const key = oneLine(b.key, 80);
     const p = this.state.pending.find((x) => x.agentId === id && key && x.key === key);
-    if (!p) return json({ ok: false });
-    this.waiters.get(p.id)?.({ decision: "computer" });
+    if (p) this.waiters.get(p.id)?.({ decision: "computer" });
+    // Answered there, even after the screen gave up waiting: it's working again.
     const agent = this.state.agents[id];
-    if (agent?.state === "needs_you") {
+    if (agent?.state === "needs_you" && !this.state.pending.some((x) => x.agentId === id && x.id !== p?.id)) {
       this.setAgent(agent, "working", "Working");
       await this.commit({ kind: "agent", id });
     }

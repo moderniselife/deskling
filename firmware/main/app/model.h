@@ -145,7 +145,7 @@ typedef struct {
 /* An agent a computer can start: "claude" (Claude Code), "opencode" with its models, or another
    agent the runner speaks ACP with ("gemini", "cursor", "goose"…). */
 typedef struct {
-    char id[16];
+    char id[24]; // the relay allows up to 16 characters
     char name[24];
     dk_model_choice_t models[DK_MAX_MODELS];
     int models_n;

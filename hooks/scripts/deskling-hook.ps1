@@ -51,9 +51,21 @@ $body = [System.Text.Encoding]::UTF8.GetBytes($payload)
 $stream = Pick "CLAUDE_PLUGIN_OPTION_STREAM" "DESKLING_STREAM" "1"
 
 # The conversation as it happens (deskling-stream.ps1; a problem there never breaks this hook).
-function Send-Transcript {
+function Send-Transcript([switch]$Background) {
   if ($stream -eq "0") { return }
-  try { & (Join-Path $PSScriptRoot "deskling-stream.ps1") -Url $url -Token $token -Payload $payload } catch { }
+  $script = Join-Path $PSScriptRoot "deskling-stream.ps1"
+  try {
+    if ($Background) {
+      # In its own hidden process, so this hook returns at once (hooks have short time limits).
+      $tmp = [System.IO.Path]::GetTempFileName()
+      [System.IO.File]::WriteAllText($tmp, $payload)
+      $exe = (Get-Process -Id $PID).Path
+      $quoted = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$script`"", "-Url", "`"$url`"", "-Token", "`"$token`"", "-PayloadFile", "`"$tmp`"")
+      Start-Process -FilePath $exe -ArgumentList $quoted -WindowStyle Hidden | Out-Null
+    } else {
+      & $script -Url $url -Token $token -Payload $payload
+    }
+  } catch { }
 }
 
 # Keep listening: true once you've typed something in the terminal or app since $from (Claude Code
@@ -72,7 +84,7 @@ function Test-Typed([string]$path, [int64]$from) {
 
 try {
   if ($Mode -eq "wait") {
-    Send-Transcript
+    Send-Transcript -Background
     if ($wait -le 0) { exit 0 }
     $res = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook?wait=$wait" -Headers $headers `
       -ContentType "application/json" -Body $body -TimeoutSec ($wait + 10)
@@ -128,12 +140,12 @@ try {
     $res = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook" -Headers $headers `
       -ContentType "application/json" -Body $body -TimeoutSec 4
     if ($res.Content) { [Console]::Out.Write($res.Content) }
-    Send-Transcript
+    Send-Transcript -Background
   } else {
     $q = if ($Mode -eq "live") { "?live=1" } else { "" }
     Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook$q" -Headers $headers `
       -ContentType "application/json" -Body $body -TimeoutSec 5 | Out-Null
-    Send-Transcript
+    Send-Transcript -Background
   }
 } catch { }
 exit 0
