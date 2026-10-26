@@ -181,6 +181,26 @@ static void row_free(lv_event_t *e)
     free(lv_obj_get_user_data(lv_event_get_current_target(e)));
 }
 
+static void close_panel(void);
+static bool s_row_swiped; // the last press on a row was a swipe, so it isn't a tap
+
+static void free_event_data(lv_event_t *e)
+{
+    free(lv_event_get_user_data(e));
+}
+
+/* Tapping a notification about a session opens that session's chat. */
+static void row_open(lv_event_t *e)
+{
+    lv_obj_t *r = lv_event_get_current_target(e);
+    const char *agent = lv_event_get_user_data(e);
+    if (s_row_swiped || lv_obj_get_style_translate_x(r, 0) != 0) return;
+    if (!agent || !dk_model_find_agent(g_model, agent)) return;
+    ui_sound(DK_SND_TAP);
+    close_panel();
+    ui_open_chat(agent);
+}
+
 static void row_touch(lv_event_t *e)
 {
     lv_obj_t *r = lv_event_get_current_target(e);
@@ -192,6 +212,7 @@ static void row_touch(lv_event_t *e)
         sw.row = r;
         sw.start = p;
         sw.swiping = false;
+        s_row_swiped = false;
     } else if (code == LV_EVENT_PRESSING && sw.row == r) {
         int32_t dx = p.x - sw.start.x, dy = p.y - sw.start.y;
         if (!sw.swiping && dx < -16 && LV_ABS(dx) > LV_ABS(dy) * 2) sw.swiping = true;
@@ -202,6 +223,7 @@ static void row_touch(lv_event_t *e)
     } else if ((code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) && sw.row == r) {
         int32_t dx = p.x - sw.start.x;
         bool go = sw.swiping && code == LV_EVENT_RELEASED && dx <= -DISMISS_AT;
+        s_row_swiped = sw.swiping;
         if (go) {
             dismiss_row(r);
         } else if (lv_obj_get_style_translate_x(r, 0) != 0) {
@@ -241,7 +263,8 @@ static void clear_all(lv_event_t *e)
 }
 
 /** One row of the sheet. feed_id is set for notifications (which can be dismissed). */
-static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char *title, const char *body, const char *when, const char *feed_id)
+static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char *title, const char *body, const char *when, const char *feed_id,
+                const char *agent_id)
 {
     lv_obj_t *r = dk_card(parent, DK_CARD, 22);
     lv_obj_set_width(r, lv_pct(100));
@@ -257,6 +280,12 @@ static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char 
         lv_obj_add_event_cb(r, row_touch, LV_EVENT_PRESSING, NULL);
         lv_obj_add_event_cb(r, row_touch, LV_EVENT_RELEASED, NULL);
         lv_obj_add_event_cb(r, row_touch, LV_EVENT_PRESS_LOST, NULL);
+    }
+    if (agent_id && agent_id[0]) {
+        char *a = strdup(agent_id);
+        lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(r, row_open, LV_EVENT_CLICKED, a);
+        lv_obj_add_event_cb(r, free_event_data, LV_EVENT_DELETE, a);
     }
     lv_obj_t *ic = dk_card(r, tint, 14);
     lv_obj_set_size(ic, 42, 42);
@@ -316,14 +345,14 @@ static void build_list(void)
         if (r->done) continue;
         char when[40] = "";
         if (r->due) ui_due_text(r->due, when, sizeof(when));
-        row(g.list, DK_BUTTER, LV_SYMBOL_BELL, r->title, "Reminder", when, NULL);
+        row(g.list, DK_BUTTER, LV_SYMBOL_BELL, r->title, "Reminder", when, NULL, NULL);
         shown++;
     }
     for (int i = 0; i < g_model->feed_n; i++) {
         const dk_feed_t *f = &g_model->feed[i];
         char ago[12];
         ui_ago(f->ts, ago, sizeof(ago));
-        row(g.list, feed_tint(f->level), feed_icon(f->level), f->title, f->body, ago, f->id);
+        row(g.list, feed_tint(f->level), feed_icon(f->level), f->title, f->body, ago, f->id, f->agent_id);
         shown++;
     }
     if (g_model->feed_n) lv_obj_remove_flag(g.clear, LV_OBJ_FLAG_HIDDEN);

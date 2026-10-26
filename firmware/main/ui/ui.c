@@ -444,18 +444,23 @@ static void banner_opa(void *o, int32_t v)
     dk_style(o, LV_STYLE_OPA, (lv_opa_t)v);
 }
 
+static char s_banner_agent[72]; // the session a banner is about: tapping it opens that chat
+
 static void banner_tap(lv_event_t *e)
 {
     lv_obj_t *b = lv_event_get_current_target(e);
     lv_anim_delete(b, NULL);
     if (b == s_banner) s_banner = NULL;
     lv_obj_delete_async(b);
-    ui_gestures_open_panel();
+    bool busy = s_cur == SCR_ALERT || s_cur == SCR_SETUP || s_cur == SCR_BOOT || s_cur == SCR_CALIB || s_cur == SCR_UPDATE;
+    if (s_banner_agent[0] && !busy && dk_model_find_agent(g_model, s_banner_agent)) ui_open_chat(s_banner_agent);
+    else ui_gestures_open_panel();
 }
 
-static void banner(const char *title, const char *body, lv_color_t bg, const char *icon_sym)
+static void banner(const char *title, const char *body, lv_color_t bg, const char *icon_sym, const char *agent_id)
 {
     if (s_banner) lv_obj_delete(s_banner);
+    snprintf(s_banner_agent, sizeof(s_banner_agent), "%s", agent_id ? agent_id : "");
     s_banner = dk_card(lv_layer_top(), bg, 28);
     lv_obj_add_flag(s_banner, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_banner, banner_tap, LV_EVENT_CLICKED, NULL);
@@ -496,7 +501,7 @@ static void banner(const char *title, const char *body, lv_color_t bg, const cha
 
 void ui_banner(const char *title, const char *body, lv_color_t bg)
 {
-    banner(title, body, bg, LV_SYMBOL_BELL);
+    banner(title, body, bg, LV_SYMBOL_BELL, NULL);
 }
 
 // ---------------------------------------------------------- lifecycle
@@ -662,7 +667,7 @@ void ui_apply_model(const dk_model_t *m)
         const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
         set_backlight(100);
         ui_sound(DK_SND_DONE);
-        ui_banner("Claude finished!", a ? a->name : "", DK_GOOD_BG);
+        banner("Claude finished!", a ? a->name : "", DK_GOOD_BG, LV_SYMBOL_OK, a ? a->id : NULL);
         break;
     }
     case DK_CAUSE_FEED: {
@@ -676,7 +681,7 @@ void ui_apply_model(const dk_model_t *m)
             ui_sound(DK_SND_MESSAGE);
             const char *icon = f->level == DK_FEED_ALERT ? LV_SYMBOL_WARNING : f->level == DK_FEED_GOOD ? LV_SYMBOL_OK : LV_SYMBOL_BELL;
             lv_color_t bg = f->level == DK_FEED_ALERT ? DK_ALERT_PILL : f->level == DK_FEED_GOOD ? DK_GOOD_BG : DK_LILAC_SOFT;
-            banner(f->title, f->body, bg, icon);
+            banner(f->title, f->body, bg, icon, f->agent_id);
         }
         break;
     }
@@ -684,7 +689,7 @@ void ui_apply_model(const dk_model_t *m)
         ui_sound(DK_SND_DONE);
         if (s_cur != SCR_HOME && s_cur != SCR_NIGHT) {
             const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
-            if (a) ui_banner(a->source == DK_SRC_CURSOR ? "Cursor finished" : "Claude finished", a->name, DK_GOOD_BG);
+            if (a) banner(a->source == DK_SRC_CURSOR ? "Cursor finished" : "Claude finished", a->name, DK_GOOD_BG, LV_SYMBOL_OK, a->id);
         }
         break;
     default:

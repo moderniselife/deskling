@@ -1,5 +1,6 @@
 // Home: Deskling + the lead agent, agents list, clock, reminders, live feed, quick actions.
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ui_internal.h"
@@ -297,6 +298,17 @@ static lv_color_t feed_tint(dk_level_t l)
     }
 }
 
+static void feed_open(lv_event_t *e)
+{
+    const char *agent = lv_event_get_user_data(e);
+    if (agent && dk_model_find_agent(g_model, agent)) ui_open_chat(agent);
+}
+
+static void feed_free(lv_event_t *e)
+{
+    free(lv_event_get_user_data(e));
+}
+
 static void build_feed(void)
 {
     static uint32_t sig;
@@ -320,6 +332,14 @@ static void build_feed(void)
         const dk_feed_t *f = &g_model->feed[i];
         lv_obj_t *row = dk_box(h.feed_list);
         lv_obj_set_size(row, lv_pct(100), 66);
+        if (f->agent_id[0]) {
+            // Tap a notification about a session to open its chat.
+            char *a = strdup(f->agent_id);
+            lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_event_cb(row, feed_open, LV_EVENT_CLICKED, a);
+            lv_obj_add_event_cb(row, feed_free, LV_EVENT_DELETE, a);
+            dk_press_style(row);
+        }
         dk_row(row, 14);
         lv_obj_t *icon = dk_card(row, feed_tint(f->level), 16);
         lv_obj_set_size(icon, 44, 44);

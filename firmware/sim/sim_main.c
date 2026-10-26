@@ -919,7 +919,7 @@ int main(int argc, char **argv)
     run(500);
     expect_screen(SCR_SESSIONS, "sessions (swipe up and hold)");
 
-    // A new notification drops a banner in wherever you are; tapping it opens the list.
+    // A new notification drops a banner in wherever you are; tapping one about a session opens its chat.
     apply("notify");
     run(700);
     lv_obj_t *bl = find_label(lv_layer_top(), "Claude is waiting for you");
@@ -927,8 +927,14 @@ int main(int argc, char **argv)
     expect_sound("message");
     shot("19_notification_banner");
     if (bl) tap_obj(lv_obj_get_parent(lv_obj_get_parent(bl)), "notification banner");
+    run(800);
+    expect_screen(SCR_CHAT, "chat (tapped the banner about that session)");
+    check(strcmp(g_model->feed[0].agent_id, "s-docs") == 0 && find_label(lv_screen_active(), "docs-site") != NULL, "it's that session's chat");
+    ui_go(SCR_SESSIONS);
+    run(500);
+    ui_gestures_open_panel();
     run(600);
-    check(ui_gestures_panel_open(), "tapping the banner opens notifications");
+    check(ui_gestures_panel_open(), "notifications open");
     shot("20_notifications_list");
     // Dragging up on the list scrolls it instead of closing the sheet.
     drag(640, 450, 640, 250, 250, 0);
@@ -948,6 +954,10 @@ int main(int argc, char **argv)
             check(find_label(lv_layer_top(), "Tests passed") == NULL, "a swiped notification goes away");
         }
     }
+    // A notification that isn't about a session leaves the list open when tapped.
+    tap_obj(find_label(lv_layer_top(), "Daily digest is ready"), "a general notification");
+    run(400);
+    check(ui_gestures_panel_open(), "tapping a general notification keeps the list open");
     s_last_sent[0] = 0;
     tap_obj(find_label(lv_layer_top(), "Clear all"), "Clear all");
     run(900);
@@ -957,6 +967,17 @@ int main(int argc, char **argv)
     drag(640, 588, 640, 300, 250, 0); // swipe up from the grabber closes it
     run(500);
     check(!ui_gestures_panel_open(), "swipe up from the grabber closes notifications");
+    // Tapping a notification about a session in the list opens its chat.
+    apply("notify");
+    run(600);
+    ui_gestures_open_panel();
+    run(600);
+    tap_obj(find_label(lv_layer_top(), "Permission needed"), "a session's notification");
+    run(900);
+    check(!ui_gestures_panel_open(), "the list closes");
+    expect_screen(SCR_CHAT, "chat (tapped a notification in the list)");
+    ui_go(SCR_SESSIONS);
+    run(500);
     apply("busy");
     run(300);
     tap("web-app");
