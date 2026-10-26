@@ -8,84 +8,141 @@
 <meta property="og:title" content="Deskling">
 <meta property="og:description" content="A little desk buddy for your AI agents.">
 <meta property="og:image" content="https://deskling.mojolayers.com/media/case.webp">
-<meta name="theme-color" content="#FBF6EF">
+<meta name="theme-color" content="#FBF6EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#221D2B" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/icon.png">
+<script>(function(){var d=document.documentElement,m=null;try{m=localStorage.getItem("site-motion")}catch(e){}d.classList.toggle("calm",m?m==="off":matchMedia("(prefers-reduced-motion: reduce)").matches);d.classList.add("js")})()</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/brand.css">
 <style>
-:root {
-  --ground: #FBF6EF; --card: #FFFFFF; --ink: #2A2433; --ink-soft: #3A3346; --muted: #6A6274; --line: #E9E1D4;
-  --lilac: #CFC4F2; --lilac-soft: #E7E2FA; --purple: #5B4FA8; --peach: #F4B393;
-  --butter: #F5E1A4; --butter-bg: #FBF0D6; --good: #2F8A63; --good-bg: #D3EEDF; --alert: #C8553D; --alert-bg: #FDE8E1;
-  --stand: #E8DCC8; --code: #F3ECE1;
-  --radius-l: 36px; --radius-m: 24px;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --ground: #221D2B; --card: #332C3F; --ink: #FBF6EF; --ink-soft: #E9E3F2; --muted: #BDB4C9; --line: #43395214;
-    --purple: #B9AEF0; --stand: #3A3247; --code: #2B2536; --good-bg: #2B4A3C; --good: #7ED3A8;
-  }
-}
-:root[data-theme="dark"] {
-  --ground: #221D2B; --card: #332C3F; --ink: #FBF6EF; --ink-soft: #E9E3F2; --muted: #BDB4C9;
-  --purple: #B9AEF0; --stand: #3A3247; --code: #2B2536; --good-bg: #2B4A3C; --good: #7ED3A8;
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--ground); color: var(--ink); font: 600 18px/1.55 Nunito, ui-rounded, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+/* ================================================================ base */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 24px; }
+html:not(.calm) { scroll-behavior: smooth; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 600 var(--fs-body)/1.6 var(--font); -webkit-font-smoothing: antialiased; overflow-x: clip; }
+h1, h2, h3, p, ol, ul, figure, pre { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
 img { max-width: 100%; height: auto; display: block; }
-a { color: var(--purple); text-underline-offset: 3px; }
-:focus-visible { outline: 3px solid var(--purple); outline-offset: 3px; border-radius: 8px; }
-.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
-@media (max-width: 600px) { .wrap { padding: 0 16px; } body { font-size: 17px; } }
+a { color: var(--link); text-underline-offset: 3px; text-decoration-thickness: 2px; }
+button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 14px; }
+[hidden] { display: none !important; }
+.wrap { width: min(var(--wrap), calc(100% - 2 * var(--gutter))); margin-inline: auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: 16px; top: -80px; z-index: 100; padding: 12px 18px; border-radius: var(--r-pill); background: var(--bold); color: var(--on-bold); font-weight: 800; text-decoration: none; box-shadow: var(--shadow-btn); }
+.skip:focus { top: 14px; }
+@media (max-width: 600px) { :root { --gutter: 16px; --fs-body: 16.5px; } }
 
-/* ------------------------------------------------------------- header */
-header.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
-.wordmark { font-weight: 900; font-size: 26px; color: var(--ink); text-decoration: none; letter-spacing: -.5px; display: flex; align-items: center; gap: 10px; }
-.wordmark svg { width: 38px; height: 34px; }
-nav.links { display: flex; gap: 26px; align-items: center; }
-nav.links a { color: var(--ink); text-decoration: none; font-weight: 800; font-size: 16px; }
-nav.links a:hover { color: var(--purple); }
-@media (max-width: 700px) { nav.links a.hide-s { display: none; } nav.links { gap: 16px; } }
+/* reveal: visible by default; js adds .rise to things that weren't on screen at load */
+.rise { animation: pop var(--d-enter) var(--spring) backwards; animation-delay: calc(var(--d, 0) * 90ms); }
+@keyframes pop { from { opacity: 0; transform: translateY(28px) scale(0.96); } }
 
-/* --------------------------------------------------------------- buttons */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; padding: 0 28px; border-radius: 22px; border: 3px solid var(--ink); font: 900 18px/1 Nunito, sans-serif; text-decoration: none; cursor: pointer; transition: transform .12s ease-out; }
-.btn:active { transform: scale(.94); }
-.btn.solid { background: var(--ink); color: var(--ground); }
-.btn.ghost { background: transparent; color: var(--ink); }
+/* ================================================================ buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; padding: 0 28px; border: 0; border-radius: var(--r-pill);
+  font: 900 18px/1 var(--font); text-decoration: none; white-space: nowrap; cursor: pointer;
+  transition: transform var(--d-release) var(--spring), box-shadow 0.35s var(--ease), background-color 0.25s var(--ease); }
+.btn:hover { transform: translateY(-2px); }
+.btn:active, .btn.is-pressed { transform: translateY(2px) scale(0.97, 0.92); transition-duration: var(--d-press), var(--d-press), 0.25s; transition-timing-function: var(--ease); }
+.btn-bold { background-color: var(--bold); background-image: radial-gradient(120% 100% at 30% 0%, rgba(255, 255, 255, 0.16), transparent 55%); color: var(--on-bold); box-shadow: var(--shadow-btn); }
+.btn-bold:hover { background-color: var(--bold-2); }
+.btn-bold:active, .btn-bold.is-pressed { box-shadow: var(--shadow-btn-press); }
+.btn-soft { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-clay); }
+.btn-soft:hover { box-shadow: var(--shadow-lift); }
+.btn-soft:active, .btn-soft.is-pressed { box-shadow: var(--shadow-press); }
+.btn-sm { min-height: 46px; padding: 0 20px; font-size: 16px; }
+.calm .btn, .calm .btn:hover, .calm .btn:active { transform: none; }
 
-/* ------------------------------------------------------------------- hero */
-.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 48px; align-items: center; padding: 28px 0 72px; }
-.hero h1 { font-size: clamp(44px, 6.2vw, 84px); line-height: .98; letter-spacing: -2.5px; font-weight: 900; margin: 0 0 22px; }
-.hero p.lede { font-size: 21px; color: var(--ink-soft); max-width: 31em; margin: 0 0 30px; }
-.hero .ctas { display: flex; gap: 14px; flex-wrap: wrap; }
-@media (max-width: 920px) { .hero { grid-template-columns: 1fr; gap: 24px; padding-top: 8px; } .hero .stage { order: -1; } }
+/* switches: real role="switch" buttons */
+.toggle { display: inline-flex; align-items: center; gap: 12px; padding: 4px; border: 0; background: none; border-radius: 22px; font-weight: 800; }
+.toggle-track { position: relative; flex: none; width: 54px; height: 32px; border-radius: var(--r-pill); background: var(--sunk); box-shadow: var(--shadow-sunk); transition: background-color 0.35s var(--ease); }
+.toggle-knob { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; border-radius: 50%; background: #fff;
+  box-shadow: inset 0 2px 1px rgba(255, 255, 255, 0.6), inset 0 -4px 6px rgba(42, 36, 51, 0.12), 0 3px 6px -1px rgba(42, 36, 51, 0.3); transition: transform 0.55s var(--spring); }
+.toggle[aria-checked="true"] .toggle-track { background: var(--lilac); }
+.toggle[aria-checked="true"] .toggle-knob { transform: translateX(22px); }
+.toggle-knob.snap { animation: snap 0.42s var(--ease); }
+@keyframes snap { 35% { scale: 1.3 0.8; } 70% { scale: 0.92 1.08; } }
+.calm .toggle-knob { transition: none; }
 
-.stage { position: relative; }
-#device { width: 100%; height: auto; overflow: visible; }
-.try { margin-top: 10px; text-align: center; }
-.try p { margin: 0 0 12px; color: var(--muted); font-size: 16px; }
-.chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-.chip { font: 800 16px/1 Nunito, sans-serif; border: 2.5px solid var(--ink); background: var(--card); color: var(--ink); border-radius: 999px; padding: 11px 18px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; transition: transform .12s ease-out, background .2s; }
-.chip:active { transform: scale(.94); }
-.chip[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
-.chip .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.sound-toggle { margin-top: 12px; background: none; border: 0; color: var(--muted); font: 700 15px Nunito, sans-serif; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+/* ================================================================ header */
+.nav { position: relative; display: flex; align-items: center; gap: 16px; padding: 20px 0; }
+.wordmark { display: inline-flex; align-items: center; gap: 10px; font-weight: 900; font-size: 26px; letter-spacing: -0.5px; color: var(--ink); text-decoration: none; border-radius: var(--r-pill); }
+.wordmark svg { width: 40px; height: 36px; flex: none; }
+.nav-links { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.nav-links a { padding: 10px 16px; border-radius: var(--r-pill); color: var(--ink-2); font-weight: 800; font-size: 16px; text-decoration: none; transition: background-color 0.25s, box-shadow 0.35s var(--ease); }
+.nav-links a:hover { background: var(--surface); box-shadow: var(--shadow-clay); color: var(--ink); }
+.nav-links a:active { box-shadow: var(--shadow-press); }
+.nav .btn { margin-left: 8px; }
+.menu-btn { display: none; position: relative; width: 48px; height: 48px; flex: none; border: 0; border-radius: 50%; background: var(--surface); box-shadow: var(--shadow-clay); margin-left: auto; transition: transform var(--d-release) var(--spring), box-shadow 0.3s var(--ease); }
+.menu-btn:active { transform: scale(0.94, 0.9); box-shadow: var(--shadow-press); }
+.menu-btn i, .menu-btn i::before { position: absolute; left: 14px; right: 14px; height: 3px; border-radius: 3px; background: var(--ink); transition: transform 0.45s var(--spring), top 0.3s var(--ease); }
+.menu-btn i { top: 19px; }
+.menu-btn i::before { content: ""; left: 0; right: 0; top: 8px; }
+.menu-btn[aria-expanded="true"] { box-shadow: var(--shadow-press); }
+.menu-btn[aria-expanded="true"] i { top: 23px; transform: rotate(45deg); }
+.menu-btn[aria-expanded="true"] i::before { top: 0; transform: rotate(-90deg); }
+@media (max-width: 880px) {
+  .menu-btn { display: block; }
+  .nav > .btn { display: none; }
+  .nav-links { display: none; position: absolute; top: calc(100% - 4px); left: 0; right: 0; z-index: 50; flex-direction: column; align-items: stretch; gap: 4px; margin: 0; padding: 12px; border-radius: 32px; background: var(--surface); box-shadow: var(--shadow-lift); }
+  .nav.menu-open .nav-links { display: flex; }
+  .nav-links a { padding: 15px 20px; font-size: 19px; border-radius: 22px; }
+  .nav-links a.menu-cta { background: var(--bold); color: var(--on-bold); box-shadow: var(--shadow-btn); text-align: center; margin-top: 6px; }
+}
+@media (min-width: 881px) { .nav-links a.menu-cta { display: none; } }
 
-/* ------------------------------------------------------ device face states */
+/* ================================================================ hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 4vw, 64px); align-items: center; padding: clamp(12px, 3vw, 40px) 0 clamp(56px, 7vw, 96px); }
+.hero h1 { font-size: var(--fs-h1); line-height: 0.98; letter-spacing: -0.035em; font-weight: 900; text-wrap: balance; }
+.hero .lede { margin-top: 22px; font-size: var(--fs-lead); color: var(--ink-2); max-width: 30em; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.hero-note { margin-top: 18px; color: var(--muted); font-size: var(--fs-small); }
+.hero-note a { color: inherit; }
+
+.stage { min-width: 0; }
+#device { display: block; width: 100%; height: auto; overflow: visible; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+/* the "try it" tray under Deskling: a sunk well of clay buttons */
+.tray { margin: 6px auto 0; max-width: 620px; padding: 18px; border-radius: var(--r-lg); background: var(--sunk); box-shadow: var(--shadow-sunk); }
+.tray-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; padding: 0 4px 14px; }
+.tray-head p { color: var(--ink-2); font-weight: 800; font-size: 16px; }
+.tray-head .toggle { font-size: 15px; color: var(--muted); padding: 0; }
+.chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.chip { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 10px 14px; border: 0; border-radius: 20px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-clay);
+  font: 800 15px/1.2 var(--font); text-align: left;
+  transition: transform var(--d-release) var(--spring), box-shadow 0.3s var(--ease); }
+.chip:hover { box-shadow: var(--shadow-lift); }
+.chip:active { transform: translateY(1px) scale(0.97, 0.93); transition-duration: var(--d-press); box-shadow: var(--shadow-press); }
+.chip[aria-pressed="true"] { box-shadow: var(--shadow-press); background: var(--tint-lilac); }
+.chip .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; background: var(--c); box-shadow: inset 0 2px 1px rgba(255, 255, 255, 0.6), inset 0 -3px 4px rgba(42, 36, 51, 0.2); }
+.calm .chip, .calm .chip:active { transform: none; }
+
+@media (max-width: 980px) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .hero .hero-copy { max-width: 640px; }
+}
+@media (max-width: 560px) {
+  .chips { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .tray { padding: 12px; border-radius: 26px; }
+  .chip { min-height: 56px; padding: 10px 12px; font-size: 14.5px; }
+  .ctas .btn { flex: 1 1 auto; }
+}
+
+/* ---------------------------------------------------- device face states */
 #device .eye { transform-box: fill-box; transform-origin: center; animation: blink 4.6s infinite; }
 #device .eye:nth-of-type(2) { animation-delay: .04s; }
 @keyframes blink { 0%, 95%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
-#device .face { transition: transform .5s cubic-bezier(.34,1.56,.64,1); transform-box: view-box; transform-origin: 300px 240px; }
+#device .body { transform-box: view-box; transform-origin: 300px 440px; }
+#device.hello .body { animation: arrive 1s var(--spring) both; }
+@keyframes arrive { 0% { transform: translateY(-14px) scale(.97, 1.03); } 45% { transform: translateY(0) scale(1.03, .97); } 100% { transform: none; } }
+#device .face { transition: transform .5s var(--spring); transform-box: view-box; transform-origin: 300px 240px; }
 #device .screen-bg { transition: fill .45s; fill: #FBF6EF; }
 #device .mood { opacity: 0; transition: opacity .25s; }
 #device .calm-only { transition: opacity .25s; }
-#device [data-show] { opacity: 0; }
 #device .banner { transform: translateY(-120px); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
 #device.b-on .banner { transform: none; }
-#device .bubble { transform-box: fill-box; transform-origin: bottom left; transform: scale(0); transition: transform .35s cubic-bezier(.34,1.56,.64,1); }
-
+#device .bubble { transform-box: fill-box; transform-origin: bottom left; transform: scale(0); transition: transform .35s var(--spring); }
 #device.m-worried .screen-bg { fill: #FDE8E1; }
 #device.m-worried .face { animation: tremble .18s infinite; }
 #device.m-worried .s-worried { opacity: 1; }
@@ -115,319 +172,555 @@ nav.links a:hover { color: var(--purple); }
 @keyframes drip { 0% { transform: translateY(0); opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(26px); opacity: 0; } }
 @keyframes twinkle { from { transform: scale(.4); } to { transform: scale(1.1); } }
 @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-@media (prefers-reduced-motion: reduce) {
-  #device *, #device .face { animation: none !important; transition: none !important; }
-  html { scroll-behavior: auto; }
+/* Motion off: Deskling still changes face, colour and banner, it just doesn't move. */
+.calm #device *, .calm #device .face, .calm #device .body { animation: none !important; transition: none !important; }
+.calm #device .zz { opacity: 1; }
+.calm #device .zz:nth-of-type(2) { transform: translate(14px, -22px); } .calm #device .zz:nth-of-type(3) { transform: translate(26px, -44px); }
+
+/* ================================================================ sections */
+.block { padding: clamp(52px, 6.5vw, 92px) 0; }
+.sec-head { max-width: 760px; margin-bottom: clamp(28px, 4vw, 48px); }
+.sec-head h2 { font-size: var(--fs-h2); line-height: 1.03; letter-spacing: -0.03em; font-weight: 900; text-wrap: balance; }
+.sec-head p { margin-top: 16px; font-size: var(--fs-lead); color: var(--ink-2); max-width: 36em; }
+
+/* ---------------------------------------------------------- screens viewer */
+.viewer { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: clamp(20px, 3vw, 40px); align-items: start; }
+.shot { padding: 12px; border-radius: var(--r-xl); background: var(--surface); box-shadow: var(--shadow-lift); }
+.shot .frame { padding: 10px; border-radius: 32px; background: #2A2433; }
+.shot img { width: 100%; aspect-ratio: 16 / 10; border-radius: 22px; background: #FBF6EF; }
+.panel figcaption { padding: 16px 12px 6px; }
+.panel figcaption b { display: block; font-size: var(--fs-h3); font-weight: 900; line-height: 1.25; }
+.panel figcaption span { display: block; color: var(--muted); margin-top: 4px; }
+.js .panel:not(.on) { display: none; }
+.js .panel.on img { animation: swap 0.5s var(--ease); }
+@keyframes swap { from { opacity: 0.2; transform: scale(0.985); } }
+.calm .panel.on img { animation: none; }
+.tabs { display: none; }
+.js .tabs { display: grid; gap: 8px; }
+.js .shot .panel figcaption { display: none; }
+.tab { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 14px; align-items: start; width: 100%; padding: 16px 18px; border: 0; border-radius: var(--r-md); background: transparent; text-align: left;
+  transition: background-color 0.25s var(--ease), box-shadow 0.35s var(--ease); }
+.tab .dot { width: 14px; height: 14px; margin-top: 6px; border-radius: 50%; background: var(--c); box-shadow: inset 0 2px 1px rgba(255, 255, 255, 0.6), inset 0 -3px 4px rgba(42, 36, 51, 0.2); }
+.tab b { font-size: 19px; font-weight: 900; line-height: 1.3; }
+.tab span:last-child { grid-column: 2; color: var(--muted); font-size: var(--fs-small); line-height: 1.45; display: none; margin-top: 4px; }
+.tab:hover { background: var(--surface); box-shadow: var(--shadow-clay); }
+.tab[aria-selected="true"] { background: var(--surface); box-shadow: var(--shadow-clay); }
+.tab[aria-selected="true"] span:last-child { display: block; }
+.no-js-list { display: grid; gap: 24px; }
+.js .no-js-list { display: block; }
+@media (max-width: 900px) {
+  .viewer { grid-template-columns: minmax(0, 1fr); }
+  .js .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tab { padding: 14px; column-gap: 10px; }
+  .tab b { font-size: 16.5px; }
+  .js .tab span:last-child { display: none; }
+  .js .shot .panel figcaption { display: block; }
 }
+@media (max-width: 600px) { .shot { padding: 8px; border-radius: 30px; } .shot .frame { padding: 7px; border-radius: 24px; } .shot img { border-radius: 17px; } }
 
-/* ---------------------------------------------------------------- sections */
-section.block { padding: 84px 0; }
-section.block h2 { font-size: clamp(34px, 4.4vw, 54px); line-height: 1.04; letter-spacing: -1.4px; font-weight: 900; margin: 0 0 14px; max-width: 18em; }
-section.block p.intro { color: var(--ink-soft); font-size: 20px; max-width: 36em; margin: 0 0 36px; }
+/* --------------------------------------------------------------- works with */
+.works { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.works .card.wide { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); grid-template-areas: "badge code" "h code" "p code" "aside code"; column-gap: 40px; row-gap: 14px; align-content: start; }
+.card.wide .badge { grid-area: badge; } .card.wide h3 { grid-area: h; } .card.wide > p:not(.aside) { grid-area: p; } .card.wide .aside { grid-area: aside; } .card.wide .code { grid-area: code; align-self: center; }
+.card { position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 30px; border-radius: var(--r-xl); background: var(--surface); box-shadow: var(--shadow-clay); }
+.card::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: radial-gradient(90% 55% at 12% 0%, var(--hi), transparent 62%); pointer-events: none; }
+.card.t-lilac { background: var(--tint-lilac); }
+.card.t-peach { background: var(--tint-peach); }
+.card.t-butter { background: var(--tint-butter); }
+.card h3 { font-size: var(--fs-h3); font-weight: 900; line-height: 1.2; }
+.card p { color: var(--ink-2); }
+.badge { display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-clay); }
+.badge svg { width: 28px; height: 28px; color: var(--ink); }
+.code { display: grid; justify-items: end; gap: 8px; margin-top: auto; }
+.code pre { justify-self: stretch; padding: 16px 18px; border-radius: 20px; background: var(--ground); box-shadow: var(--shadow-sunk); overflow-x: auto; font: 500 14px/1.6 var(--mono); color: var(--ink); scrollbar-width: thin; }
+.copy { min-height: 36px; padding: 0 14px; border: 0; border-radius: var(--r-pill); background: var(--surface); box-shadow: var(--shadow-clay); font: 800 14px/1 var(--font); }
+.copy:active { box-shadow: var(--shadow-press); }
+.card p.aside { color: var(--muted); font-size: var(--fs-small); }
+p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px; border-radius: 8px; }
+@media (max-width: 960px) { .works { grid-template-columns: minmax(0, 1fr); } .works .card.wide { display: flex; } .card.wide .code { order: 9; margin-top: 4px; } }
+@media (max-width: 600px) { .card { padding: 22px; border-radius: 32px; } .code pre { font-size: 13px; } }
 
-/* The screens strip: real firmware screenshots in the device's ink frame */
-.strip { display: grid; grid-auto-flow: column; grid-auto-columns: min(560px, 82vw); gap: 26px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 24px 22px; margin: 0 -24px; scrollbar-width: thin; }
-.strip figure { margin: 0; scroll-snap-align: start; }
-.strip .frame { background: #2A2433; padding: 10px; border-radius: 26px; }
-.strip .frame img { border-radius: 16px; aspect-ratio: 16 / 10; width: 100%; height: auto; }
-.strip figcaption { margin-top: 14px; }
-.strip figcaption b { display: block; font-size: 21px; font-weight: 900; }
-.strip figcaption span { color: var(--muted); font-size: 16px; }
-.strip-nav { display: flex; gap: 10px; justify-content: flex-end; margin: -70px 0 30px; }
-.strip-nav button { width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--ink); background: var(--card); color: var(--ink); font: 900 22px Nunito, sans-serif; cursor: pointer; }
-@media (max-width: 700px) { .strip-nav { display: none; } }
-@media (max-width: 600px) { .strip { margin: 0 -16px; padding: 4px 16px 22px; } }
-
-/* Works with */
-.works { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, .8fr) minmax(0, 1.1fr); gap: 0; border-top: 3px solid var(--ink); }
-.works > div { padding: 26px 26px 6px 0; }
-.works > div + div { padding-left: 26px; border-left: 3px solid var(--ink); }
-.works h3 { font-size: 24px; font-weight: 900; margin: 0 0 8px; }
-.works p { margin: 0 0 14px; color: var(--ink-soft); }
-code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 14px; }
-pre { background: var(--code); border-radius: 16px; padding: 14px 16px; overflow-x: auto; margin: 0; line-height: 1.5; font-weight: 500; }
-p code { background: var(--code); padding: 2px 7px; border-radius: 7px; }
-@media (max-width: 860px) { .works { grid-template-columns: minmax(0, 1fr); } .works > div + div { border-left: 0; padding-left: 0; border-top: 3px solid var(--line); } }
-
-/* Flow diagram */
-.flow { display: grid; grid-template-columns: 1fr auto 1.1fr auto 1fr; align-items: center; gap: 14px; margin-top: 10px; }
-.node { border-radius: var(--radius-l); padding: 26px; min-height: 190px; }
-.node b { display: block; font-size: 23px; font-weight: 900; margin-bottom: 6px; }
-.node p { margin: 0; font-size: 16px; color: var(--ink-soft); }
-.node.agents { background: var(--card); }
+/* -------------------------------------------------------------- how it works */
+.flow { display: grid; grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr) 56px minmax(0, 1fr); align-items: stretch; }
+.node { display: flex; flex-direction: column; gap: 8px; padding: 28px; border-radius: var(--r-xl); box-shadow: var(--shadow-clay); background: var(--surface); }
+.node b { font-size: var(--fs-h3); font-weight: 900; line-height: 1.2; }
+.node p { color: var(--ink-2); }
 .node.relay { background: var(--lilac); color: #2A2433; }
 .node.relay p { color: #3A3346; }
-.node.screen { background: #2A2433; color: #FBF6EF; }
-.node.screen p { color: #BDB4C9; }
-.arrow { width: 48px; height: 24px; color: var(--ink); }
-@media (max-width: 900px) { .flow { grid-template-columns: 1fr; } .arrow { transform: rotate(90deg); justify-self: center; } .node { min-height: 0; } }
-.note { margin-top: 26px; color: var(--muted); font-size: 16px; max-width: 46em; }
+.node.screen { background: #2A2433; color: #FBF6EF; box-shadow: inset 0 2px 1px rgba(255, 255, 255, 0.12), inset 0 -10px 18px -8px rgba(0, 0, 0, 0.4), 0 18px 34px -18px rgba(42, 36, 51, 0.5); }
+.node.screen p { color: #CFC6DA; }
+.node .mini { display: flex; gap: 6px; margin-bottom: 6px; }
+.node .mini i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+.link { display: grid; place-items: center; color: var(--muted); }
+.link svg { width: 40px; height: 24px; }
+.note { margin-top: 28px; color: var(--muted); max-width: 46em; }
+@media (max-width: 900px) {
+  .flow { grid-template-columns: minmax(0, 1fr); }
+  .link { height: 44px; }
+  .link svg { transform: rotate(90deg); }
+}
 
-/* Steps */
-.make { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 56px; align-items: start; }
-ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; }
-ol.steps > li { counter-increment: s; position: relative; padding: 0 0 30px 70px; }
-ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: -4px; width: 48px; height: 48px; border-radius: 50%; background: var(--lilac); color: #2A2433; font-weight: 900; font-size: 22px; display: flex; align-items: center; justify-content: center; }
-ol.steps > li:not(:last-child)::after { content: ""; position: absolute; left: 22px; top: 50px; bottom: 6px; width: 4px; border-radius: 2px; background: var(--lilac-soft); }
-ol.steps h3 { margin: 0 0 6px; font-size: 23px; font-weight: 900; }
-ol.steps p { margin: 0 0 12px; color: var(--ink-soft); }
-.case-pics { position: sticky; top: 24px; }
-.case-pics img { border-radius: var(--radius-l); background: #F6F3EC; }
-.case-pics .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-.case-pics .pair img { border-radius: var(--radius-m); }
-.case-pics p { font-size: 15px; color: var(--muted); margin: 12px 4px 0; }
-@media (max-width: 900px) { .make { grid-template-columns: 1fr; } .case-pics { position: static; } }
+/* --------------------------------------------------------------- make one */
+.make { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: clamp(28px, 5vw, 64px); align-items: start; }
+.steps { counter-reset: s; display: grid; gap: 6px; }
+.steps > li { counter-increment: s; position: relative; padding: 4px 0 26px 72px; }
+.steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 50px; height: 50px; border-radius: 50%; background: var(--lilac); color: #2A2433;
+  display: grid; place-items: center; font-weight: 900; font-size: 21px;
+  box-shadow: inset 0 2px 1px rgba(255, 255, 255, 0.75), inset 0 -5px 8px rgba(42, 36, 51, 0.16), 0 8px 16px -8px var(--glow); }
+.steps > li:not(:last-child)::after { content: ""; position: absolute; left: 23px; top: 58px; bottom: 4px; width: 4px; border-radius: 2px; background: var(--tint-lilac); }
+.steps h3 { font-size: var(--fs-h3); font-weight: 900; line-height: 1.25; margin: 8px 0 6px; }
+.steps p { color: var(--ink-2); }
+.steps p + p { margin-top: 14px; }
+.case { position: sticky; top: 24px; padding: 12px; border-radius: var(--r-xl); background: var(--surface); box-shadow: var(--shadow-lift); }
+.case img { border-radius: 34px; background: #F6F3EC; }
+.case .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.case .pair img { border-radius: 24px; }
+.case p { padding: 14px 12px 6px; color: var(--muted); font-size: var(--fs-small); }
+@media (max-width: 900px) { .make { grid-template-columns: minmax(0, 1fr); } .case { position: static; } }
+@media (max-width: 600px) { .steps > li { padding-left: 62px; } .steps > li::before { width: 44px; height: 44px; font-size: 19px; } .steps > li:not(:last-child)::after { left: 20px; top: 52px; } }
 
-/* FAQ */
-.faq { max-width: 820px; }
-.faq details { border-bottom: 3px solid var(--line); padding: 18px 0; }
-.faq summary { font-weight: 900; font-size: 21px; cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 20px; }
+/* --------------------------------------------------------------------- faq */
+.faq { display: grid; gap: 12px; max-width: 860px; }
+.faq details { border-radius: 28px; background: var(--surface); box-shadow: var(--shadow-clay); }
+.faq summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 22px 20px 26px; font-weight: 900; font-size: 19px; line-height: 1.3; cursor: pointer; list-style: none; border-radius: 28px; }
 .faq summary::-webkit-details-marker { display: none; }
-.faq summary::after { content: "+"; font-size: 28px; line-height: 1; transition: transform .2s; }
-.faq details[open] summary::after { transform: rotate(45deg); }
-.faq details p { margin: 12px 0 0; color: var(--ink-soft); max-width: 40em; }
+.faq summary::after { content: ""; flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--sunk) no-repeat center / 16px 16px; box-shadow: var(--shadow-sunk);
+  background-image: linear-gradient(var(--ink), var(--ink)), linear-gradient(var(--ink), var(--ink)); background-size: 14px 3px, 3px 14px; transition: transform 0.45s var(--spring), background-color 0.3s; }
+.faq details[open] summary::after { transform: rotate(45deg); background-color: var(--lilac); background-image: linear-gradient(#2A2433, #2A2433), linear-gradient(#2A2433, #2A2433); }
+.faq details p { padding: 0 26px 22px; color: var(--ink-2); max-width: 42em; }
+.calm .faq summary::after { transition: none; }
 
-footer { padding: 60px 0 50px; color: var(--muted); font-size: 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; align-items: center; }
-footer .wordmark { font-size: 22px; }
+/* ------------------------------------------------------------ closing slab */
+.slab { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 32px; padding: clamp(32px, 6vw, 72px); border-radius: var(--r-slab);
+  background: var(--bold); color: var(--on-bold); box-shadow: var(--shadow-btn); }
+.slab h2 { font-size: var(--fs-h2); line-height: 1.03; letter-spacing: -0.03em; font-weight: 900; text-wrap: balance; }
+.slab p { margin-top: 14px; font-size: var(--fs-lead); opacity: 0.86; max-width: 30em; }
+.slab .ctas { margin-top: 28px; }
+.slab .btn-soft { background: var(--on-bold); color: var(--bold); }
+.slab .btn-line { background: transparent; color: var(--on-bold); box-shadow: inset 0 0 0 2.5px currentColor; }
+.slab-face { width: clamp(150px, 18vw, 230px); height: auto; }
+@media (max-width: 760px) { .slab { grid-template-columns: minmax(0, 1fr); border-radius: 40px; } .slab-face { order: -1; width: 120px; } }
+
+/* ------------------------------------------------------------------ footer */
+.foot { padding: 48px 0 56px; }
+.foot-in { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; }
+.foot-in p { color: var(--muted); font-size: var(--fs-small); max-width: 46ch; }
+.foot-in p a { color: inherit; }
+.foot-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; font-weight: 800; font-size: var(--fs-small); }
+.foot-links a { color: var(--ink-2); text-decoration: none; border-radius: 8px; }
+.foot-links a:hover { color: var(--ink); text-decoration: underline; }
+.foot .toggle { color: var(--ink-2); font-size: var(--fs-small); }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
+
 <div class="wrap">
-  <header class="top">
+  <header class="nav">
     <a class="wordmark" href="/" aria-label="Deskling home">
-      <svg viewBox="0 0 38 34" aria-hidden="true"><circle cx="9" cy="7" r="6" fill="#CFC4F2"/><circle cx="29" cy="7" r="6" fill="#CFC4F2"/><rect x="1" y="5" width="36" height="28" rx="10" fill="#CFC4F2"/><rect x="6" y="10" width="26" height="18" rx="4" fill="#2A2433"/><circle cx="15" cy="18" r="2.2" fill="#FBF6EF"/><circle cx="23" cy="18" r="2.2" fill="#FBF6EF"/></svg>
+      <svg viewBox="0 0 40 36" aria-hidden="true"><circle cx="10" cy="8" r="6.5" fill="#CFC4F2"/><circle cx="30" cy="8" r="6.5" fill="#CFC4F2"/><rect x="1" y="5.5" width="38" height="29" rx="11" fill="#CFC4F2"/><rect x="6.5" y="11" width="27" height="18" rx="5" fill="#2A2433"/><circle cx="16" cy="19.5" r="2.3" fill="#FBF6EF"/><circle cx="24" cy="19.5" r="2.3" fill="#FBF6EF"/><circle cx="4.5" cy="30" r="2" fill="#F4B393"/><circle cx="35.5" cy="30" r="2" fill="#F4B393"/></svg>
       deskling
     </a>
-    <nav class="links" aria-label="Main">
-      <a class="hide-s" href="#screens">What it does</a>
-      <a class="hide-s" href="#how">How it works</a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-menu"><span class="sr-only">Menu</span><i aria-hidden="true"></i></button>
+    <nav class="nav-links" id="site-menu" aria-label="Main">
+      <a href="#screens">What it does</a>
+      <a href="#how">How it works</a>
       <a href="#make">Make one</a>
       <a href="https://github.com/moderniselife/deskling">GitHub</a>
+      <a class="menu-cta" href="/install">Install Deskling</a>
     </nav>
+    <a class="btn btn-bold btn-sm" href="/install">Install</a>
   </header>
+</div>
 
-  <main>
-  <section class="hero">
-    <div>
-      <h1>A little desk buddy for your AI agents.</h1>
-      <p class="lede">Deskling is a 10-inch touchscreen that keeps an eye on every Claude Code and Cursor session you have running. It tells you when one needs you, lets you approve it from across the room, and dozes off when you do.</p>
+<main id="main">
+  <section class="wrap hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title">A little desk buddy for your AI agents.</h1>
+      <p class="lede">Deskling is a 10-inch touchscreen that keeps an eye on every Claude Code and Cursor session you have running. It tells you when one needs you, lets you answer from across the room, and dozes off when you do.</p>
       <div class="ctas">
-        <a class="btn solid" href="#make">Make one</a>
-        <a class="btn ghost" href="https://github.com/moderniselife/deskling">See the code</a>
+        <a class="btn btn-bold" href="#make">Make one</a>
+        <a class="btn btn-soft" href="https://github.com/moderniselife/deskling">See the code</a>
       </div>
+      <p class="hero-note">Open source, runs on a screen you can buy today, and talks only to a relay on your own Cloudflare account.</p>
     </div>
 
     <div class="stage">
-      <svg id="device" class="m-calm" viewBox="-10 -10 620 470" role="img" aria-labelledby="devtitle">
-        <title id="devtitle">Deskling, a lilac screen with ears, showing a smiling face</title>
-        <!-- shadow + stand -->
-        <ellipse cx="300" cy="446" rx="250" ry="12" fill="#2A2433" opacity=".08"/>
-        <rect x="70" y="398" width="460" height="44" rx="22" fill="var(--stand)"/>
-        <rect x="120" y="428" width="84" height="20" rx="10" fill="var(--stand)"/>
-        <rect x="396" y="428" width="84" height="20" rx="10" fill="var(--stand)"/>
-        <!-- body: ears + bezel -->
-        <g fill="#CFC4F2">
-          <circle cx="132" cy="56" r="46"/>
-          <circle cx="468" cy="56" r="46"/>
-          <rect x="0" y="40" width="600" height="380" rx="54"/>
-        </g>
-        <circle cx="132" cy="56" r="22" fill="#BDB1EA"/>
-        <circle cx="468" cy="56" r="22" fill="#BDB1EA"/>
-        <circle cx="42" cy="388" r="15" fill="#F4B393"/>
-        <circle cx="558" cy="388" r="15" fill="#F4B393"/>
-        <!-- screen -->
-        <rect x="42" y="76" width="516" height="298" rx="22" fill="#2A2433"/>
-        <clipPath id="scr"><rect x="54" y="88" width="492" height="274" rx="13"/></clipPath>
-        <g clip-path="url(#scr)">
-          <rect class="screen-bg" x="54" y="88" width="492" height="274"/>
-          <!-- night stars -->
-          <g class="mood s-sleepy" fill="#CFC4F2"><circle cx="110" cy="130" r="2.5"/><circle cx="470" cy="118" r="3"/><circle cx="500" cy="300" r="2"/><circle cx="96" cy="310" r="2"/><circle cx="420" cy="160" r="1.8"/></g>
-
-          <g class="face">
-            <!-- calm / open eyes -->
-            <g class="eyes-open" id="eyes">
-              <ellipse class="eye" cx="252" cy="214" rx="17" ry="24" fill="#2A2433"/>
-              <ellipse class="eye" cx="348" cy="214" rx="17" ry="24" fill="#2A2433"/>
-              <circle cx="258" cy="204" r="5.5" fill="#fff"/>
-              <circle cx="354" cy="204" r="5.5" fill="#fff"/>
-            </g>
-            <!-- cheer: happy arcs -->
-            <g class="mood s-cheer" fill="none" stroke="#2A2433" stroke-width="8" stroke-linecap="round">
-              <path d="M234 220 Q252 196 270 220"/><path d="M330 220 Q348 196 366 220"/>
-            </g>
-            <!-- sleepy: closed lines -->
-            <g class="mood s-sleepy" fill="none" stroke="#CFC4F2" stroke-width="7" stroke-linecap="round">
-              <path d="M236 216 Q252 228 268 216"/><path d="M332 216 Q348 228 364 216"/>
-            </g>
-            <!-- worried brows -->
-            <g class="mood s-worried" fill="#2A2433">
-              <rect x="226" y="170" width="38" height="8" rx="4" transform="rotate(-14 245 174)"/>
-              <rect x="336" y="170" width="38" height="8" rx="4" transform="rotate(14 355 174)"/>
-            </g>
-            <!-- cheeks -->
-            <ellipse cx="214" cy="256" rx="22" ry="13" fill="#F4B393"/>
-            <ellipse cx="386" cy="256" rx="22" ry="13" fill="#F4B393"/>
-            <!-- mouths -->
-            <path class="calm-only" d="M285 250 Q300 268 315 250 Z" fill="#2A2433" stroke="#2A2433" stroke-width="4" stroke-linejoin="round"/>
-            <path class="mood s-cheer" d="M280 246 Q300 284 320 246 Z" fill="#2A2433" stroke="#2A2433" stroke-width="4" stroke-linejoin="round"/>
-            <ellipse class="mood s-worried" cx="300" cy="262" rx="10" ry="13" fill="#2A2433"/>
-            <ellipse class="mood s-sleepy" cx="300" cy="262" rx="7" ry="6" fill="#CFC4F2"/>
-            <!-- extras -->
-            <g class="mood s-worried"><path class="sweat" d="M392 176 q10 14 0 22 q-10 -8 0 -22z" fill="#9FD3F0"/></g>
-            <g class="mood s-curious"><g class="q"><circle cx="420" cy="196" r="24" fill="#fff"/><text x="420" y="207" text-anchor="middle" font-family="Nunito" font-weight="900" font-size="32" fill="#2A2433">?</text></g></g>
-            <g class="mood s-cheer" fill="#F5C24A">
-              <path class="spark" d="M180 160 l5 12 12 5 -12 5 -5 12 -5 -12 -12 -5 12 -5z"/>
-              <path class="spark" d="M420 150 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4z"/>
-              <path class="spark" d="M440 270 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z"/>
-            </g>
-            <g class="mood s-sleepy" font-family="Nunito" font-weight="900" fill="#CFC4F2">
-              <text class="zz" x="380" y="190" font-size="22">z</text>
-              <text class="zz" x="380" y="190" font-size="28">z</text>
-              <text class="zz" x="380" y="190" font-size="20">z</text>
-            </g>
+      <svg id="device" class="m-calm" viewBox="-10 -14 620 474" role="img" aria-labelledby="devtitle">
+        <title id="devtitle">Deskling, a lilac screen with round ears and peach cheeks, showing a smiling face</title>
+        <defs>
+          <clipPath id="bezelShape"><circle cx="132" cy="56" r="46"/><circle cx="468" cy="56" r="46"/><rect x="0" y="40" width="600" height="380" rx="54"/></clipPath>
+          <radialGradient id="bezelHi" cx=".22" cy="0" r=".9"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></radialGradient>
+          <linearGradient id="bezelShade" x1="0" y1="0" x2="0" y2="1"><stop offset=".6" stop-color="#2A2433" stop-opacity="0"/><stop offset="1" stop-color="#2A2433" stop-opacity=".16"/></linearGradient>
+          <linearGradient id="standShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+        </defs>
+        <ellipse cx="300" cy="448" rx="262" ry="12" fill="#2A2433" opacity=".09"/>
+        <g class="body">
+          <!-- stand with toes -->
+          <rect x="70" y="398" width="460" height="44" rx="22" fill="#E8DCC8"/>
+          <rect x="70" y="398" width="460" height="44" rx="22" fill="url(#standShade)"/>
+          <rect x="120" y="428" width="84" height="20" rx="10" fill="#E8DCC8"/>
+          <rect x="396" y="428" width="84" height="20" rx="10" fill="#E8DCC8"/>
+          <!-- bezel and ears, lit like clay -->
+          <g clip-path="url(#bezelShape)">
+            <rect x="-10" y="0" width="620" height="430" fill="#CFC4F2"/>
+            <rect x="-10" y="0" width="620" height="430" fill="url(#bezelHi)"/>
+            <rect x="-10" y="0" width="620" height="430" fill="url(#bezelShade)"/>
           </g>
-
-          <!-- chat bubble -->
-          <g class="bubble">
-            <rect x="72" y="104" width="196" height="64" rx="20" fill="#fff"/>
-            <path d="M92 166 l-6 16 22 -14z" fill="#fff"/>
-            <text x="90" y="131" font-family="Nunito" font-weight="900" font-size="15" fill="#2A2433">Tests passed!</text>
-            <text x="90" y="152" font-family="Nunito" font-weight="700" font-size="14" fill="#6A6274">Want me to open a PR?</text>
-          </g>
-
-          <!-- banner (text set from JS) -->
-          <g class="banner">
-            <rect id="bannerBg" x="150" y="98" width="300" height="56" rx="20" fill="#F5E1A4"/>
-            <text id="bannerTitle" x="300" y="122" text-anchor="middle" font-family="Nunito" font-weight="900" font-size="17" fill="#2A2433">Reminder</text>
-            <text id="bannerBody" x="300" y="143" text-anchor="middle" font-family="Nunito" font-weight="700" font-size="14" fill="#3A3346">Stand up and stretch</text>
+          <circle cx="132" cy="56" r="22" fill="#BDB1EA"/>
+          <circle cx="468" cy="56" r="22" fill="#BDB1EA"/>
+          <circle cx="42" cy="392" r="15" fill="#F4B393"/>
+          <circle cx="558" cy="392" r="15" fill="#F4B393"/>
+          <!-- screen -->
+          <rect x="42" y="76" width="516" height="298" rx="22" fill="#2A2433"/>
+          <clipPath id="scr"><rect x="54" y="88" width="492" height="274" rx="13"/></clipPath>
+          <g clip-path="url(#scr)">
+            <rect class="screen-bg" x="54" y="88" width="492" height="274"/>
+            <g class="mood s-sleepy" fill="#CFC4F2"><circle cx="110" cy="130" r="2.5"/><circle cx="470" cy="118" r="3"/><circle cx="500" cy="300" r="2"/><circle cx="96" cy="310" r="2"/><circle cx="420" cy="160" r="1.8"/></g>
+            <g class="face">
+              <g class="eyes-open" id="eyes">
+                <ellipse class="eye" cx="252" cy="214" rx="17" ry="24" fill="#2A2433"/>
+                <ellipse class="eye" cx="348" cy="214" rx="17" ry="24" fill="#2A2433"/>
+                <circle cx="258" cy="204" r="5.5" fill="#fff"/>
+                <circle cx="354" cy="204" r="5.5" fill="#fff"/>
+              </g>
+              <g class="mood s-cheer" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round">
+                <path d="M234 220 Q252 196 270 220"/><path d="M330 220 Q348 196 366 220"/>
+              </g>
+              <g class="mood s-sleepy" fill="none" stroke="#CFC4F2" stroke-width="7" stroke-linecap="round">
+                <path d="M236 216 Q252 228 268 216"/><path d="M332 216 Q348 228 364 216"/>
+              </g>
+              <g class="mood s-worried" fill="#2A2433">
+                <rect x="226" y="170" width="38" height="8" rx="4" transform="rotate(-14 245 174)"/>
+                <rect x="336" y="170" width="38" height="8" rx="4" transform="rotate(14 355 174)"/>
+              </g>
+              <ellipse cx="214" cy="256" rx="22" ry="13" fill="#F4B393"/>
+              <ellipse cx="386" cy="256" rx="22" ry="13" fill="#F4B393"/>
+              <path class="calm-only" d="M285 250 Q300 268 315 250 Z" fill="#2A2433" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/>
+              <path class="mood s-cheer" d="M280 246 Q300 284 320 246 Z" fill="#2A2433" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/>
+              <ellipse class="mood s-worried" cx="300" cy="262" rx="10" ry="13" fill="#2A2433"/>
+              <ellipse class="mood s-sleepy" cx="300" cy="262" rx="7" ry="6" fill="#CFC4F2"/>
+              <g class="mood s-worried"><path class="sweat" d="M392 176 q10 14 0 22 q-10 -8 0 -22z" fill="#9FD3F0"/></g>
+              <g class="mood s-curious"><g class="q"><circle cx="420" cy="196" r="24" fill="#fff"/><text x="420" y="207" text-anchor="middle" font-family="Nunito" font-weight="900" font-size="32" fill="#2A2433">?</text></g></g>
+              <g class="mood s-cheer" fill="#F5C24A">
+                <path class="spark" d="M180 160 l5 12 12 5 -12 5 -5 12 -5 -12 -12 -5 12 -5z"/>
+                <path class="spark" d="M420 150 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4z"/>
+                <path class="spark" d="M440 270 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z"/>
+              </g>
+              <g class="mood s-sleepy" font-family="Nunito" font-weight="900" fill="#CFC4F2">
+                <text class="zz" x="380" y="190" font-size="22">z</text>
+                <text class="zz" x="380" y="190" font-size="28">z</text>
+                <text class="zz" x="380" y="190" font-size="20">z</text>
+              </g>
+            </g>
+            <g class="bubble">
+              <rect x="72" y="104" width="196" height="64" rx="20" fill="#fff"/>
+              <path d="M92 166 l-6 16 22 -14z" fill="#fff"/>
+              <text x="90" y="131" font-family="Nunito" font-weight="900" font-size="15" fill="#2A2433">Tests passed!</text>
+              <text x="90" y="152" font-family="Nunito" font-weight="700" font-size="14" fill="#6A6274">Want me to open a PR?</text>
+            </g>
+            <g class="banner">
+              <rect id="bannerBg" x="140" y="98" width="320" height="56" rx="20" fill="#F5E1A4"/>
+              <text id="bannerTitle" x="300" y="122" text-anchor="middle" font-family="Nunito" font-weight="900" font-size="17" fill="#2A2433">Reminder</text>
+              <text id="bannerBody" x="300" y="143" text-anchor="middle" font-family="Nunito" font-weight="700" font-size="14" fill="#3A3346">Stand up and stretch</text>
+            </g>
           </g>
         </g>
       </svg>
 
-      <div class="try">
-        <p>Tap to see (and hear) what Deskling does when…</p>
-        <div class="chips" role="group" aria-label="Try Deskling">
-          <button class="chip" data-ev="permission"><span class="dot" style="background:#C8553D"></span>Claude needs permission</button>
-          <button class="chip" data-ev="question"><span class="dot" style="background:#E0B43A"></span>It has a question</button>
-          <button class="chip" data-ev="done"><span class="dot" style="background:#2F8A63"></span>A task finishes</button>
-          <button class="chip" data-ev="reminder"><span class="dot" style="background:#F5C24A"></span>A reminder is due</button>
-          <button class="chip" data-ev="message"><span class="dot" style="background:#5B4FA8"></span>Claude replies</button>
-          <button class="chip" data-ev="sleepy"><span class="dot" style="background:var(--ink)"></span>It's late</button>
+      <div class="tray">
+        <div class="tray-head">
+          <p id="try-label">Tap a moment to see what Deskling does</p>
+          <button type="button" role="switch" aria-checked="true" class="toggle" id="soundToggle"><span class="toggle-track" aria-hidden="true"><span class="toggle-knob"></span></span>Sound</button>
         </div>
-        <button class="sound-toggle" id="soundToggle" aria-pressed="true">Sound is on</button>
+        <div class="chips" role="group" aria-labelledby="try-label">
+          <button type="button" class="chip" data-ev="permission" aria-pressed="false"><span class="dot" style="--c:#C8553D"></span>Claude needs permission</button>
+          <button type="button" class="chip" data-ev="question" aria-pressed="false"><span class="dot" style="--c:#E0B43A"></span>It has a question</button>
+          <button type="button" class="chip" data-ev="done" aria-pressed="false"><span class="dot" style="--c:#2F8A63"></span>A task finishes</button>
+          <button type="button" class="chip" data-ev="reminder" aria-pressed="false"><span class="dot" style="--c:#F5C24A"></span>A reminder is due</button>
+          <button type="button" class="chip" data-ev="message" aria-pressed="false"><span class="dot" style="--c:#8E80D6"></span>Claude replies</button>
+          <button type="button" class="chip" data-ev="sleepy" aria-pressed="false"><span class="dot" style="--c:#2A2433"></span>It's late</button>
+        </div>
       </div>
     </div>
   </section>
 
-  <section class="block" id="screens">
-    <h2>Handle your agents from across the room.</h2>
-    <p class="intro">No more checking terminals to see who's stuck. Every session on every machine shows up here, and the ones that need you come first.</p>
-    <div class="strip-nav"><button type="button" data-dir="-1" aria-label="Previous screen">&lsaquo;</button><button type="button" data-dir="1" aria-label="Next screen">&rsaquo;</button></div>
-    <div class="strip" id="strip" tabindex="0" aria-label="Deskling screens">
-      <figure><div class="frame"><img src="/media/permission.webp" width="1280" height="800" alt="Full-screen permission request showing the exact command, with Allow once and Deny buttons" loading="lazy"></div>
-        <figcaption><b>Allow or deny a command</b><span>See exactly what Claude wants to run, on which machine, and tap once.</span></figcaption></figure>
-      <figure><div class="frame"><img src="/media/question.webp" width="1280" height="800" alt="A question from Claude with big answer buttons" loading="lazy"></div>
-        <figcaption><b>Answer Claude's questions</b><span>Its multiple-choice questions become big buttons. Your answer goes straight back.</span></figcaption></figure>
-      <figure><div class="frame"><img src="/media/chat.webp" width="1280" height="800" alt="Chat with a Claude Code session, with quick replies" loading="lazy"></div>
-        <figcaption><b>Message any session</b><span>Quick replies like "Run the tests", or type on the on-screen keyboard.</span></figcaption></figure>
-      <figure><div class="frame"><img src="/media/home.webp" width="1280" height="800" alt="Home screen with Deskling, the clock, reminders and a live feed" loading="lazy"></div>
-        <figcaption><b>Tick off reminders</b><span>"Remind me at 3 to reply to that email." Claude sets it, Deskling nudges you.</span></figcaption></figure>
-      <figure><div class="frame"><img src="/media/sessions.webp" width="1280" height="800" alt="Grid of sessions across machines with their status" loading="lazy"></div>
-        <figcaption><b>See every session</b><span>Your Mac, your PC, Cursor and cloud jobs, sorted by who needs you.</span></figcaption></figure>
-      <figure><div class="frame"><img src="/media/night.webp" width="1280" height="800" alt="Dark night clock with a sleeping Deskling" loading="lazy"></div>
-        <figcaption><b>Doze off at night</b><span>After 10pm it dims to a quiet clock and only wakes for what matters.</span></figcaption></figure>
+  <section class="block" id="screens" aria-labelledby="screens-title">
+    <div class="wrap">
+      <div class="sec-head" data-enter>
+        <h2 id="screens-title">Handle your agents from across the room.</h2>
+        <p>No more checking terminals to see who's stuck. Every session on every machine shows up here, and the ones that need you come first.</p>
+      </div>
+      <div class="viewer" data-enter>
+        <div class="shot">
+          <div class="no-js-list">
+            <figure class="panel on" id="p-permission" role="tabpanel" aria-labelledby="t-permission">
+              <div class="frame"><img src="/media/permission.webp" width="1280" height="800" alt="Full-screen permission request showing the exact command, with Allow once and Deny buttons"></div>
+              <figcaption><b>Allow or deny a command</b><span>See exactly what Claude wants to run, on which machine, and tap once.</span></figcaption>
+            </figure>
+            <figure class="panel" id="p-question" role="tabpanel" aria-labelledby="t-question">
+              <div class="frame"><img src="/media/question.webp" width="1280" height="800" alt="A question from Claude with big answer buttons" loading="lazy"></div>
+              <figcaption><b>Answer Claude's questions</b><span>Its multiple-choice questions become big buttons, and your answer goes straight back.</span></figcaption>
+            </figure>
+            <figure class="panel" id="p-chat" role="tabpanel" aria-labelledby="t-chat">
+              <div class="frame"><img src="/media/chat.webp" width="1280" height="800" alt="Chat with a Claude Code session, with quick replies" loading="lazy"></div>
+              <figcaption><b>Message any session</b><span>Quick replies like "Run the tests", or type on the on-screen keyboard.</span></figcaption>
+            </figure>
+            <figure class="panel" id="p-home" role="tabpanel" aria-labelledby="t-home">
+              <div class="frame"><img src="/media/home.webp" width="1280" height="800" alt="Home screen with Deskling, the clock, reminders and a live feed" loading="lazy"></div>
+              <figcaption><b>Tick off reminders</b><span>"Remind me at 3 to reply to that email." Claude sets it, and Deskling nudges you.</span></figcaption>
+            </figure>
+            <figure class="panel" id="p-sessions" role="tabpanel" aria-labelledby="t-sessions">
+              <div class="frame"><img src="/media/sessions.webp" width="1280" height="800" alt="Grid of sessions across machines with their status" loading="lazy"></div>
+              <figcaption><b>See every session</b><span>Your Mac, your PC, Cursor and cloud sessions, sorted by who needs you.</span></figcaption>
+            </figure>
+            <figure class="panel" id="p-night" role="tabpanel" aria-labelledby="t-night">
+              <div class="frame"><img src="/media/night.webp" width="1280" height="800" alt="Dark night clock with a sleeping Deskling" loading="lazy"></div>
+              <figcaption><b>Doze off at night</b><span>After 10pm it dims to a quiet clock and only wakes for what matters.</span></figcaption>
+            </figure>
+          </div>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Deskling screens" aria-orientation="vertical">
+          <button type="button" class="tab" role="tab" id="t-permission" aria-controls="p-permission" aria-selected="true"><span class="dot" style="--c:#C8553D"></span><b>Allow or deny a command</b><span>See exactly what Claude wants to run, on which machine, and tap once.</span></button>
+          <button type="button" class="tab" role="tab" id="t-question" aria-controls="p-question" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#E0B43A"></span><b>Answer its questions</b><span>Its multiple-choice questions become big buttons, and your answer goes straight back.</span></button>
+          <button type="button" class="tab" role="tab" id="t-chat" aria-controls="p-chat" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#8E80D6"></span><b>Message any session</b><span>Quick replies like "Run the tests", or type on the on-screen keyboard.</span></button>
+          <button type="button" class="tab" role="tab" id="t-home" aria-controls="p-home" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#F5C24A"></span><b>Tick off reminders</b><span>"Remind me at 3 to reply to that email." Claude sets it, and Deskling nudges you.</span></button>
+          <button type="button" class="tab" role="tab" id="t-sessions" aria-controls="p-sessions" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#2F8A63"></span><b>See every session</b><span>Your Mac, your PC, Cursor and cloud sessions, sorted by who needs you.</span></button>
+          <button type="button" class="tab" role="tab" id="t-night" aria-controls="p-night" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#2A2433"></span><b>Doze off at night</b><span>After 10pm it dims to a quiet clock and only wakes for what matters.</span></button>
+        </div>
+      </div>
     </div>
   </section>
 
-  <section class="block" id="works">
-    <h2>Works with what you already use.</h2>
-    <p class="intro">Install one plugin and your sessions start showing up. Anything else can talk to it with a single command.</p>
-    <div class="works">
-      <div>
-        <h3>Claude Code</h3>
-        <p>In the terminal or the desktop app, on Mac and Windows. Permissions, questions, messages, reminders.</p>
-        <pre>/plugin marketplace add moderniselife/deskling
+  <section class="block" id="works" aria-labelledby="works-title">
+    <div class="wrap">
+      <div class="sec-head" data-enter>
+        <h2 id="works-title">Works with what you already use.</h2>
+        <p>Install one plugin and your sessions start showing up. Anything else can talk to it with a single command.</p>
+      </div>
+      <div class="works">
+        <article class="card t-lilac wide" data-enter>
+          <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><rect x="3" y="5" width="22" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M8 11l4 3-4 3M14 18h6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <h3>Claude Code</h3>
+          <p>In the terminal, the desktop app and cloud sessions, on Mac and Windows. Permissions, questions, messages and reminders.</p>
+          <p class="aside">Using Cowork or cloud sessions? Your relay's setup page has a personal plugin to upload in the Claude app, already filled in with your relay's details.</p>
+          <div class="code"><pre><code>/plugin marketplace add moderniselife/deskling
 /plugin install deskling@deskling
-/plugin configure deskling@deskling</pre>
-      </div>
-      <div>
-        <h3>Cursor</h3>
-        <p>Hooks show what each chat is doing and let you approve shell commands from the screen.</p>
-      </div>
-      <div>
-        <h3>Everything else</h3>
-        <p>Cron jobs, CI, cloud agents: if it can send a web request, it can ping Deskling.</p>
-        <pre>deskling notify "Deploy finished"
-deskling remind "Stretch" --in 20m</pre>
+/plugin configure deskling@deskling</code></pre><button type="button" class="copy">Copy</button></div>
+        </article>
+        <article class="card t-peach" data-enter style="--d:1">
+          <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M14 3l10 5.5v11L14 25 4 19.5v-11z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M14 14l10-5.5M14 14v11M14 14L4 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></span>
+          <h3>Cursor</h3>
+          <p>Hooks show what each chat is doing and let you approve shell commands from the screen.</p>
+        </article>
+        <article class="card t-butter" data-enter style="--d:2">
+          <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M7 21a5 5 0 01-.6-10A7 7 0 0120 9.5 5.5 5.5 0 0121 21z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/></svg></span>
+          <h3>Everything else</h3>
+          <p>Cron jobs, CI and other agents: if it can send a web request, it can ping Deskling.</p>
+          <div class="code"><pre><code>deskling notify "Deploy finished"
+deskling remind "Stretch" --in 20m</code></pre><button type="button" class="copy">Copy</button></div>
+        </article>
       </div>
     </div>
   </section>
 
-  <section class="block" id="how">
-    <h2>How it fits together.</h2>
-    <p class="intro">Your agents and the screen meet at a tiny relay that you run yourself, for free, on Cloudflare. You don't need to open ports or own a server.</p>
-    <div class="flow">
-      <div class="node agents"><b>Your agents</b><p>Claude Code and Cursor on any computer, plus scheduled jobs in the cloud.</p></div>
-      <svg class="arrow" viewBox="0 0 48 24" aria-hidden="true"><path d="M2 12h40M32 3l10 9-10 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div class="node relay"><b>Your relay</b><p>A Cloudflare Worker on your own account. One click to deploy, and it should fit in the free plan.</p></div>
-      <svg class="arrow" viewBox="0 0 48 24" aria-hidden="true"><path d="M2 12h40M32 3l10 9-10 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div class="node screen"><b>Deskling</b><p>Stays connected over Wi-Fi, so taps go back in under a second. It updates itself.</p></div>
+  <section class="block" id="how" aria-labelledby="how-title">
+    <div class="wrap">
+      <div class="sec-head" data-enter>
+        <h2 id="how-title">How it fits together.</h2>
+        <p>Your agents and the screen meet at a tiny relay that you run yourself, for free, on Cloudflare. You don't need to open ports or own a server.</p>
+      </div>
+      <div class="flow" data-enter>
+        <div class="node"><span class="mini" aria-hidden="true"><i style="--c:#CFC4F2"></i><i style="--c:#F4B393"></i><i style="--c:#F5E1A4"></i></span><b>Your agents</b><p>Claude Code and Cursor on any computer, plus cloud sessions and scheduled jobs.</p></div>
+        <div class="link" aria-hidden="true"><svg viewBox="0 0 40 24"><path d="M3 12h30M25 4l8 8-8 8" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="node relay"><b>Your relay</b><p>A Cloudflare Worker on your own account. One click to deploy, and it should fit in the free plan.</p></div>
+        <div class="link" aria-hidden="true"><svg viewBox="0 0 40 24"><path d="M3 12h30M25 4l8 8-8 8" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="node screen"><b>Deskling</b><p>Stays connected over Wi-Fi, so taps go back in under a second. It updates itself.</p></div>
+      </div>
+      <p class="note">The relay holds session names, short task summaries, reminders and the last few chat lines. Your code never passes through it, and nothing goes to a server run by anyone else.</p>
     </div>
-    <p class="note">The relay holds session names, short task summaries, reminders and the last few chat lines. Your code never passes through it, and nothing goes to a server run by anyone else.</p>
   </section>
 
-  <section class="block" id="make">
-    <h2>Make your own.</h2>
-    <p class="intro">An evening of setup and a weekend of printing. You plug in a cable once; everything after that happens over Wi-Fi.</p>
-    <div class="make">
-      <ol class="steps">
-        <li><h3>Get the screen</h3><p>Deskling runs on the Guition JC8012P4A1C: a 10.1-inch touchscreen board with an ESP32-P4, Wi-Fi 6 and a little speaker. Search for "JC8012P4A1C".</p></li>
-        <li><h3>Deploy your relay</h3><p>Pick a password, click deploy, and you get your own relay URL with a setup page and a browser preview of Deskling.</p>
-          <p><a href="https://deploy.workers.cloudflare.com/?url=https://github.com/moderniselife/deskling/tree/main/relay"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" width="180" height="32" style="display:inline"></a></p></li>
-        <li><h3>Install the firmware</h3><p>Plug the board into your computer and install from the browser, in Chrome or Edge. It picks the right build for your board.</p><p><a class="btn solid" href="/install">Install Deskling</a></p></li>
-        <li><h3>Say hi</h3><p>Pick your Wi-Fi on the screen, then open the address it shows and paste your relay details.</p></li>
-        <li><h3>Connect your agents</h3><p>Add the Claude Code plugin on each computer, and the Cursor hooks if you use Cursor.</p></li>
-        <li><h3>Print its body</h3><p>Lilac bezel with ears, peach cheeks, and a cream stand with toes. It prints without supports, and splits in two for 256&nbsp;mm beds.</p></li>
-      </ol>
-      <div class="case-pics">
-        <img src="/media/case.webp" width="1280" height="960" alt="The printed Deskling case: a lilac screen surround with two round ears and peach cheeks, on a cream stand" loading="lazy">
-        <div class="pair">
-          <img src="/media/case-back.webp" width="1280" height="960" alt="Back of the case with heart-shaped vents" loading="lazy">
-          <img src="/media/case-exploded.webp" width="1280" height="960" alt="Exploded view of the case parts" loading="lazy">
+  <section class="block" id="make" aria-labelledby="make-title">
+    <div class="wrap">
+      <div class="sec-head" data-enter>
+        <h2 id="make-title">Make your own.</h2>
+        <p>An evening of setup and a weekend of printing. You plug in a cable once; everything after that happens over Wi-Fi.</p>
+      </div>
+      <div class="make">
+        <ol class="steps">
+          <li><h3>Get the screen</h3><p>Deskling runs on the Guition JC8012P4A1C: a 10.1-inch touchscreen board with an ESP32-P4 and Wi-Fi 6. Search for "JC8012P4A1C".</p></li>
+          <li><h3>Deploy your relay</h3><p>Pick a password, click deploy, and you get your own relay address with a setup page and a browser preview of Deskling.</p>
+            <p><a href="https://deploy.workers.cloudflare.com/?url=https://github.com/moderniselife/deskling/tree/main/relay"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" width="180" height="32" style="display:inline"></a></p></li>
+          <li><h3>Install the firmware</h3><p>Plug the board into your computer and install from the browser, in Chrome or Edge. It picks the right build for your board.</p>
+            <p><a class="btn btn-bold btn-sm" href="/install">Install Deskling</a></p></li>
+          <li><h3>Say hi</h3><p>Pick your Wi-Fi on the screen, then open the address it shows and paste your relay details.</p></li>
+          <li><h3>Connect your agents</h3><p>Add the Claude Code plugin on each computer, and the Cursor hooks if you use Cursor.</p></li>
+          <li><h3>Print its body</h3><p>Lilac bezel with ears, peach cheeks and a cream stand with toes. It prints without supports, and splits in two for 256&nbsp;mm beds.</p></li>
+        </ol>
+        <figure class="case" data-enter>
+          <img src="/media/case.webp" width="1280" height="960" alt="The printed Deskling case: a lilac screen surround with two round ears and peach cheeks, on a cream stand" loading="lazy">
+          <div class="pair">
+            <img src="/media/case-back.webp" width="1280" height="960" alt="Back of the case with heart-shaped vents" loading="lazy">
+            <img src="/media/case-exploded.webp" width="1280" height="960" alt="Exploded view of the case parts" loading="lazy">
+          </div>
+          <figcaption><p>The full walkthrough, with a test at each step, is in the <a href="https://github.com/moderniselife/deskling/blob/main/docs/setup.md">setup guide</a>.</p></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="faq" aria-labelledby="faq-title">
+    <div class="wrap">
+      <div class="sec-head" data-enter>
+        <h2 id="faq-title">Questions.</h2>
+      </div>
+      <div class="faq">
+        <details><summary>Do I have to host anything?</summary><p>Just the relay, and the Deploy button does it for you. It's a small Cloudflare Worker on your own account, and for one person it should fit in the free plan. Firmware updates come from this site.</p></details>
+        <details><summary>What if I'm not at my desk?</summary><p>Nothing changes. If you don't answer on the screen within 30 seconds, Claude asks on your computer as usual. You can change the wait in the plugin settings.</p></details>
+        <details><summary>Can it be quiet?</summary><p>Yes. There's a volume slider, and "Quiet at night" mutes everything between 10pm and 7am except the reminders you asked for.</p></details>
+        <details><summary>Does it work with more than one computer?</summary><p>That's the point. Install the plugin on each one, and every session shows up with the name of the machine it's on.</p></details>
+        <details><summary>I don't have a 3D printer.</summary><p>It works fine without the case, propped up on a little stand. Any print service can make the parts from the STL files in the repo.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" aria-labelledby="close-title">
+    <div class="slab" data-enter>
+      <div>
+        <h2 id="close-title">Give your agents a face.</h2>
+        <p>Everything you need is free and open: the firmware, the relay, the plugin and the case.</p>
+        <div class="ctas">
+          <a class="btn btn-soft" href="/install">Install Deskling</a>
+          <a class="btn btn-line" href="https://github.com/moderniselife/deskling/blob/main/docs/setup.md">Read the setup guide</a>
         </div>
-        <p>The full walkthrough, with a test at each step, is in the <a href="https://github.com/moderniselife/deskling/blob/main/docs/setup.md">setup guide</a>.</p>
       </div>
+      <svg class="slab-face" viewBox="0 0 160 140" aria-hidden="true"><g fill="#CFC4F2"><circle cx="40" cy="22" r="18"/><circle cx="120" cy="22" r="18"/><rect x="4" y="16" width="152" height="116" rx="28"/></g><circle cx="40" cy="22" r="8" fill="#BDB1EA"/><circle cx="120" cy="22" r="8" fill="#BDB1EA"/><rect x="18" y="30" width="124" height="88" rx="12" fill="#FBF6EF"/><ellipse cx="64" cy="70" rx="6.5" ry="9" fill="#2A2433"/><ellipse cx="96" cy="70" rx="6.5" ry="9" fill="#2A2433"/><circle cx="66" cy="66" r="2" fill="#fff"/><circle cx="98" cy="66" r="2" fill="#fff"/><ellipse cx="50" cy="86" rx="8" ry="5" fill="#F4B393"/><ellipse cx="110" cy="86" rx="8" ry="5" fill="#F4B393"/><path d="M75 84 Q80 91 85 84 Z" fill="#2A2433" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
     </div>
   </section>
+</main>
 
-  <section class="block" id="faq">
-    <h2>Questions.</h2>
-    <div class="faq">
-      <details><summary>Do I have to host anything?</summary><p>Just the relay, and the Deploy button does it for you. It's a small Cloudflare Worker on your own account, and for one person it should fit in the free plan. Firmware updates come from this site.</p></details>
-      <details><summary>What if I'm not at my desk?</summary><p>Nothing changes. If you don't answer on the screen within 30 seconds, Claude asks on your computer as usual. You can change the wait in the plugin settings.</p></details>
-      <details><summary>Can it be quiet?</summary><p>Yes. There's a volume slider, and "Quiet at night" mutes everything between 10pm and 7am except the reminders you asked for.</p></details>
-      <details><summary>Does it work with more than one computer?</summary><p>That's the point. Install the plugin on each one, and every session shows up with the name of the machine it's on.</p></details>
-      <details><summary>I don't have a 3D printer.</summary><p>It works fine without the case, propped up on a little stand. Any print service can make the parts from the STL files in the repo.</p></details>
+<footer class="foot">
+  <div class="wrap foot-in">
+    <a class="wordmark" href="/" aria-label="Deskling home"><svg viewBox="0 0 40 36" aria-hidden="true"><circle cx="10" cy="8" r="6.5" fill="#CFC4F2"/><circle cx="30" cy="8" r="6.5" fill="#CFC4F2"/><rect x="1" y="5.5" width="38" height="29" rx="11" fill="#CFC4F2"/><rect x="6.5" y="11" width="27" height="18" rx="5" fill="#2A2433"/><circle cx="16" cy="19.5" r="2.3" fill="#FBF6EF"/><circle cx="24" cy="19.5" r="2.3" fill="#FBF6EF"/></svg>deskling</a>
+    <p>Everything is on <a href="https://github.com/moderniselife/deskling">GitHub</a>. Made at <a href="https://mojolayers.com">Mojo Layers</a>.</p>
+    <div class="foot-links">
+      <a href="/install">Install</a>
+      <a href="https://github.com/moderniselife/deskling/blob/main/docs/setup.md">Setup guide</a>
+      <button type="button" role="switch" aria-checked="true" class="toggle" data-motion-toggle><span class="toggle-track" aria-hidden="true"><span class="toggle-knob"></span></span>Motion</button>
     </div>
-  </section>
-  </main>
-
-  <footer>
-    <a class="wordmark" href="/">deskling</a>
-    <span>Everything is on <a href="https://github.com/moderniselife/deskling">GitHub</a>. Made at <a href="https://mojolayers.com">Mojo Layers</a>.</span>
-  </footer>
-</div>
+  </div>
+</footer>
 
 <script>
 (() => {
-  const dev = document.getElementById('device');
-  const chips = [...document.querySelectorAll('.chip')];
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let soundOn = true;
-  try { soundOn = localStorage.getItem('deskling-sound') !== 'off'; } catch {}
+  const html = document.documentElement;
+  const calm = () => html.classList.contains('calm');
+  const $$ = (s, r) => [...(r || document).querySelectorAll(s)];
+  const snap = (b) => { const k = b.querySelector('.toggle-knob'); if (!k || calm()) return; k.classList.remove('snap'); void k.offsetWidth; k.classList.add('snap'); };
+  $$('.toggle-knob').forEach((k) => k.addEventListener('animationend', () => k.classList.remove('snap')));
+
+  // ---------------------------------------------------------- motion switch
+  $$('[data-motion-toggle]').forEach((b) => {
+    const paint = () => b.setAttribute('aria-checked', String(!calm()));
+    paint();
+    new MutationObserver(paint).observe(html, { attributes: true, attributeFilter: ['class'] });
+    b.addEventListener('click', () => {
+      const next = !calm();
+      html.classList.toggle('calm', next);
+      try { localStorage.setItem('site-motion', next ? 'off' : 'on'); } catch (e) {}
+      snap(b);
+    });
+  });
+
+  // -------------------------------------------------- keyboard press squish
+  let pressed = null;
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const b = e.target.closest && e.target.closest('.btn'); if (!b) return;
+    pressed = b; b.classList.add('is-pressed');
+    if (e.key === 'Enter') setTimeout(() => b.classList.remove('is-pressed'), 160);
+  });
+  document.addEventListener('keyup', () => { if (pressed) { pressed.classList.remove('is-pressed'); pressed = null; } });
+
+  // ---------------------------------------------------------------- reveals
+  let first = true;
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((es) => {
+      es.forEach((e) => {
+        if (!e.isIntersecting) return;
+        e.target.classList.add('entered');
+        if (!first && !calm()) e.target.classList.add('rise');
+        io.unobserve(e.target);
+      });
+      first = false;
+    });
+    $$('[data-enter]').forEach((el) => io.observe(el));
+  } else $$('[data-enter]').forEach((el) => el.classList.add('entered'));
+
+  // ------------------------------------------------------------- phone menu
+  const mbtn = document.querySelector('.menu-btn');
+  const panel = document.getElementById(mbtn.getAttribute('aria-controls'));
+  const head = mbtn.closest('.nav');
+  const isOpen = () => mbtn.getAttribute('aria-expanded') === 'true';
+  const setMenu = (open, refocus) => {
+    mbtn.setAttribute('aria-expanded', String(open));
+    head.classList.toggle('menu-open', open);
+    if (open) { const a = panel.querySelector('a[href]'); if (a) a.focus(); } else if (refocus) mbtn.focus();
+  };
+  mbtn.addEventListener('click', () => setMenu(!isOpen()));
+  document.addEventListener('keydown', (e) => {
+    if (!isOpen()) return;
+    if (e.key === 'Escape') { e.preventDefault(); setMenu(false, true); return; }
+    if (e.key !== 'Tab') return;
+    const f = [mbtn, ...$$('a[href]', panel).filter((el) => el.offsetWidth || el.offsetHeight)];
+    const i = f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(i < 0 ? 0 : i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+  });
+  document.addEventListener('pointerdown', (e) => { if (isOpen() && !head.contains(e.target)) setMenu(false); });
+  panel.addEventListener('click', (e) => { if (isOpen() && e.target.closest('a[href]')) setMenu(false); });
+  addEventListener('resize', () => { if (isOpen() && !mbtn.offsetWidth) setMenu(false); });
+
+  // ------------------------------------------------------------ screen tabs
+  const tabs = $$('[role="tab"]');
+  const pick = (t, focus) => {
+    tabs.forEach((x) => {
+      const on = x === t;
+      x.setAttribute('aria-selected', String(on));
+      x.tabIndex = on ? 0 : -1;
+      document.getElementById(x.getAttribute('aria-controls')).classList.toggle('on', on);
+    });
+    if (focus) t.focus();
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => pick(t));
+    t.addEventListener('keydown', (e) => {
+      const d = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+      if (e.key === 'Home') { e.preventDefault(); pick(tabs[0], true); }
+      else if (e.key === 'End') { e.preventDefault(); pick(tabs[tabs.length - 1], true); }
+      else if (d) { e.preventDefault(); pick(tabs[(i + d + tabs.length) % tabs.length], true); }
+    });
+  });
+  // Load the other screens once the viewer is close, so switching is instant.
+  $$('.panel img[loading="lazy"]').forEach((img) => img.removeAttribute('loading'));
+
+  // -------------------------------------------------------------- copy code
+  $$('.copy').forEach((b) => b.addEventListener('click', async () => {
+    const text = b.closest('.code').querySelector('pre').textContent;
+    try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; }
+    catch (e) { b.textContent = 'Select and copy'; }
+    setTimeout(() => { b.textContent = 'Copy'; }, 1800);
+  }));
 
   // ------------------------------------------------------------------ sound
   // The same sounds the firmware plays, rendered from its synthesizer (firmware/tools/render_sounds.c).
+  const dev = document.getElementById('device');
+  const chips = $$('.chip');
+  const soundBtn = document.getElementById('soundToggle');
+  let soundOn = true;
+  try { soundOn = localStorage.getItem('deskling-sound') !== 'off'; } catch (e) {}
+  soundBtn.setAttribute('aria-checked', String(soundOn));
   let ctx = null;
   const buffers = {};
   async function play(name) {
@@ -440,34 +733,36 @@ deskling remind "Stretch" --in 20m</pre>
       src.buffer = await buffers[name];
       src.connect(ctx.destination);
       src.start();
-    } catch { /* no audio: Deskling just acts it out */ }
+    } catch (e) { /* no audio: Deskling just acts it out */ }
   }
-  const toggle = document.getElementById('soundToggle');
-  const showToggle = () => { toggle.textContent = soundOn ? 'Sound is on' : 'Sound is off'; toggle.setAttribute('aria-pressed', String(soundOn)); };
-  showToggle();
-  toggle.onclick = () => { soundOn = !soundOn; showToggle(); try { localStorage.setItem('deskling-sound', soundOn ? 'on' : 'off'); } catch {} if (soundOn) play('tap'); };
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    soundBtn.setAttribute('aria-checked', String(soundOn));
+    snap(soundBtn);
+    try { localStorage.setItem('deskling-sound', soundOn ? 'on' : 'off'); } catch (e) {}
+    if (soundOn) play('tap');
+  });
 
-  // ------------------------------------------------------------ moods
+  // ------------------------------------------------------------------ moods
   const banners = {
-    permission: ['#FFFFFF', 'Claude wants to run a command', 'npm run deploy · MacBook'],
-    question: ['#FFFFFF', 'Which database should I use?', 'SQLite · Postgres · Redis'],
+    permission: ['#FFFFFF', 'Claude wants to run a command', 'npm run deploy on MacBook'],
+    question: ['#FFFFFF', 'Which database should I use?', 'SQLite, Postgres or Redis'],
     done: ['#D3EEDF', 'web-app finished', 'All 214 tests passed'],
     reminder: ['#F5E1A4', 'Reminder', 'Stand up and stretch'],
   };
   const moods = { permission: 'worried', question: 'curious', done: 'cheer', reminder: 'cheer', message: 'message', sleepy: 'sleepy', hello: 'cheer' };
   let timer = null;
-  function setMood(m, banner) {
+  const setMood = (m, banner) => {
     dev.setAttribute('class', 'm-' + m + (banner ? ' b-on' : ''));
     if (banner) {
       document.getElementById('bannerBg').setAttribute('fill', banner[0]);
       document.getElementById('bannerTitle').textContent = banner[1];
       document.getElementById('bannerBody').textContent = banner[2];
     }
-  }
+  };
   function trigger(ev) {
     clearTimeout(timer);
     chips.forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.ev === ev)));
-    // restart CSS animations
     dev.setAttribute('class', 'm-calm');
     void dev.getBoundingClientRect();
     setMood(moods[ev] || 'calm', banners[ev]);
@@ -476,25 +771,24 @@ deskling remind "Stretch" --in 20m</pre>
   }
   chips.forEach((c) => c.addEventListener('click', () => trigger(c.dataset.ev)));
   dev.addEventListener('click', () => trigger('hello'));
-  dev.style.cursor = 'pointer';
+
+  // The one entrance: Deskling lands on its stand and says hi (quietly: browsers block sound before a tap).
+  if (!calm()) {
+    dev.setAttribute('class', 'm-calm hello');
+    setTimeout(() => { if (dev.getAttribute('class') === 'm-calm hello') setMood('cheer'); }, 450);
+    setTimeout(() => { if (dev.getAttribute('class') === 'm-cheer') setMood('calm'); }, 2200);
+  }
 
   // Eyes follow the pointer a little.
   const eyes = document.getElementById('eyes');
-  if (!reduce) {
-    addEventListener('pointermove', (e) => {
-      const r = dev.getBoundingClientRect();
-      const cx = r.left + r.width / 2, cy = r.top + r.height * .48;
-      const dx = Math.max(-1, Math.min(1, (e.clientX - cx) / (r.width * .8)));
-      const dy = Math.max(-1, Math.min(1, (e.clientY - cy) / (r.height * .8)));
-      eyes.setAttribute('transform', `translate(${(dx * 9).toFixed(1)} ${(dy * 6).toFixed(1)})`);
-    }, { passive: true });
-  }
-
-  // Screens strip arrows
-  const strip = document.getElementById('strip');
-  document.querySelectorAll('.strip-nav button').forEach((b) => b.addEventListener('click', () => {
-    strip.scrollBy({ left: Number(b.dataset.dir) * (strip.querySelector('figure').offsetWidth + 26), behavior: reduce ? 'auto' : 'smooth' });
-  }));
+  addEventListener('pointermove', (e) => {
+    if (calm()) { eyes.removeAttribute('transform'); return; }
+    const r = dev.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height * .48;
+    const dx = Math.max(-1, Math.min(1, (e.clientX - cx) / (r.width * .8)));
+    const dy = Math.max(-1, Math.min(1, (e.clientY - cy) / (r.height * .8)));
+    eyes.setAttribute('transform', `translate(${(dx * 9).toFixed(1)} ${(dy * 6).toFixed(1)})`);
+  }, { passive: true });
 })();
 </script>
 </body>
