@@ -836,13 +836,13 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       // One entry per name: the screen picks projects by name (older runners could list a folder twice).
       .filter((p, i, all) => all.findIndex((q) => q.name === p.name) === i);
     const engines: Engine[] = (Array.isArray(b.engines) ? (b.engines as Record<string, unknown>[]) : [])
-      .slice(0, 3)
+      .slice(0, 8)
       .map((e) => ({
         id: oneLine(e.id, 16),
         name: oneLine(e.name, 24),
         models: (Array.isArray(e.models) ? (e.models as Record<string, unknown>[]) : []).slice(0, 8).map((m) => ({ id: oneLine(m.id, 60), name: oneLine(m.name, 30) })).filter((m) => m.id),
       }))
-      .filter((e) => e.id === "claude" || e.id === "opencode");
+      .filter((e) => /^[a-z0-9-]{1,16}$/.test(e.id) && e.name);
     const known = this.state.machines?.[id];
     const changed =
       !known ||
@@ -927,9 +927,9 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const eng = m.engines?.find((e) => e.id === engine) ?? m.engines?.[0] ?? { id: "claude", name: "Claude Code", models: [] };
     const mdl = eng.models.find((x) => x.id === model)?.id ?? eng.models[0]?.id ?? "";
     (this.state.jobs ??= []).push({ id: shortId(), machine: m.id, project: path, prompt, ts: now, engine: eng.id, ...(mdl ? { model: mdl } : {}) });
-    // A Claude Code session listens for you once it appears; OpenCode sessions always take messages.
+    // A Claude Code session listens for you once it appears; the others always take messages.
     if (eng.id === "claude") (this.state.expectNew ??= []).push({ host: m.id.toLowerCase(), until: now + 5 * 60 * 1000 });
-    this.addFeed("good", eng.id === "opencode" ? `Starting OpenCode on ${m.id}` : `Starting a session on ${m.id}`, oneLine(prompt, 100), null);
+    this.addFeed("good", eng.id === "claude" ? `Starting a session on ${m.id}` : `Starting ${eng.name} on ${m.id}`, oneLine(prompt, 100), null);
     await this.commit({ kind: "feed" });
     this.runnerPolls.get(m.id)?.();
   }

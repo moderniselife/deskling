@@ -800,6 +800,17 @@ int main(int argc, char **argv)
     expect_sent("\"engine\":\"opencode\",\"model\":\"ollama/qwen3-coder:30b\"");
     expect_screen(SCR_SESSIONS, "sessions (after starting OpenCode)");
 
+    // Another agent the runner speaks ACP with: no models to pick.
+    tap("+  New session");
+    run(900);
+    tap("Gemini CLI");
+    run(300);
+    expect_text("WHAT SHOULD GEMINI CLI DO?");
+    lv_textarea_set_text(find_class(lv_screen_active(), &lv_textarea_class), "Write the changelog");
+    tap("Start");
+    run(900);
+    expect_sent("\"engine\":\"gemini\"}");
+
     tap("web-app");
     run(900);
     shot("07_chat");

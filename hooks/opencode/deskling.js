@@ -88,6 +88,8 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
   const URL_BASE = (env.DESKLING_URL || fc.DESKLING_URL || "").replace(/\/+$/, "");
   const TOKEN = env.DESKLING_TOKEN || fc.DESKLING_TOKEN || "";
   if (!URL_BASE || !TOKEN) return {};
+  // Started by the Deskling runner over ACP: the runner already shows this session.
+  if (env.DESKLING_BRIDGED === "1") return {};
   const HOST = (env.DESKLING_NAME || fc.DESKLING_NAME || hostname()).split(".")[0];
   const OS = { darwin: "mac", win32: "windows", linux: "linux" }[platform()] ?? platform();
   const WAIT = Math.max(5, Math.min(110, Number(env.DESKLING_WAIT || fc.DESKLING_WAIT || 110) || 110));

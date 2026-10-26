@@ -10,6 +10,8 @@ param([string]$Mode = "")
 
 $ErrorActionPreference = "SilentlyContinue"
 $payload = [Console]::In.ReadToEnd()
+# Started by the Deskling runner over ACP: the runner already shows this session.
+if ($env:DESKLING_BRIDGED -eq "1") { exit 0 }
 
 # ~/.deskling/config wins over the deskling.conf a personal copy of the plugin carries.
 $fileVars = @{}

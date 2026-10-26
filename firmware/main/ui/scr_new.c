@@ -1,6 +1,7 @@
 // Start a new session from the screen: pick where (the cloud, or a computer running the
 // Deskling runner), which agent (Claude Code, or OpenCode with any model set up on that computer,
 // local ones included) and which project, then say what you want. It starts listening for you.
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -155,7 +156,7 @@ static void build(void)
     const dk_target_t *t = current_target();
     settle_engine(t);
     const dk_engine_t *en = current_engine(t);
-    bool opencode = en && strcmp(en->id, "opencode") == 0;
+    bool other = en && strcmp(en->id, "claude") != 0; // OpenCode, Gemini CLI, Cursor…
 
     // Which agent: only when the computer offers more than one.
     lv_obj_clean(n.engines);
@@ -179,7 +180,12 @@ static void build(void)
     } else {
         lv_obj_add_flag(n.model_box, LV_OBJ_FLAG_HIDDEN);
     }
-    lv_label_set_text(n.ask, opencode ? "WHAT SHOULD OPENCODE DO?" : "WHAT SHOULD CLAUDE DO?");
+    {
+        char ask[48];
+        snprintf(ask, sizeof(ask), "WHAT SHOULD %s DO?", other ? en->name : "CLAUDE");
+        for (char *c = ask; *c; c++) *c = (char)toupper((unsigned char)*c);
+        lv_label_set_text(n.ask, ask);
+    }
 
     lv_obj_clean(n.projects);
     if (t && t->projects_n) {
@@ -216,8 +222,10 @@ static void build(void)
         lv_label_set_text(n.hint, "Scan the code to open your relay's setup page.");
         lv_obj_add_state(n.start, LV_STATE_DISABLED);
     } else {
+        static char hint[160];
+        if (other) snprintf(hint, sizeof(hint), "%s starts on that computer with this as its first message. Message it from here any time.", en->name);
         lv_label_set_text(n.hint, t && t->cloud ? "A new cloud session starts with this as its first message, and listens for you on Deskling."
-                                  : opencode    ? "OpenCode starts on that computer with this as its first message. Message it from here any time."
+                                  : other       ? hint
                                                 : "Claude starts in the background on that computer with this as its first message, and listens for you on Deskling.");
         lv_obj_remove_state(n.start, LV_STATE_DISABLED);
     }

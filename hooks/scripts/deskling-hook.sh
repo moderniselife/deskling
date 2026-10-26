@@ -15,6 +15,9 @@
 # page carries one, so cloud and Cowork sessions that never see your machine can report).
 # The hook never fails Claude Code: any problem just means no screen update.
 
+# Started by the Deskling runner over ACP: the runner already shows this session.
+if [ "${DESKLING_BRIDGED:-}" = 1 ]; then cat >/dev/null; exit 0; fi
+
 # shellcheck disable=SC1090
 [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/deskling.conf" ] && . "${CLAUDE_PLUGIN_ROOT}/deskling.conf"
 CONF="${HOME}/.deskling/config"

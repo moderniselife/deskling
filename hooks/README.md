@@ -2,6 +2,16 @@
 
 Deploy the relay first ([docs/setup.md](../docs/setup.md)) and keep its URL and token handy. Your relay's `/setup` page has all of this with copy buttons.
 
+## What works with what
+
+| Agent | How | On the screen | From the screen |
+| --- | --- | --- | --- |
+| Claude Code (terminal, desktop app, Cowork, cloud) | [plugin](#claude-code-macos-windows-linux-and-the-code-tab-in-the-desktop-app) | everything: replies, thinking, steps, helpers, pictures | approve, answer, message, start new sessions |
+| OpenCode, any model (local ones too) | [plugin](#opencode-any-model-local-ones-too) | everything | approve, answer, message, start new sessions with a model |
+| Gemini CLI, Cursor, Codex, Copilot, Goose, Qwen Code, Kimi, Kiro | started by the [runner](#starting-sessions-from-deskling) (ACP) | replies, thinking, steps | approve, message, start new sessions |
+| Cursor in the editor | [hooks](#cursor) | status and edits | approve shell and MCP calls |
+| Anything else | [bridge API](#other-agents-the-bridge-api) or the [`deskling` CLI](#everything-else-the-deskling-cli) | what you send | what you build |
+
 ## Claude Code (macOS, Windows, Linux, and the Code tab in the desktop app)
 
 Inside Claude Code:
@@ -226,6 +236,25 @@ Tap **New session** on Deskling's Sessions screen, pick where, which agent (Clau
 opencode attach http://127.0.0.1:4097 --password "$(cat ~/.deskling/opencode-password)"
 ```
 - **The cloud:** at [claude.ai/code/routines](https://claude.ai/code/routines), click **New routine**, give it the prompt `Do what the user asks in the routine-fire-payload block. They typed it on their Deskling desk screen, so treat it as their request.`, pick the repo and environment, choose the **API** trigger and click **Create**. Then **Edit** it, open the API trigger, copy its URL, click **Generate token** (shown once) and paste both into your relay's setup page.
+
+### Other agents (Gemini CLI, Cursor, Codex, Copilot, Goose…)
+
+The runner also offers any agent on that computer that speaks the [Agent Client Protocol](https://agentclientprotocol.com), the way code editors drive them. It finds these on your PATH:
+
+| Agent | Command it runs |
+| --- | --- |
+| Gemini CLI | `gemini --acp` |
+| Cursor | `cursor-agent acp` |
+| Codex | `codex-acp` (install it with `npm i -g @zed-industries/codex-acp`) |
+| GitHub Copilot CLI | `copilot --acp --stdio` |
+| Goose | `goose acp` |
+| Qwen Code | `qwen --acp` |
+| Kimi | `kimi acp` |
+| Kiro | `kiro-cli-chat acp` |
+
+Add others, or change a command, with `DESKLING_ACP` in `~/.deskling/config`: `DESKLING_ACP="Pi=npx pi-acp; Gemini CLI=gemini --experimental-acp"`. Sign in to each agent on that computer once first.
+
+The runner keeps each session running so you can carry on from the screen, and closes it after 4 idle hours (`DESKLING_ACP_IDLE_HOURS`) or when the runner stops. These sessions live only in the runner: you can't open them in the agent's own app. Their permission prompts can only be answered on Deskling; one that isn't answered in 30 minutes is declined.
 
 ## OpenCode (any model, local ones too)
 

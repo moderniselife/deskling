@@ -133,7 +133,7 @@ typedef struct {
 #define DK_MAX_TARGETS 6
 #define DK_MAX_PROJECTS 12
 
-#define DK_MAX_ENGINES 2
+#define DK_MAX_ENGINES 8
 #define DK_MAX_MODELS 8
 
 /* A model OpenCode can use on that computer ("ollama/qwen3:8b", "Qwen3 8B"). */
@@ -142,7 +142,8 @@ typedef struct {
     char name[32];
 } dk_model_choice_t;
 
-/* An agent a computer can start: "claude" (Claude Code) or "opencode" with its models. */
+/* An agent a computer can start: "claude" (Claude Code), "opencode" with its models, or another
+   agent the runner speaks ACP with ("gemini", "cursor", "goose"…). */
 typedef struct {
     char id[16];
     char name[24];

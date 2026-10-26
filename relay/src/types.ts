@@ -97,9 +97,10 @@ export interface ChatLine {
 }
 
 /** A computer running the Deskling runner: it can start sessions in its project folders. */
-/** An agent a runner can start: Claude Code, or OpenCode with the models set up on that computer. */
+/** An agent a runner can start: Claude Code, OpenCode with the models set up on that computer, or
+ *  an ACP agent (Gemini CLI, Cursor, Codex, Goose…). */
 export interface Engine {
-  id: string; // "claude" | "opencode"
+  id: string; // "claude" | "opencode" | "gemini" | "cursor" | …
   name: string;
   models: { id: string; name: string }[]; // OpenCode: "provider/model"
 }

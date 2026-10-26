@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Deskling runner: lets your Deskling start new Claude Code and OpenCode sessions on this computer.
+// Deskling runner: lets your Deskling start new sessions on this computer: Claude Code, OpenCode,
+// and any agent that speaks the Agent Client Protocol (Gemini CLI, Cursor, Codex, Copilot, Goose…).
 // Zero dependencies, Node 18+. Mac, Windows and Linux.
 //
 //   node deskling-runner.mjs            run (keeps going; Ctrl+C to stop)
@@ -27,6 +28,9 @@
 //   DESKLING_CLAUDE                the claude command (default: claude)
 //   DESKLING_OPENCODE              the opencode command (default: opencode; "off" to not offer it)
 //   DESKLING_OPENCODE_PORT         the port for its OpenCode server (default: 4097)
+//   DESKLING_ACP                   more ACP agents, or other commands for known ones:
+//                                  "Pi=npx pi-acp; Gemini CLI=gemini --experimental-acp"
+//   DESKLING_ACP_IDLE_HOURS        close an ACP session after this long without a turn (default 4)
 //   DESKLING_OPENCODE_AGENT        the OpenCode agent for sessions from the screen (default: deskling;
 //                                  "default" for OpenCode's own default)
 
@@ -37,7 +41,7 @@ import { homedir, hostname, platform } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const HOME = homedir();
 
 function fileConfig() {
@@ -277,6 +281,288 @@ async function openCodeModels() {
   return out.map((m) => ({ id: m.id, name: out.filter((o) => o.name === m.name).length > 1 ? `${m.name} (${m.provider})`.slice(0, 30) : m.name.slice(0, 30) }));
 }
 
+// ---- Any agent that speaks the Agent Client Protocol (ACP): Gemini CLI, Cursor, Copilot, Goose,
+// Qwen Code, Kimi, Kiro, Codex (through codex-acp)… The runner starts the agent, sends it your
+// prompt, and puts the whole session on Deskling: its replies, thinking and steps, permission
+// prompts to answer on the screen, and your messages from the screen.
+const ACP_KNOWN = [
+  { id: "gemini", name: "Gemini CLI", bin: "gemini", args: ["--acp"], source: "gemini" },
+  { id: "cursor", name: "Cursor", bin: "cursor-agent", args: ["acp"], source: "cursor" },
+  { id: "codex", name: "Codex", bin: "codex-acp", args: [], source: "codex" },
+  { id: "copilot", name: "Copilot", bin: "copilot", args: ["--acp", "--stdio"], source: "custom" },
+  { id: "goose", name: "Goose", bin: "goose", args: ["acp"], source: "custom" },
+  { id: "qwen", name: "Qwen Code", bin: "qwen", args: ["--acp"], source: "custom" },
+  { id: "kimi", name: "Kimi", bin: "kimi", args: ["acp"], source: "custom" },
+  { id: "kiro", name: "Kiro", bin: "kiro-cli-chat", args: ["acp"], source: "custom" },
+];
+
+/** On this computer's PATH? (Without running it: some of these are slow to start.) */
+function onPath(bin) {
+  if (!bin) return false;
+  if (/[\\/]/.test(bin)) return existsSync(bin);
+  const exts = platform() === "win32" ? (process.env.PATHEXT || ".EXE;.CMD;.BAT").split(";") : [""];
+  for (const dir of (process.env.PATH || "").split(platform() === "win32" ? ";" : ":")) {
+    for (const ext of exts) {
+      if (dir && existsSync(join(dir, bin + ext))) return true;
+    }
+  }
+  return false;
+}
+
+/** The ACP agents to offer: the known ones that are installed, plus DESKLING_ACP
+ *  ("Name=command args; Other=command"), which also replaces a known one with the same name. */
+function acpAgents() {
+  const list = ACP_KNOWN.filter((a) => onPath(a.bin));
+  for (const item of get("DESKLING_ACP").split(";").map((x) => x.trim()).filter(Boolean)) {
+    const i = item.indexOf("=");
+    if (i < 1) continue;
+    const name = item.slice(0, i).trim();
+    const [bin, ...args] = item.slice(i + 1).trim().split(/\s+/);
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 16) || "acp";
+    const known = ACP_KNOWN.find((a) => a.id === id);
+    const at = list.findIndex((a) => a.id === id);
+    const def = { id, name: name.slice(0, 24), bin, args, source: known?.source ?? "custom" };
+    if (at >= 0) list[at] = def;
+    else list.push(def);
+  }
+  return list;
+}
+
+const acpSessions = new Map(); // relay agent id -> AcpSession
+const ACP_IDLE_MS = (Number(get("DESKLING_ACP_IDLE_HOURS", "4")) || 4) * 3600_000;
+
+class AcpSession {
+  constructor(def, cwd) {
+    this.def = def;
+    this.cwd = cwd;
+    this.id = `${def.id}-${randomBytes(5).toString("hex")}`;
+    this.name = basename(cwd);
+    this.nextId = 1;
+    this.calls = new Map();
+    this.busy = false;
+    this.queue = [];
+    this.seg = 0; // a new reply line after each step
+    this.text = "";
+    this.thought = "";
+    this.tools = new Map();
+    this.used = Date.now();
+    this.pending = { fields: {}, lines: new Map() };
+    this.timer = null;
+  }
+
+  send(msg) {
+    this.proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...msg }) + "\n");
+  }
+  call(method, params) {
+    const id = this.nextId++;
+    this.send({ id, method, params });
+    return new Promise((resolve, reject) => this.calls.set(id, { resolve, reject }));
+  }
+
+  async start() {
+    // DESKLING_BRIDGED: the agent's own Deskling plugin or hooks stay quiet (this shows the session).
+    this.proc = spawn(this.def.bin, this.def.args, { cwd: this.cwd, env: { ...process.env, DESKLING_BRIDGED: "1" }, shell: platform() === "win32", stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: platform() !== "win32" });
+    let buf = "";
+    let err = "";
+    this.proc.stdout.on("data", (d) => {
+      buf += d;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line.startsWith("{")) continue;
+        try {
+          this.onMessage(JSON.parse(line));
+        } catch (e) {
+          log(`${this.def.name}: ${e.message}`);
+        }
+      }
+    });
+    this.proc.stderr.on("data", (d) => (err = (err + d).slice(-2000)));
+    const died = new Promise((_, reject) =>
+      this.proc.on("exit", (code) => {
+        for (const c of this.calls.values()) c.reject(new Error(err.trim().split("\n").pop() || `${this.def.name} exited (${code})`));
+        this.calls.clear();
+        reject(new Error(err.trim().split("\n").pop() || `${this.def.name} exited (${code})`));
+        this.close(false);
+      }),
+    );
+    died.catch(() => {});
+    this.proc.on("error", () => {});
+    const init = await Promise.race([
+      this.call("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: "deskling-runner", version: VERSION } }),
+      died,
+    ]);
+    const created = await Promise.race([this.call("session/new", { cwd: this.cwd, mcpServers: [] }), died]).catch((e) => {
+      if (init?.authMethods?.length) throw new Error(`${this.def.name} needs you to sign in on this computer first (${e.message})`);
+      throw e;
+    });
+    this.sessionId = created.sessionId;
+    acpSessions.set(this.id, this);
+    const model = created.models?.currentModelId;
+    this.update({ state: "idle", task: "Ready for a prompt", ...(model ? { model } : {}) });
+    return this;
+  }
+
+  // ---- what the agent tells us
+  onMessage(m) {
+    if (m.id !== undefined && !m.method) {
+      const c = this.calls.get(m.id);
+      this.calls.delete(m.id);
+      if (m.error) c?.reject(new Error(m.error.message || "error"));
+      else c?.resolve(m.result);
+      return;
+    }
+    if (m.method === "session/update") return this.onUpdate(m.params?.update ?? {});
+    if (m.method === "session/request_permission") return this.onPermission(m.id, m.params);
+    // Anything else (files, terminals) we said we can't do.
+    if (m.id !== undefined) this.send({ id: m.id, error: { code: -32601, message: "Not supported by Deskling" } });
+  }
+
+  onUpdate(u) {
+    const kind = u.sessionUpdate;
+    const text = u.content?.type === "text" ? u.content.text : "";
+    if (kind === "agent_message_chunk" && text) {
+      this.text += text;
+      this.line({ key: `m${this.seg}`, from: "agent", text: this.text });
+    } else if (kind === "agent_thought_chunk" && text) {
+      this.thought += text;
+      const t = this.thought.split(/\n+/).map((l) => l.trim()).filter(Boolean).slice(0, 3).join("\n");
+      if (t) this.line({ key: `t${this.seg}`, from: "thought", text: t });
+    } else if (kind === "tool_call" || kind === "tool_call_update") {
+      const t = this.tools.get(u.toolCallId) ?? { title: "", status: "pending" };
+      if (u.title) t.title = u.title;
+      if (u.status) t.status = u.status;
+      this.tools.set(u.toolCallId, t);
+      if (kind === "tool_call") this.breakLine();
+      const title = (t.title || "Working").replace(/\s+/g, " ").slice(0, 90);
+      this.line({ key: `c-${u.toolCallId}`, from: "tool", text: t.status === "failed" ? `${title} (failed)` : title }, t.status === "in_progress" || t.status === "pending" ? { task: title } : {});
+    } else if (kind === "plan" && Array.isArray(u.entries)) {
+      const doing = u.entries.find((e) => e.status === "in_progress");
+      if (doing?.content) this.update({ task: String(doing.content).slice(0, 90) });
+    } else if (kind === "usage_update" && typeof u.used === "number") {
+      this.update({ context: u.used });
+    } else if (kind === "current_model_update" && u.modelId) {
+      this.update({ model: u.modelId });
+    }
+  }
+
+  breakLine() {
+    if (this.text || this.thought) this.seg++;
+    this.text = "";
+    this.thought = "";
+  }
+
+  async onPermission(rpcId, p) {
+    const options = p?.options ?? [];
+    const pick = (...kinds) => options.find((o) => kinds.includes(o.kind))?.optionId;
+    const tc = p?.toolCall ?? {};
+    const raw = tc.rawInput ?? {};
+    const summary = String(raw.command ?? raw.cmd ?? raw.path ?? raw.file_path ?? raw.url ?? tc.title ?? "a tool").slice(0, 200);
+    const key = String(tc.toolCallId ?? rpcId);
+    // There's no other place to answer: keep asking on the screen (up to 30 minutes), then decline.
+    const until = Date.now() + 30 * 60_000;
+    let decision = null;
+    while (!decision && Date.now() < until && acpSessions.has(this.id)) {
+      await this.flush();
+      const r = await relay("/agent/ask", { method: "POST", body: JSON.stringify({ id: this.id, key, kind: "permission", tool: tc.kind ? tc.kind[0].toUpperCase() + tc.kind.slice(1) : "Tool", summary, detail: tc.title ?? "", wait: 110 }) }).catch(() => ({}));
+      if (r.decision === "allow" || r.decision === "deny") decision = r.decision;
+      else if (!r.timeout) await new Promise((res) => setTimeout(res, 5000));
+    }
+    const optionId = decision === "allow" ? pick("allow_once", "allow_always") : pick("reject_once", "reject_always");
+    this.send({ id: rpcId, result: { outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" } } });
+  }
+
+  // ---- what we send the relay (batched: replies stream in many small pieces)
+  line(l, fields = {}) {
+    this.pending.lines.set(l.key, l);
+    Object.assign(this.pending.fields, fields);
+    this.schedule();
+  }
+  update(fields) {
+    Object.assign(this.pending.fields, fields);
+    this.schedule();
+  }
+  schedule() {
+    if (!this.timer) this.timer = setTimeout(() => this.flush(), 300);
+  }
+  async flush() {
+    clearTimeout(this.timer);
+    this.timer = null;
+    const { fields, lines } = this.pending;
+    this.pending = { fields: {}, lines: new Map() };
+    const body = { id: this.id, source: this.def.source, name: this.name, host: NAME, os: OS, ...fields, lines: [...lines.values()] };
+    await relay("/agent/update", { method: "POST", body: JSON.stringify(body) }).catch((e) => log("relay:", e.message));
+  }
+
+  // ---- prompts: yours from the screen, one turn at a time
+  prompt(text) {
+    this.used = Date.now();
+    if (this.busy) return void this.queue.push(text);
+    this.busy = true;
+    this.breakLine();
+    this.seg++;
+    this.line({ key: `u${this.seg}`, from: "you", text }, { state: "working", task: "Working" });
+    this.call("session/prompt", { sessionId: this.sessionId, prompt: [{ type: "text", text }] })
+      .then((r) => ({ state: "done", task: r?.stopReason === "cancelled" ? "Stopped" : r?.stopReason === "refusal" ? "Declined" : "Finished" }))
+      .catch((e) => ({ state: "done", task: `Stopped: ${e.message}`.slice(0, 90) }))
+      .then((f) => {
+        this.busy = false;
+        this.used = Date.now();
+        this.breakLine();
+        this.update(f);
+        const next = this.queue.shift();
+        if (next) this.prompt(next);
+      });
+  }
+
+  close(kill = true) {
+    if (!acpSessions.has(this.id)) return;
+    acpSessions.delete(this.id);
+    if (kill && this.proc?.pid) {
+      try {
+        if (platform() === "win32") spawnSync("taskkill", ["/pid", String(this.proc.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true });
+        else process.kill(-this.proc.pid, "SIGTERM");
+      } catch {
+        this.proc.kill();
+      }
+    }
+    this.flush().then(() => relay("/agent/update", { method: "POST", body: JSON.stringify({ id: this.id, end: true }) }).catch(() => {}));
+  }
+}
+
+async function startAcp(job, def) {
+  log(`starting ${def.name} in ${job.project}: ${job.prompt.slice(0, 80)}`);
+  try {
+    const s = await new AcpSession(def, job.project).start();
+    s.prompt(job.prompt);
+    acpLoop();
+    return { ok: true, mode: "acp", session: s.id };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** Messages typed on the screen for the ACP sessions, and closing the ones idle for hours. */
+let acpPolling = false;
+async function acpLoop() {
+  if (acpPolling) return;
+  acpPolling = true;
+  while (acpSessions.size) {
+    for (const s of acpSessions.values()) if (!s.busy && Date.now() - s.used > ACP_IDLE_MS) s.close();
+    if (!acpSessions.size) break;
+    try {
+      const ids = [...acpSessions.keys()].join(",");
+      const { messages = [] } = await relay(`/agent/poll?ids=${encodeURIComponent(ids)}&wait=25`);
+      for (const m of messages) acpSessions.get(m.id)?.prompt(m.text);
+    } catch (e) {
+      log("relay:", e.message);
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+  acpPolling = false;
+}
+
 async function engines() {
   const list = [];
   if (has(CLAUDE)) list.push({ id: "claude", name: "Claude Code", models: [] });
@@ -290,6 +576,7 @@ async function engines() {
     }
     list.push({ id: "opencode", name: "OpenCode", models });
   }
+  for (const a of acpAgents()) if (!list.some((e) => e.id === a.id)) list.push({ id: a.id, name: a.name, models: [] });
   return list;
 }
 
@@ -329,6 +616,8 @@ function startHeadless(job) {
 
 function start(job) {
   if (job.engine === "opencode") return startOpenCode(job);
+  const acp = job.engine && job.engine !== "claude" ? acpAgents().find((a) => a.id === job.engine) : null;
+  if (acp) return startAcp(job, acp);
   return startBg(job).then((r) => (r.ok || r.missing ? r : (log(`background sessions unavailable (${r.error}); running headless`), startHeadless(job))));
 }
 
@@ -346,6 +635,10 @@ function startBg(job) {
 
 // Take the OpenCode server down with the runner (its whole process group: `opencode` from npm is a
 // small launcher that starts the real one).
+function stopAll() {
+  for (const s of acpSessions.values()) s.close();
+  stopOpenCode();
+}
 function stopOpenCode() {
   const p = oc.proc;
   oc.proc = null;
@@ -360,8 +653,8 @@ function stopOpenCode() {
 }
 for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"])
   process.on(sig, () => {
-    stopOpenCode();
-    process.exit(0);
+    stopAll();
+    setTimeout(() => process.exit(0), 300); // let the screen hear the sessions ended
   });
 process.on("exit", stopOpenCode);
 
@@ -375,7 +668,7 @@ async function run() {
   log(`offering ${list.length} project folder${list.length === 1 ? "" : "s"}${list.length ? ": " + list.map((p) => p.name).join(", ") : ""}`);
   let engs = await engines();
   let lastEngines = Date.now();
-  log(`can start: ${engs.map((e) => e.name + (e.models.length ? ` (${e.models.map((m) => m.id).join(", ")})` : "")).join(", ") || "nothing (install Claude Code or OpenCode)"}`);
+  log(`can start: ${engs.map((e) => e.name + (e.models.length ? ` (${e.models.map((m) => m.id).join(", ")})` : "")).join(", ") || "nothing (install Claude Code, OpenCode or another agent)"}`);
   const register = async () => {
     list = projects();
     // What's installed and which models are set up changes rarely: check every 10 minutes.

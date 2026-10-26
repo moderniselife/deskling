@@ -27,7 +27,7 @@ try {
 }
 
 // ---- a fake relay that records what the plugin sends
-const relay = { updates: [], asks: [], outbox: [], resolved: [], events: [], answer: { decision: "allow" }, registered: null, job: null, done: null };
+const relay = { updates: [], asks: [], outbox: [], resolved: [], events: [], polledIds: [], answer: { decision: "allow" }, registered: null, job: null, done: null };
 const relayServer = createServer((req, res) => {
   let body = "";
   req.on("data", (d) => (body += d));
@@ -69,8 +69,12 @@ const relayServer = createServer((req, res) => {
       return send({ ok: true });
     }
     if (req.url.startsWith("/agent/poll")) {
-      for (let i = 0; i < 10 && !relay.outbox.length; i++) await sleep(100);
-      const messages = relay.outbox.splice(0);
+      const ids = new URL(req.url, "http://x").searchParams.get("ids").split(",");
+      const mine = () => relay.outbox.filter((m) => ids.includes(m.id));
+      for (let i = 0; i < 10 && !mine().length; i++) await sleep(100);
+      const messages = mine();
+      relay.outbox = relay.outbox.filter((m) => !messages.includes(m));
+      relay.polledIds.push(...ids);
       return send({ messages });
     }
     send({});
@@ -243,7 +247,7 @@ try {
   relay.updates.length = 0;
   const runnerPort = 30000 + Math.floor(Math.random() * 20000);
   runner = spawn(process.execPath, [join(here, "..", "..", "runner", "deskling-runner.mjs")], {
-    env: { ...env, DESKLING_OPENCODE: BIN, DESKLING_CLAUDE: "off", DESKLING_OPENCODE_PORT: String(runnerPort), DESKLING_PROJECTS: proj },
+    env: { ...env, DESKLING_OPENCODE: BIN, DESKLING_CLAUDE: "off", DESKLING_OPENCODE_PORT: String(runnerPort), DESKLING_PROJECTS: proj, DESKLING_ACP: `OC ACP=${BIN} acp` },
     stdio: ["ignore", "pipe", "pipe"],
   });
   runner.stdout.on("data", (d) => (log += d));
@@ -259,6 +263,37 @@ try {
   await until("the new session's reply", () => relay.updates.some((u) => (u.lines || []).some((l) => l.from === "agent" && /say hello to the screen/.test(l.text))), 30000);
   const started = relay.updates.find((u) => (u.lines || []).some((l) => l.from === "you" && l.text === "say hello to the screen"));
   check("the session shows up with your prompt and its reply", started?.name === "web-app");
+
+  // The same OpenCode over the Agent Client Protocol: how the runner drives Gemini CLI, Cursor,
+  // Codex, Goose and the rest.
+  check("the runner offers agents that speak ACP", relay.registered.engines.some((e) => e.id === "oc-acp" && e.name === "OC ACP"), JSON.stringify(relay.registered.engines.map((e) => e.id)));
+  relay.done = null;
+  relay.answer = { decision: "allow" };
+  const asksBefore3 = relay.asks.length;
+  relay.job = { id: "j3", machine: relay.registered.machine, project: proj, prompt: "please run echo hi", engine: "oc-acp" };
+  await until("the ACP job to start", () => relay.done, 60000);
+  check("it starts the agent and its session", relay.done.ok === true && relay.done.mode === "acp", JSON.stringify(relay.done));
+  const aid = relay.done.session;
+  const acpLines = () => {
+    const out = new Map();
+    for (const u of relay.updates) if (u.id === aid) for (const l of u.lines || []) out.set(l.key, l);
+    return [...out.values()];
+  };
+  await until("an ACP permission ask", () => relay.asks.length > asksBefore3, 60000);
+  const pa = relay.asks[relay.asks.length - 1];
+  check("OpenCode's own Deskling plugin stays quiet when the runner drives it", !relay.updates.some((u) => u.id.startsWith("oc-ses_") && (u.lines || []).some((l) => l.text === "please run echo hi")));
+  check("its permission prompts are asked on the screen", pa.id === aid && pa.kind === "permission", JSON.stringify(pa));
+  await until("the ACP reply", () => acpLines().some((l) => l.from === "agent" && /printed hi/.test(l.text)), 60000);
+  const al = acpLines();
+  check("your prompt, its steps and its reply are in the chat", al.some((l) => l.from === "you" && l.text === "please run echo hi") && al.some((l) => l.from === "tool") && al.some((l) => l.from === "agent" && /Running it now/.test(l.text)), JSON.stringify(al));
+  await until("the ACP turn to finish", () => relay.updates.some((u) => u.id === aid && u.state === "done"), 30000);
+  check("it's marked done when the turn ends", true);
+  relay.outbox.push({ id: aid, text: "say hello again" });
+  await until("the reply to a screen message", () => acpLines().some((l) => l.from === "agent" && /local model\. say hello again/.test(l.text)), 60000);
+  check("a message from the screen starts its next turn", true);
+  runner.kill("SIGTERM");
+  await until("the session to end", () => relay.updates.some((u) => u.id === aid && u.end), 10000);
+  check("stopping the runner ends its sessions on the screen", true);
 } catch (e) {
   check(String(e.message || e), false);
   console.log(log.split("\n").slice(-40).join("\n"));

@@ -60,7 +60,7 @@ const server = http.createServer((req, res) => {
   });
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const env = { ...process.env, HOME: home, DESKLING_URL: `http://127.0.0.1:${server.address().port}`, DESKLING_TOKEN: "t0k", DESKLING_NAME: "test-mac.local", DESKLING_CLAUDE: fake, DESKLING_OPENCODE: "off", DESKLING_PROJECTS: "" };
+const env = { ...process.env, HOME: home, DESKLING_URL: `http://127.0.0.1:${server.address().port}`, DESKLING_TOKEN: "t0k", DESKLING_NAME: "test-mac.local", DESKLING_CLAUDE: fake, DESKLING_OPENCODE: "off", DESKLING_PROJECTS: "", PATH: "/usr/bin:/bin" };
 const p = spawn(process.execPath, [RUNNER], { env, stdio: "ignore" });
 for (let i = 0; i < 50 && !done; i++) await new Promise((r) => setTimeout(r, 100));
 p.kill();
