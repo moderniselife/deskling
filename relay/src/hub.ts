@@ -172,6 +172,11 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       return json({ ok: true });
     }
 
+    if (req.method === "GET" && path === "/api/health") {
+      this.prune();
+      return json({ ok: true, screens: this.ctx.getWebSockets().length, agents: Object.keys(this.state.agents).length, pending: this.state.pending.length });
+    }
+
     if (req.method === "GET" && path === "/api/state") {
       this.prune();
       return json(this.state);

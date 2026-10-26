@@ -1,6 +1,6 @@
 {
   "name": "deskling-relay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,5 +13,16 @@
     "@cloudflare/workers-types": "^5.20261019.1",
     "typescript": "^5.6.0",
     "wrangler": "^4.0.0"
+  },
+  "description": "Deskling relay: connects your AI agents to your Deskling desk screen.",
+  "cloudflare": {
+    "bindings": {
+      "DESKLING_TOKEN": {
+        "description": "A password of your choosing that your agents and your Deskling screen use to talk to this relay. Make it long and random, e.g. run `openssl rand -hex 24`. Keep it somewhere safe: you'll paste it into the screen and the Claude Code plugin."
+      },
+      "FIRMWARE_URL": {
+        "description": "Where firmware updates come from. Leave as is unless you publish your own builds."
+      }
+    }
   }
 }

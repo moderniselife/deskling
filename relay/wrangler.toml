@@ -13,3 +13,7 @@ new_sqlite_classes = ["Hub"]
 # The shared secret lives outside this file:
 #   npx wrangler secret put DESKLING_TOKEN
 # For local dev, put DESKLING_TOKEN=... in relay/.dev.vars
+
+[vars]
+# Where /flash and the screen's updater find firmware builds (manifest.json + .bin files).
+FIRMWARE_URL = "https://raw.githubusercontent.com/moderniselife/deskling/firmware-dist/"

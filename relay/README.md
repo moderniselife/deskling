@@ -4,7 +4,11 @@ A Cloudflare Worker with one Durable Object. Agents post events to it, and the s
 
 ## Deploy
 
-You need a free Cloudflare account and Node 18+.
+One click (it asks for `DESKLING_TOKEN`, a long random password you make up):
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/moderniselife/deskling/tree/main/relay)
+
+Or from a terminal, with a free Cloudflare account and Node 18+:
 
 ```bash
 cd relay
@@ -16,19 +20,27 @@ npx wrangler deploy
 
 Wrangler prints your URL, e.g. `https://deskling-relay.<you>.workers.dev`. You need that URL and the token for the hooks, the CLI and the screen.
 
-To try it without the screen, open `https://<your relay>/sim`, paste the token, and you get a browser version of Deskling that speaks the same protocol as the firmware.
+Pages on the relay (no secrets in them; they ask for the token and keep it in the browser tab):
+
+| Page | What it's for |
+| --- | --- |
+| `/setup` (`/` redirects here) | Your relay URL and token to copy, plugin install commands, `~/.deskling/config`, live screen count, and buttons that send a test notification, reminder, permission request and question |
+| `/sim` | A browser version of Deskling that speaks the same protocol as the firmware |
+| `/flash` | Browser installer for the firmware (Chrome/Edge, USB). It reads builds from `FIRMWARE_URL` |
+
+The whole walkthrough is in [docs/setup.md](../docs/setup.md).
 
 ## Local dev
 
 ```bash
-cp .dev.vars.example .dev.vars    # DESKLING_TOKEN=dev-token
+echo DESKLING_TOKEN=dev-token > .dev.vars
 npm run dev                       # http://127.0.0.1:8787, simulator at /sim
 npm test                          # end-to-end smoke test against the dev server
 ```
 
 ## API
 
-Every request except `/` and `/sim` needs `Authorization: Bearer <DESKLING_TOKEN>`. The WebSocket also accepts `?token=`.
+Every request except the pages above needs `Authorization: Bearer <DESKLING_TOKEN>`. The WebSocket also accepts `?token=`.
 
 ### From agents
 
@@ -40,6 +52,7 @@ Every request except `/` and `/sim` needs `Authorization: Bearer <DESKLING_TOKEN
 | | `{"kind":"status","id","name","state":"idle|working|waiting|needs_you|done","task","message","source","host"}`. Add `"remove":true` to drop it. |
 | | `{"kind":"clear_reminder","id"}` |
 | `GET /api/state` | Everything, as JSON |
+| `GET /api/health` | `{ok, screens, agents, pending}` |
 | `POST /channel/register` | `{"host","os","cwd"}` → `{"cid","agentId"}`. Used by the Claude Code channel server. |
 | `GET /channel/poll?cid=&wait=25` | Long-polls for messages typed on the screen for that session |
 | `POST /channel/reply` | `{"cid","text"}`: Claude's reply, shown in the session's chat |

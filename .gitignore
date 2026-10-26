@@ -27,3 +27,6 @@ firmware/.sim-deps/
 firmware/sim-out/
 firmware/sdkconfig.defaults.local
 firmware/build-sim-dbg/
+firmware/build-p4r*
+firmware/build-p4r*.log
+firmware/dist/

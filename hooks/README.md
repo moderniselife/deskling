@@ -1,16 +1,15 @@
 # Deskling for Claude Code, Cursor and friends
 
-Deploy the relay first (see [`relay/README.md`](../relay/README.md)) and keep its URL and token handy.
+Deploy the relay first ([docs/setup.md](../docs/setup.md)) and keep its URL and token handy. Your relay's `/setup` page has all of this with copy buttons.
 
 ## Claude Code (macOS, Windows, Linux, and the Code tab in the desktop app)
 
 Inside Claude Code:
 
 ```
-/plugin install deskling --marketplace moderniselife/deskling
+/plugin marketplace add moderniselife/deskling
+/plugin install deskling@deskling
 ```
-
-On older versions, run `/plugin marketplace add moderniselife/deskling` and then `/plugin install deskling@deskling`.
 
 When the plugin is enabled, Claude Code asks for:
 

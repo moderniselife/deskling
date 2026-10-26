@@ -1,1 +1,3 @@
-DESKLING_TOKEN=dev-token
+# The password your agents and your Deskling screen use to talk to this relay.
+# Make it long and random (e.g. openssl rand -hex 24). You'll paste it into the screen and the plugin.
+DESKLING_TOKEN=replace-with-a-long-random-password

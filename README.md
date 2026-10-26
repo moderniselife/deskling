@@ -49,9 +49,15 @@ From across the room you can:
 
 ## Setting it up
 
-1. **Relay.** Deploy it with `cd relay && npm i && npx wrangler secret put DESKLING_TOKEN && npx wrangler deploy` ([details](relay/README.md)). Open `https://<relay>/sim` to see a working Deskling in your browser straight away.
-2. **Claude Code.** Run `/plugin install deskling --marketplace moderniselife/deskling` and paste the relay URL and token when it asks ([Cursor, Windows and CLI](hooks/README.md)).
-3. **Screen.** Put your Wi-Fi and relay details in `firmware/sdkconfig.defaults.local`, then run `idf.py build flash` ([details](firmware/README.md)).
+**[docs/setup.md](docs/setup.md)** walks through everything in about 20 minutes, with a test at each step:
+
+1. **Deploy your relay.** It's your own free Cloudflare Worker, the meeting point for your agents and the screen. One click:
+
+   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/moderniselife/deskling/tree/main/relay)
+
+   Then open `https://<relay>/setup`. It has your copy-paste details and test buttons, and `/sim` is a working Deskling in the browser.
+2. **Claude Code.** Run `/plugin marketplace add moderniselife/deskling`, then `/plugin install deskling@deskling`, and paste the relay URL and token. [Cursor and the CLI](hooks/README.md) are set up the same way.
+3. **Screen.** Open `https://<relay>/flash` in Chrome or Edge and install over USB (once). Pick your Wi-Fi on the screen, then open `deskling.local` and paste the relay details. Updates arrive over the air after that.
 4. **Case.** Print the fit template first, then the parts for your printer ([details](case/README.md)).
 
 ## Hardware
@@ -69,5 +75,5 @@ From across the room you can:
 - [x] Firmware: builds for ESP32-P4; UI verified in the simulator
 - [x] 3D-printable case (parametric, fit-checked in code)
 - [ ] First boot on the real board: confirm LCD revision, touch orientation, C6 firmware
-- [ ] On-screen Wi-Fi setup, so prebuilt firmware can be flashed from a browser
+- [x] On-screen Wi-Fi setup, browser installer, settings page at `deskling.local`, over-the-air updates with rollback
 - [ ] Sounds (the board has a speaker and an ES8311 codec)

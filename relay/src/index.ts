@@ -1,12 +1,18 @@
 import { Hub } from "./hub";
 import { SIM_HTML } from "./sim";
+import { FLASH_HTML } from "./pages/flash";
+import { SETUP_HTML } from "./pages/setup";
 
 export { Hub };
 
 export interface Env {
   HUB: DurableObjectNamespace<Hub>;
   DESKLING_TOKEN?: string;
+  FIRMWARE_URL?: string;
 }
+
+const DEFAULT_FIRMWARE_URL = "https://raw.githubusercontent.com/moderniselife/deskling/firmware-dist/";
+const html = (body: string) => new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 
 async function tokenMatches(given: string | null, expected: string | undefined): Promise<boolean> {
   if (!given || !expected) return false;
@@ -31,11 +37,18 @@ export default {
     const url = new URL(req.url);
 
     if (url.pathname === "/" && req.method === "GET") {
-      return new Response("deskling relay is running\n", { headers: { "content-type": "text/plain" } });
+      return Response.redirect(new URL("/setup", url).toString(), 302);
     }
     // The simulator page holds no secrets: it asks for the token and keeps it in the browser.
-    if (url.pathname === "/sim" && req.method === "GET") {
-      return new Response(SIM_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
+    // These pages hold no secrets either: they ask for the token and keep it in the browser tab.
+    if (req.method === "GET") {
+      if (url.pathname === "/sim") return html(SIM_HTML);
+      if (url.pathname === "/setup") return html(SETUP_HTML);
+      if (url.pathname === "/flash") {
+        let fw = env.FIRMWARE_URL || DEFAULT_FIRMWARE_URL;
+        if (!fw.endsWith("/")) fw += "/";
+        return html(FLASH_HTML.replace("__FIRMWARE_URL__", fw));
+      }
     }
 
     if (!env.DESKLING_TOKEN) {
