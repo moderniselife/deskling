@@ -78,7 +78,7 @@ Now try `remind me in 2 minutes to stretch`. Claude calls the `deskling_remind` 
 ## 4. Install the firmware (5 min, the only time you need a cable)
 
 1. Use a USB-C **data** cable to connect the board to your Mac or PC. Use the port next to the CH340 chip, usually labelled UART. On Windows, you may need the [CH340 driver](https://www.wch-ic.com/downloads/CH341SER_EXE.html).
-2. In **Chrome or Edge**, open `https://<relay>/flash`.
+2. In **Chrome or Edge**, open [deskling.mojolayers.com/install](https://deskling.mojolayers.com/install) (your relay's `/flash` page is the same installer).
 3. Pick your panel. It's on the back label, `SKU:10153001 (XXXX)`: below 2624 is the original panel, 2624 or higher is the newer one. Yours says 2521, so that's the original.
 4. Click **Connect and install** and choose the serial port. The page works out the chip revision and downloads the right build. It takes about 2 minutes.
 
@@ -102,9 +102,9 @@ The screen says **All set!** and jumps to the home screen. The `/setup` page now
 
 ## 6. Updates, forever, without the cable
 
-- **Over the air:** Deskling checks for new firmware when it joins Wi-Fi, then every 12 hours. Tap the rail's **Settings** icon, then **Firmware** to check now and install. If a new build doesn't come up healthy within 3 minutes, it rolls back to the previous one by itself.
+- **Over the air:** Deskling checks deskling.mojolayers.com for new firmware when it joins Wi-Fi, then every 12 hours. Tap the rail's **Settings** icon, then **Firmware** to check now and install. If a new build doesn't come up healthy within 3 minutes, it rolls back to the previous one by itself.
 - **From your computer:** the `deskling.local` page has a firmware upload box for a `.bin` you built yourself.
-- **Changing Wi-Fi, relay, brightness or time zone:** use Settings on the screen, or the `deskling.local` page.
+- **Changing Wi-Fi, relay, brightness, volume or time zone:** use Settings on the screen, or the `deskling.local` page. "Quiet at night" (on by default) keeps it silent from 10pm to 7am, except for reminders.
 
 ## Troubleshooting
 

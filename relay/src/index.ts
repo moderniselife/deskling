@@ -11,7 +11,7 @@ export interface Env {
   FIRMWARE_URL?: string;
 }
 
-const DEFAULT_FIRMWARE_URL = "https://raw.githubusercontent.com/moderniselife/deskling/firmware-dist/";
+const DEFAULT_FIRMWARE_URL = "https://deskling.mojolayers.com/firmware/";
 const html = (body: string) => new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 
 async function tokenMatches(given: string | null, expected: string | undefined): Promise<boolean> {

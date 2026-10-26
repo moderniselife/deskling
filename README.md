@@ -1,6 +1,6 @@
 # Deskling
 
-A cute, animated desk companion for your AI agents.
+A cute, animated desk companion for your AI agents. **[deskling.mojolayers.com](https://deskling.mojolayers.com)**
 
 ![Deskling home screen](docs/media/home.gif)
 
@@ -12,6 +12,7 @@ From across the room you can:
 - **message any Claude Code session** with quick replies or the on-screen keyboard
 - **tick off reminders** that you or Claude set ("remind me at 3pm to…")
 - see every session on every machine at a glance, with the ones that need you first
+- **hear it**: little synthesized chirps for "needs you", questions, finished tasks and reminders, with quiet hours at night ([try them on the website](https://deskling.mojolayers.com))
 
 | | |
 | --- | --- |
@@ -45,6 +46,7 @@ From across the room you can:
 | [`hooks/`](hooks/README.md) | The Claude Code plugin (hooks, MCP tools, channel), Cursor hooks, and the `deskling` CLI |
 | [`firmware/`](firmware/README.md) | ESP-IDF 6.1 project for the screen, plus a host simulator that renders every screen to PNG |
 | [`case/`](case/README.md) | Parametric 3D-printable case: lilac Deskling bezel with ears and cheeks, back cover, 18° stand |
+| [`site/`](site/) | deskling.mojolayers.com: landing page, browser installer, and the firmware update server (`/firmware/`). A Worker with static assets, auto-deployed by Cloudflare from this repo |
 | `docs/` | Design and motion spec, hardware notes, screenshots |
 
 ## Setting it up
@@ -57,7 +59,7 @@ From across the room you can:
 
    Then open `https://<relay>/setup`. It has your copy-paste details and test buttons, and `/sim` is a working Deskling in the browser.
 2. **Claude Code.** Run `/plugin marketplace add moderniselife/deskling`, then `/plugin install deskling@deskling`, and paste the relay URL and token. [Cursor and the CLI](hooks/README.md) are set up the same way.
-3. **Screen.** Open `https://<relay>/flash` in Chrome or Edge and install over USB (once). Pick your Wi-Fi on the screen, then open `deskling.local` and paste the relay details. Updates arrive over the air after that.
+3. **Screen.** Open [deskling.mojolayers.com/install](https://deskling.mojolayers.com/install) (or `https://<relay>/flash`) in Chrome or Edge and install over USB (once). Pick your Wi-Fi on the screen, then open `deskling.local` and paste the relay details. Updates arrive over the air after that.
 4. **Case.** Print the fit template first, then the parts for your printer ([details](case/README.md)).
 
 ## Hardware
@@ -76,4 +78,5 @@ From across the room you can:
 - [x] 3D-printable case (parametric, fit-checked in code)
 - [ ] First boot on the real board: confirm LCD revision, touch orientation, C6 firmware
 - [x] On-screen Wi-Fi setup, browser installer, settings page at `deskling.local`, over-the-air updates with rollback
-- [ ] Sounds (the board has a speaker and an ES8311 codec)
+- [x] Sounds: synthesized chirps through the ES8311 speaker, volume and quiet hours
+- [x] Website with a live, playable Deskling and a public browser installer

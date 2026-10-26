@@ -26,7 +26,7 @@ Pages on the relay (no secrets in them; they ask for the token and keep it in th
 | --- | --- |
 | `/setup` (`/` redirects here) | Your relay URL and token to copy, plugin install commands, `~/.deskling/config`, live screen count, and buttons that send a test notification, reminder, permission request and question |
 | `/sim` | A browser version of Deskling that speaks the same protocol as the firmware |
-| `/flash` | Browser installer for the firmware (Chrome/Edge, USB). It reads builds from `FIRMWARE_URL` |
+| `/flash` | Browser installer for the firmware (Chrome/Edge, USB). It reads builds from `FIRMWARE_URL` (default: the update server at `https://deskling.mojolayers.com/firmware/`) |
 
 The whole walkthrough is in [docs/setup.md](../docs/setup.md).
 
