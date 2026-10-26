@@ -110,11 +110,18 @@ a{color:var(--purple)}
       <p class="muted">Windows, in PowerShell:</p>
       <div class="copy"><code id="runwin"></code><button class="ghost" data-copy="runwin">Copy</button></div>
       <h3>In the cloud</h3>
+      <p>This uses a Claude Code <b>routine</b>: a saved task that a web request can start. Each New session from Deskling becomes a fresh cloud session in the repo you pick here. Routines need a Pro, Max, Team or Enterprise plan.</p>
       <ol class="steps">
-        <li>At <a href="https://claude.ai/code" target="_blank">claude.ai/code</a>, create a <b>routine</b> for the repo and environment you want, with this as its prompt: <code>Do what the user asks in the routine's fire payload. They sent it from their Deskling screen.</code></li>
-        <li>Add an <b>API trigger</b> to it and paste its URL and token here.</li>
-        <li>Make sure the sessions it starts report to Deskling: your personal plugin (above) if your account's plugins load there, or the cloud environment variables <code>DESKLING_URL</code> and <code>DESKLING_TOKEN</code> plus the hooks in <a href="https://github.com/moderniselife/deskling/tree/main/hooks#cloud-repos" target="_blank">hooks/README</a>.</li>
+        <li>Open <a href="https://claude.ai/code/routines" target="_blank">claude.ai/code/routines</a> and click <b>New routine</b>.</li>
+        <li>Name it (say <i>Deskling</i>) and paste this as its prompt. A routine only acts on the text it's sent when its prompt says to:
+          <div class="copy"><code id="rprompt">Do what the user asks in the routine-fire-payload block. They typed it on their Deskling desk screen, so treat it as their request.</code><button class="ghost" data-copy="rprompt">Copy</button></div></li>
+        <li>Pick the repository Claude should work in, and an environment (<b>Default</b> is fine to start).</li>
+        <li>Under <b>Select a trigger</b>, choose <b>API</b>, then click <b>Create</b>. The routine has to be saved before it gets its address.</li>
+        <li>Open the routine again, open the menu next to its name and choose <b>Edit</b>. In <b>Select a trigger</b>, click the <b>API</b> trigger (or <b>Add another trigger</b> &rarr; <b>API</b>).</li>
+        <li>Copy the <b>URL</b> it shows (it ends in <code>/fire</code>). Click <b>Generate token</b> and copy the token straight away: it's only shown once.</li>
+        <li>Paste both below and click <b>Save</b>. <b>Cloud</b> then shows up under New session on Deskling.</li>
       </ol>
+      <p class="muted">So those sessions show up on Deskling too: they need your personal plugin (above) to load in cloud sessions, or, in the routine's environment, the variables <code>DESKLING_URL</code> and <code>DESKLING_TOKEN</code> plus the repo hooks in <a href="https://github.com/moderniselife/deskling/tree/main/hooks#cloud-repos" target="_blank">hooks/README</a>. With <b>Trusted</b> network access, add <code id="relayhost2"></code> under the environment's <b>Allowed domains</b> (Edit &rarr; the environment name &rarr; its settings icon &rarr; Network access &rarr; Custom).</p>
       <div class="row"><input id="rurl" placeholder="https://api.anthropic.com/v1/claude_code/routines/…/fire" style="flex:2"><input id="rtok" type="password" placeholder="Trigger token" style="flex:1"></div>
       <div class="row" style="margin-top:10px"><button id="rsave">Save</button><button class="ghost" id="rclear">Remove</button><span class="muted" id="rmsg"></span></div>
     </section>
@@ -178,6 +185,7 @@ $('rclear').onclick = () => { $('rurl').value = ''; $('rtok').value = ''; saveRo
 $('unlock').onclick = unlock;
 $('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
 $('relayhost').textContent = location.host;
+$('relayhost2').textContent = location.host;
 $('dlplugin').onclick = async () => {
   $('dlmsg').textContent = 'Building\u2026';
   try {

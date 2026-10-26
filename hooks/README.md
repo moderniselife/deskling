@@ -221,7 +221,7 @@ Sessions started by a routine (New session → Cloud on Deskling) or on Claude C
 Tap **New session** on Deskling's Sessions screen, pick where and in which project, and type what Claude should do. The new session listens for you straight away, so you can carry on the whole conversation from the screen.
 
 - **Your computers:** run [`runner/deskling-runner.mjs`](runner/deskling-runner.mjs) (Node 18+, reads `~/.deskling/config`). `node deskling-runner.mjs --install` starts it at login on macOS, Windows and Linux. It offers the git projects one level inside `~/code`, `~/Projects`, `~/dev`, `~/src`, `~/Developer`, `~/repos` and `~/GitHub` (or the folders in `DESKLING_PROJECTS`), and starts `claude --bg "<your prompt>"` there. If background sessions aren't available to you, it runs `claude -p` instead, which still listens for you on Deskling.
-- **The cloud:** create a routine at claude.ai/code whose prompt says to do what the fire payload asks, add an API trigger, and paste its URL and token into your relay's setup page.
+- **The cloud:** at [claude.ai/code/routines](https://claude.ai/code/routines), click **New routine**, give it the prompt `Do what the user asks in the routine-fire-payload block. They typed it on their Deskling desk screen, so treat it as their request.`, pick the repo and environment, choose the **API** trigger and click **Create**. Then **Edit** it, open the API trigger, copy its URL, click **Generate token** (shown once) and paste both into your relay's setup page.
 
 ## Cursor
 
