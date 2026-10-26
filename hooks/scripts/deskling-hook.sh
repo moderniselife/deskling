@@ -8,9 +8,13 @@
 #                           on the screen and print it for Claude Code
 #
 # Settings come from the plugin's options (CLAUDE_PLUGIN_OPTION_*), or from
-# DESKLING_* environment variables, or from ~/.deskling/config.
+# DESKLING_* environment variables, or from ~/.deskling/config, or from a deskling.conf
+# inside the plugin itself (the personal copy you can download from your relay's /setup
+# page carries one, so cloud and Cowork sessions that never see your machine can report).
 # The hook never fails Claude Code: any problem just means no screen update.
 
+# shellcheck disable=SC1090
+[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/deskling.conf" ] && . "${CLAUDE_PLUGIN_ROOT}/deskling.conf"
 CONF="${HOME}/.deskling/config"
 # shellcheck disable=SC1090
 [ -f "$CONF" ] && . "$CONF"
@@ -25,15 +29,23 @@ if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
   exit 0
 fi
 
-[ -z "$NAME" ] && NAME="$(hostname 2>/dev/null || echo computer)"
-NAME="${NAME%%.*}" # drop .local and domain suffixes
-
 case "$(uname -s 2>/dev/null)" in
   Darwin) OS=mac ;;
   Linux) OS=linux ;;
   MINGW* | MSYS* | CYGWIN*) OS=windows ;;
   *) OS=unknown ;;
 esac
+
+# Sessions in Anthropic's cloud (Claude Code on the web, cloud Cowork) run in a throwaway
+# container with a random hostname: call them "Cloud" instead.
+LABEL=""
+if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
+  OS=cloud
+  [ -z "$NAME" ] && NAME="Cloud"
+  case "${CLAUDE_CODE_ENTRYPOINT:-}" in *cowork*) LABEL="Cowork" ;; esac
+fi
+[ -z "$NAME" ] && NAME="$(hostname 2>/dev/null || echo computer)"
+NAME="${NAME%%.*}" # drop .local and domain suffixes
 
 URL="${URL%/}"
 WAIT="${WAIT%%.*}"
@@ -51,6 +63,7 @@ if [ "$1" = "wait" ]; then
     -H "Content-Type: application/json" \
     -H "X-Deskling-Host: ${NAME}" \
     -H "X-Deskling-OS: ${OS}" \
+    -H "X-Deskling-Label: ${LABEL}" \
     --data-binary @- 2>/dev/null || true
 elif [ "$1" = "sync" ]; then
   curl -sSf --max-time 4 -X POST "${URL}/hook" \
@@ -58,6 +71,7 @@ elif [ "$1" = "sync" ]; then
     -H "Content-Type: application/json" \
     -H "X-Deskling-Host: ${NAME}" \
     -H "X-Deskling-OS: ${OS}" \
+    -H "X-Deskling-Label: ${LABEL}" \
     --data-binary @- 2>/dev/null || true
 else
   curl -sSf --max-time 5 -o /dev/null -X POST "${URL}/hook" \
@@ -65,6 +79,7 @@ else
     -H "Content-Type: application/json" \
     -H "X-Deskling-Host: ${NAME}" \
     -H "X-Deskling-OS: ${OS}" \
+    -H "X-Deskling-Label: ${LABEL}" \
     --data-binary @- 2>/dev/null || true
 fi
 exit 0

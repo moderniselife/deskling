@@ -278,6 +278,14 @@ void dk_send_dismiss(const char *agent_id)
     send_obj(o);
 }
 
+void dk_send_feed_dismiss(const char *feed_id)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", feed_id ? "feed_dismiss" : "feed_clear");
+    if (feed_id) cJSON_AddStringToObject(o, "id", feed_id);
+    send_obj(o);
+}
+
 void dk_send_hello(void)
 {
     cJSON *o = cJSON_CreateObject();

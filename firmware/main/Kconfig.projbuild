@@ -55,7 +55,14 @@ menu "Deskling"
         range 10 100
         default 90
 
-    config DESKLING_VOLUME
+    config DESKLING_FAST_DISPLAY
+    bool "Rotate bands straight into the framebuffer (experimental)"
+    default n
+    help
+        Have the PPA rotate each rendered band directly into the panel's framebuffer in the
+        background, instead of esp_lvgl_port's rotate-then-copy. Faster, still being tested.
+
+config DESKLING_VOLUME
         int "Sound volume (%) (0 = silent)"
         range 0 100
         default 75

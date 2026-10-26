@@ -98,6 +98,10 @@ Now try `remind me in 2 minutes to stretch`. Claude calls the `deskling_remind` 
 
 **Cursor and scripts:** the setup page has a `~/.deskling/config` snippet to copy. See [hooks/README](../hooks/README.md) for the Cursor hooks and the `deskling` command (`deskling notify "Deploy finished"`).
 
+### Cowork and cloud sessions
+
+Sessions in the Claude app (Cowork) and in Anthropic's cloud can't see your computer's settings. On your relay's `/setup` page, use **Download my plugin** and upload the zip in the Claude app under **Customize → Plugins → Add → Upload plugin**. It syncs to every Claude session on your account. Details in [hooks/README.md](../hooks/README.md#cowork-and-cloud-sessions-the-claude-app-claude-code-on-the-web).
+
 ## 4. Install the firmware (5 min, the only time you need a cable)
 
 1. Use a USB-C **data** cable to connect the board to your Mac or PC. Use the port next to the CH340 chip, usually labelled UART. On Windows, you may need the [CH340 driver](https://www.wch-ic.com/downloads/CH341SER_EXE.html).

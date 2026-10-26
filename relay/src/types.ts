@@ -95,6 +95,7 @@ export interface Cause {
     | "hello"
     | "agent"
     | "feed"
+    | "feed_removed"
     | "permission"
     | "question"
     | "permission_closed"

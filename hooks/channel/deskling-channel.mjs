@@ -21,17 +21,23 @@ import { createInterface } from "node:readline";
 
 const VERSION = "0.2.0";
 
+// ~/.deskling/config, over the deskling.conf a personal copy of the plugin carries.
 function fileConfig() {
-  try {
-    const out = {};
-    for (const line of readFileSync(join(homedir(), ".deskling", "config"), "utf8").split(/\r?\n/)) {
-      const m = line.match(/^\s*(?:export\s+)?([A-Z_]+)\s*=\s*"?([^"]*)"?\s*$/);
-      if (m) out[m[1]] = m[2];
+  const out = {};
+  const files = [];
+  if (process.env.CLAUDE_PLUGIN_ROOT) files.push(join(process.env.CLAUDE_PLUGIN_ROOT, "deskling.conf"));
+  files.push(join(homedir(), ".deskling", "config"));
+  for (const f of files) {
+    try {
+      for (const line of readFileSync(f, "utf8").split(/\r?\n/)) {
+        const m = line.match(/^\s*(?:export\s+)?([A-Z_]+)\s*=\s*"?([^"]*)"?\s*$/);
+        if (m) out[m[1]] = m[2];
+      }
+    } catch {
+      /* not there */
     }
-    return out;
-  } catch {
-    return {};
   }
+  return out;
 }
 const fc = fileConfig();
 const env = process.env;

@@ -33,7 +33,7 @@ static struct {
     gkind_t kind;
     lv_point_t p0, still_at;
     uint32_t still_since;
-    lv_obj_t *pill, *back, *back_icon, *shade, *panel, *list;
+    lv_obj_t *pill, *back, *back_icon, *shade, *panel, *list, *clear;
     bool panel_open;
     int32_t panel_y;
 } g;
@@ -105,7 +105,143 @@ static lv_color_t feed_tint(dk_level_t l)
     }
 }
 
-static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char *title, const char *body, const char *when)
+// ---- dismissing: swipe a notification left, or tap its ×; "Clear all" sweeps them all away
+
+#define DISMISS_AT 140 // px left before letting go dismisses
+
+static struct {
+    lv_obj_t *row;
+    lv_point_t start;
+    bool swiping;
+} sw;
+
+static void set_tx(void *o, int32_t v)
+{
+    dk_style(o, LV_STYLE_TRANSLATE_X, v);
+    // Fade a little as it slides away.
+    int32_t opa = 255 + (v * 255) / (PANEL_W * 2);
+    dk_style(o, LV_STYLE_OPA, opa < 60 ? 60 : opa);
+}
+
+static void set_h(void *o, int32_t v)
+{
+    lv_obj_set_height(o, v);
+}
+
+static void row_gone(lv_anim_t *a)
+{
+    lv_obj_delete_async(a->var);
+}
+
+static void row_collapse(lv_anim_t *a)
+{
+    // After sliding out, close the gap so the rows below glide up.
+    lv_obj_t *r = a->var;
+    lv_obj_set_style_opa(r, LV_OPA_TRANSP, 0);
+    int32_t h = lv_obj_get_height(r);
+    lv_obj_set_style_pad_ver(r, 0, 0); // it's invisible now, so let it collapse all the way
+    lv_obj_set_style_min_height(r, 0, 0);
+    lv_anim_t b;
+    lv_anim_init(&b);
+    lv_anim_set_var(&b, r);
+    lv_anim_set_exec_cb(&b, set_h);
+    lv_anim_set_values(&b, h, 0);
+    lv_anim_set_duration(&b, 200);
+    lv_anim_set_path_cb(&b, lv_anim_path_ease_in_out);
+    lv_anim_set_completed_cb(&b, row_gone);
+    lv_anim_start(&b);
+}
+
+static void slide_out(lv_obj_t *r, uint32_t delay)
+{
+    lv_obj_remove_flag(r, LV_OBJ_FLAG_CLICKABLE);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, r);
+    lv_anim_set_exec_cb(&a, set_tx);
+    lv_anim_set_values(&a, lv_obj_get_style_translate_x(r, 0), -PANEL_W);
+    lv_anim_set_duration(&a, 240);
+    lv_anim_set_delay(&a, delay);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_completed_cb(&a, row_collapse);
+    lv_anim_start(&a);
+}
+
+static void dismiss_row(lv_obj_t *r)
+{
+    const char *id = lv_obj_get_user_data(r);
+    if (!id) return;
+    dk_send_feed_dismiss(id);
+    ui_sound(DK_SND_TAP);
+    slide_out(r, 0);
+}
+
+static void row_free(lv_event_t *e)
+{
+    free(lv_obj_get_user_data(lv_event_get_current_target(e)));
+}
+
+static void row_touch(lv_event_t *e)
+{
+    lv_obj_t *r = lv_event_get_current_target(e);
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_point_t p;
+    lv_indev_t *in = lv_indev_active();
+    if (in) lv_indev_get_point(in, &p);
+    if (code == LV_EVENT_PRESSED) {
+        sw.row = r;
+        sw.start = p;
+        sw.swiping = false;
+    } else if (code == LV_EVENT_PRESSING && sw.row == r) {
+        int32_t dx = p.x - sw.start.x, dy = p.y - sw.start.y;
+        if (!sw.swiping && dx < -16 && LV_ABS(dx) > LV_ABS(dy) * 2) sw.swiping = true;
+        if (sw.swiping) {
+            lv_anim_delete(r, set_tx);
+            set_tx(r, dx < 0 ? dx : 0);
+        }
+    } else if ((code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) && sw.row == r) {
+        int32_t dx = p.x - sw.start.x;
+        bool go = sw.swiping && code == LV_EVENT_RELEASED && dx <= -DISMISS_AT;
+        if (go) {
+            dismiss_row(r);
+        } else if (lv_obj_get_style_translate_x(r, 0) != 0) {
+            lv_anim_t a; // spring back
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, r);
+            lv_anim_set_exec_cb(&a, set_tx);
+            lv_anim_set_values(&a, lv_obj_get_style_translate_x(r, 0), 0);
+            lv_anim_set_duration(&a, 260);
+            lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
+            lv_anim_start(&a);
+        }
+        sw.row = NULL;
+        sw.swiping = false;
+    }
+}
+
+static void close_tapped(lv_event_t *e)
+{
+    lv_obj_t *r = lv_obj_get_parent(lv_event_get_current_target(e));
+    dismiss_row(r);
+}
+
+static void clear_all(lv_event_t *e)
+{
+    (void)e;
+    dk_send_feed_dismiss(NULL);
+    ui_sound(DK_SND_TAP);
+    uint32_t delay = 0;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(g.list); i++) {
+        lv_obj_t *r = lv_obj_get_child(g.list, i);
+        if (!lv_obj_get_user_data(r)) continue; // reminders stay: they're things to do, not news
+        slide_out(r, delay);
+        delay += 45;
+    }
+    lv_obj_add_flag(g.clear, LV_OBJ_FLAG_HIDDEN);
+}
+
+/** One row of the sheet. feed_id is set for notifications (which can be dismissed). */
+static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char *title, const char *body, const char *when, const char *feed_id)
 {
     lv_obj_t *r = dk_card(parent, DK_CARD, 22);
     lv_obj_set_width(r, lv_pct(100));
@@ -113,6 +249,15 @@ static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char 
     lv_obj_set_style_pad_all(r, 12, 0);
     dk_row(r, 14);
     lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    if (feed_id) {
+        lv_obj_set_user_data(r, strdup(feed_id));
+        lv_obj_add_event_cb(r, row_free, LV_EVENT_DELETE, NULL);
+        lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(r, row_touch, LV_EVENT_PRESSED, NULL);
+        lv_obj_add_event_cb(r, row_touch, LV_EVENT_PRESSING, NULL);
+        lv_obj_add_event_cb(r, row_touch, LV_EVENT_RELEASED, NULL);
+        lv_obj_add_event_cb(r, row_touch, LV_EVENT_PRESS_LOST, NULL);
+    }
     lv_obj_t *ic = dk_card(r, tint, 14);
     lv_obj_set_size(ic, 42, 42);
     lv_obj_set_style_pad_all(ic, 0, 0);
@@ -130,6 +275,18 @@ static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char 
         lv_label_set_long_mode(b, LV_LABEL_LONG_MODE_DOTS);
     }
     if (when && when[0]) dk_label(r, DK_FONT_XS, DK_MUTED, when);
+    if (feed_id) {
+        lv_obj_t *x = lv_button_create(r);
+        lv_obj_remove_style_all(x);
+        lv_obj_set_size(x, 36, 36);
+        lv_obj_set_style_radius(x, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(x, DK_LINE, 0);
+        lv_obj_set_style_bg_opa(x, LV_OPA_COVER, 0);
+        lv_obj_set_ext_click_area(x, 10);
+        lv_obj_center(dk_label(x, &lv_font_montserrat_14, DK_MUTED, LV_SYMBOL_CLOSE));
+        lv_obj_add_event_cb(x, close_tapped, LV_EVENT_CLICKED, NULL);
+        dk_press_style(x);
+    }
 }
 
 static void build_list(void)
@@ -144,7 +301,7 @@ static void build_list(void)
         if (g_model->reminders[i].due) ui_due_text(g_model->reminders[i].due, when, sizeof(when));
         now = dk_hash_str(now, when);
     }
-    for (int i = 0; i < g_model->feed_n && i < 7; i++) {
+    for (int i = 0; i < g_model->feed_n; i++) {
         char ago[12];
         ui_ago(g_model->feed[i].ts, ago, sizeof(ago));
         now = dk_hash_str(now, ago);
@@ -154,21 +311,23 @@ static void build_list(void)
     lv_obj_clean(g.list);
     int shown = 0;
     // Upcoming reminders first: they're the things you can act on.
-    for (int i = 0; i < g_model->reminder_n && shown < 3; i++) {
+    for (int i = 0; i < g_model->reminder_n; i++) {
         const dk_reminder_t *r = &g_model->reminders[i];
         if (r->done) continue;
         char when[40] = "";
         if (r->due) ui_due_text(r->due, when, sizeof(when));
-        row(g.list, DK_BUTTER, LV_SYMBOL_BELL, r->title, "Reminder", when);
+        row(g.list, DK_BUTTER, LV_SYMBOL_BELL, r->title, "Reminder", when, NULL);
         shown++;
     }
-    for (int i = 0; i < g_model->feed_n && shown < 7; i++) {
+    for (int i = 0; i < g_model->feed_n; i++) {
         const dk_feed_t *f = &g_model->feed[i];
         char ago[12];
         ui_ago(f->ts, ago, sizeof(ago));
-        row(g.list, feed_tint(f->level), feed_icon(f->level), f->title, f->body, ago);
+        row(g.list, feed_tint(f->level), feed_icon(f->level), f->title, f->body, ago, f->id);
         shown++;
     }
+    if (g_model->feed_n) lv_obj_remove_flag(g.clear, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(g.clear, LV_OBJ_FLAG_HIDDEN);
     if (!shown) dk_label(g.list, DK_FONT_M, DK_MUTED, "Nothing new. Deskling will let you know.");
 }
 
@@ -198,7 +357,7 @@ static void ensure_panel(void)
     set_y(g.panel, -PANEL_H - 20);
     lv_obj_set_style_pad_hor(g.panel, 26, 0);
     lv_obj_set_style_pad_top(g.panel, 30, 0);
-    lv_obj_set_style_pad_bottom(g.panel, 18, 0);
+    lv_obj_set_style_pad_bottom(g.panel, 40, 0); // room for the grabber: swipe up from there to close
     lv_obj_set_style_shadow_width(g.panel, 40, 0);
     lv_obj_set_style_shadow_opa(g.panel, LV_OPA_20, 0);
     lv_obj_set_style_shadow_color(g.panel, DK_INK, 0);
@@ -209,14 +368,23 @@ static void ensure_panel(void)
     lv_obj_set_size(head, lv_pct(100), LV_SIZE_CONTENT);
     dk_row(head, 0);
     lv_obj_set_flex_align(head, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    lv_obj_set_flex_align(head, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     dk_label(head, DK_FONT_H2, DK_INK, "Notifications");
-    dk_label(head, DK_FONT_S, DK_MUTED, "Swipe up to close");
+    g.clear = dk_button(head, "Clear all", false, DK_FONT_S);
+    lv_obj_set_height(g.clear, 44);
+    lv_obj_add_event_cb(g.clear, clear_all, LV_EVENT_CLICKED, NULL);
 
+    // The list scrolls; closing the sheet is a swipe up on its header or grabber, or a tap
+    // on the shade below it.
     g.list = dk_box(g.panel);
     lv_obj_set_width(g.list, lv_pct(100));
     lv_obj_set_flex_grow(g.list, 1);
     dk_col(g.list, 10);
     lv_obj_set_style_clip_corner(g.list, true, 0);
+    lv_obj_add_flag(g.list, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_ELASTIC);
+    lv_obj_set_scroll_dir(g.list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(g.list, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_set_style_pad_bottom(g.list, 8, 0);
 
     // A little grabber at the bottom, like a sheet.
     lv_obj_t *grab = dk_card(g.panel, DK_LINE, LV_RADIUS_CIRCLE);
@@ -224,7 +392,7 @@ static void ensure_panel(void)
     lv_obj_set_style_bg_color(grab, DK_MUTED, 0);
     lv_obj_set_style_bg_opa(grab, LV_OPA_30, 0);
     lv_obj_add_flag(grab, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_align(grab, LV_ALIGN_BOTTOM_MID, 0, 6);
+    lv_obj_align(grab, LV_ALIGN_BOTTOM_MID, 0, 22);
 }
 
 static void show_panel_at(int32_t y)
@@ -311,7 +479,14 @@ static void on_down(lv_point_t p)
     g.active = g.held = false;
     g.p0 = g.still_at = p;
     g.still_since = lv_tick_get();
-    if (g.panel_open) g.kind = p.y < PANEL_H ? G_PANEL : G_NONE; // below the sheet is a tap on the shade
+    if (g.panel_open) {
+        // On the sheet but not on its list: drag to close. On the list: let it scroll.
+        // Below the sheet is a tap on the shade.
+        lv_area_t la;
+        lv_obj_get_coords(g.list, &la);
+        bool on_list = p.x >= la.x1 && p.x <= la.x2 && p.y >= la.y1 && p.y <= la.y2;
+        g.kind = p.y < PANEL_H && !on_list ? G_PANEL : G_NONE;
+    }
     else if (p.x < EDGE && allowed(G_LEFT)) g.kind = G_LEFT;
     else if (p.y > DK_H - EDGE && allowed(G_BOTTOM)) g.kind = G_BOTTOM;
     else if (p.y < EDGE && allowed(G_TOP)) g.kind = G_TOP;

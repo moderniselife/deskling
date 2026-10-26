@@ -142,6 +142,8 @@ void dk_send_answer(const dk_pending_t *p, const char *const *labels);
 void dk_send_message(const char *agent_id, const char *text);
 void dk_send_reminder_done(const char *reminder_id, bool done);
 void dk_send_action(const char *name); // "focus" | "snooze_all" | "ping_when_done"
+/** Remove one notification from the feed, or all of them when feed_id is NULL. */
+void dk_send_feed_dismiss(const char *feed_id);
 void dk_send_dismiss(const char *agent_id);
 void dk_send_hello(void);
 

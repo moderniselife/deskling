@@ -60,6 +60,12 @@ The hooks are bash scripts. Claude Code runs them through Git Bash, which comes 
 
 That assumes you copied the script to `%USERPROFILE%\deskling\`. If settings `env` doesn't reach hooks on your setup, put the URL and token in `%USERPROFILE%\.deskling\config` instead (see below).
 
+## Cowork and cloud sessions (the Claude app, Claude Code on the web)
+
+Those sessions never see your computer, so they can't read `~/.deskling/config` and the app doesn't ask for plugin settings. Instead, download your own copy of the plugin from your relay's `/setup` page (**Claude app, Cowork and cloud sessions → Download my plugin**). It's the same plugin with a `deskling.conf` inside that holds your relay URL and token. Upload it in the Claude app under **Customize → Plugins → Add → Upload plugin**. Plugins on your Claude account sync to Cowork (on your computer and in the cloud) and to Claude Code, so every session reports from then on. Cloud sessions show up as **Cloud** and Cowork ones without a project folder as **Cowork**.
+
+Keep that zip to yourself: it has your token in it. Having the marketplace plugin installed as well is fine; the relay drops the doubled events. For Claude Code on the web with network access set to **Trusted**, add your relay's domain to the environment's allowed domains.
+
 ## Cursor
 
 Cursor's hooks give Deskling status (prompt sent, files edited, finished) and, if you opt in, shell and MCP approvals.

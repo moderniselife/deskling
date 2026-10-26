@@ -800,7 +800,7 @@ int main(int argc, char **argv)
     check(ui_gestures_panel_open(), "swipe down from the top opens notifications");
     check(find_label(lv_layer_top(), "Notifications") != NULL, "notification panel has its heading");
     shot("18_notifications");
-    drag(640, 420, 640, 120, 200, 0);
+    drag(640, 588, 640, 300, 250, 0); // swipe up from the grabber
     run(400);
     check(!ui_gestures_panel_open(), "swipe up closes notifications");
     drag(640, 795, 640, 560, 250, 700);
@@ -817,9 +817,34 @@ int main(int argc, char **argv)
     if (bl) tap_obj(lv_obj_get_parent(lv_obj_get_parent(bl)), "notification banner");
     run(600);
     check(ui_gestures_panel_open(), "tapping the banner opens notifications");
-    drag(640, 420, 640, 120, 200, 0);
-    run(400);
-    check(!ui_gestures_panel_open(), "swipe up closes notifications again");
+    shot("20_notifications_list");
+    // Dragging up on the list scrolls it instead of closing the sheet.
+    drag(640, 450, 640, 250, 250, 0);
+    run(500);
+    check(ui_gestures_panel_open(), "scrolling the list keeps the sheet open");
+    // Swipe one notification away.
+    {
+        lv_obj_t *l = find_label(lv_layer_top(), "Tests passed");
+        check(l != NULL, "the list shows older notifications");
+        if (l) {
+            lv_area_t a;
+            lv_obj_get_coords(l, &a);
+            s_last_sent[0] = 0;
+            drag(a.x2, (a.y1 + a.y2) / 2, a.x2 - 320, (a.y1 + a.y2) / 2 + 6, 200, 0);
+            run(700);
+            expect_sent("\"type\":\"feed_dismiss\"");
+            check(find_label(lv_layer_top(), "Tests passed") == NULL, "a swiped notification goes away");
+        }
+    }
+    s_last_sent[0] = 0;
+    tap_obj(find_label(lv_layer_top(), "Clear all"), "Clear all");
+    run(900);
+    expect_sent("\"type\":\"feed_clear\"");
+    shot("21_notifications_cleared");
+    check(find_label(lv_layer_top(), "Claude is waiting for you") == NULL, "Clear all removes the notifications");
+    drag(640, 588, 640, 300, 250, 0); // swipe up from the grabber closes it
+    run(500);
+    check(!ui_gestures_panel_open(), "swipe up from the grabber closes notifications");
     apply("busy");
     run(300);
     tap("web-app");

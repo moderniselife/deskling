@@ -70,6 +70,8 @@ The screen sends:
 {"type":"unqueue","agentId":"…","id":"<chat line id>"}  // take back a queued message
 {"type":"dismiss","agentId":"…","remove":false}
 {"type":"reminder_done","id":"…","done":true}
+{"type":"feed_dismiss","id":"<feed item id>"}            // remove one notification
+{"type":"feed_clear"}                                     // remove them all
 {"type":"action","name":"focus|snooze_all|ping_when_done"}
 {"type":"hello"}                                          // ask for a fresh snapshot
 ```

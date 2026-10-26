@@ -10,11 +10,16 @@ param([string]$Mode = "")
 $ErrorActionPreference = "SilentlyContinue"
 $payload = [Console]::In.ReadToEnd()
 
-$conf = Join-Path $HOME ".deskling\config"
+# ~/.deskling/config wins over the deskling.conf a personal copy of the plugin carries.
 $fileVars = @{}
-if (Test-Path $conf) {
-  foreach ($line in Get-Content $conf) {
-    if ($line -match '^\s*([A-Z_]+)\s*=\s*"?([^"]*)"?\s*$') { $fileVars[$Matches[1]] = $Matches[2] }
+$confs = @()
+if ($env:CLAUDE_PLUGIN_ROOT) { $confs += (Join-Path $env:CLAUDE_PLUGIN_ROOT "deskling.conf") }
+$confs += (Join-Path $HOME ".deskling\config")
+foreach ($conf in $confs) {
+  if (Test-Path $conf) {
+    foreach ($line in Get-Content $conf) {
+      if ($line -match '^\s*([A-Z_]+)\s*=\s*"?([^"]*)"?\s*$') { $fileVars[$Matches[1]] = $Matches[2] }
+    }
   }
 }
 function Pick($pluginKey, $envKey, $default) {

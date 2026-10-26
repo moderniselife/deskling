@@ -82,6 +82,17 @@ a{color:var(--purple)}
     </section>
 
     <section>
+      <h2>Claude app, Cowork and cloud sessions</h2>
+      <p>Sessions in the Claude app (Cowork) and in Anthropic's cloud never see this computer, so they can't read your settings. Upload your own copy of the plugin to your Claude account once and it follows you everywhere: Cowork on your computer and in the cloud, and Claude Code.</p>
+      <ol class="steps">
+        <li><button id="dlplugin">Download my plugin</button> <span class="muted" id="dlmsg"></span></li>
+        <li>In the Claude app, open <b>Customize &rarr; Plugins</b>, choose <b>Add</b> &rarr; <b>Upload plugin</b> and pick <code>deskling-personal.zip</code>.</li>
+        <li>Start a new session. Cloud sessions show up as <b>Cloud</b>, Cowork ones as <b>Cowork</b>.</li>
+      </ol>
+      <p class="muted">The zip has your relay token in it, so keep it to yourself. Already installed Deskling from the marketplace too? That's fine: the relay ignores the doubled-up events. For Claude Code on the web, if your cloud environment's network access is <b>Trusted</b>, add <code id="relayhost"></code> to its allowed domains.</p>
+    </section>
+
+    <section>
       <h2>The config file: Claude desktop app, Cursor, scripts</h2>
       <p>Save this as <code>~/.deskling/config</code> (Windows: <code>%USERPROFILE%\\.deskling\\config</code>). Everything reads it: the Claude Code plugin (handy when your Claude app has no place to enter plugin settings), the Cursor hooks and the <code>deskling</code> command. Restart Claude afterwards.</p>
       <div class="copy"><code id="conf"></code><button class="ghost" data-copy="confraw">Copy</button></div>
@@ -137,6 +148,19 @@ async function unlock() {
 }
 $('unlock').onclick = unlock;
 $('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
+$('relayhost').textContent = location.host;
+$('dlplugin').onclick = async () => {
+  $('dlmsg').textContent = 'Building\u2026';
+  try {
+    const r = await fetch('/plugin.zip', { headers: { authorization: 'Bearer ' + token } });
+    if (!r.ok) throw new Error(r.status === 401 ? 'That token doesn\u2019t match this relay.' : 'Couldn\u2019t build it (' + r.status + ').');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = 'deskling-personal.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    $('dlmsg').textContent = 'Downloaded deskling-personal.zip';
+  } catch (e) { $('dlmsg').textContent = e.message; }
+};
 $('reveal').onclick = () => { const shown = $('tok').textContent === token; $('tok').textContent = shown ? '\\u2022'.repeat(8) : token; $('reveal').textContent = shown ? 'Show' : 'Hide'; };
 document.querySelectorAll('[data-copy]').forEach((b) => b.onclick = async () => { await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent = 'Copied!'; setTimeout(() => b.textContent = 'Copy', 1200); });
 

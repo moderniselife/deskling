@@ -274,6 +274,7 @@ static esp_lcd_touch_handle_t touch_init(void)
 
 
 // ------------------------------------------------------------- display
+#if CONFIG_DESKLING_FAST_DISPLAY
 // LVGL draws the 1280x800 landscape UI in horizontal bands. Each finished band is handed to the
 // PPA, which rotates it straight into its place in the panel's portrait framebuffer in the
 // background while LVGL draws the next band into the other buffer. No intermediate copy, and
@@ -346,7 +347,11 @@ static void band_wait(lv_display_t *d)
 {
     (void)d;
     if (!s_disp.busy) return;
-    xSemaphoreTake(s_disp.done, portMAX_DELAY);
+    // A band takes well under a millisecond; never let a lost completion hang the whole UI.
+    if (xSemaphoreTake(s_disp.done, pdMS_TO_TICKS(100)) != pdTRUE) {
+        static uint32_t misses;
+        if (misses++ < 5) ESP_LOGE(TAG, "band rotate didn't finish in 100 ms");
+    }
     s_disp.busy = false;
 }
 
@@ -363,11 +368,12 @@ static lv_display_t *display_init(esp_lcd_panel_handle_t panel)
     // Bands in internal RAM draw much faster than in PSRAM (which the panel is also reading the
     // framebuffer out of, 60 times a second). Use it when there's room for both bands and still
     // plenty left for Wi-Fi and everything else; otherwise fall back to PSRAM.
-    const size_t margin = 160 * 1024;
+    // Wi-Fi (through the C6), TLS and the web server all need internal RAM too, later on.
+    const size_t margin = 300 * 1024;
     size_t lines = 100, bytes = 0;
     void *b1 = NULL, *b2 = NULL;
     bool internal = false;
-    for (size_t l = 48; l >= 16 && !internal; l /= 2) {
+    for (size_t l = 32; l >= 16 && !internal; l /= 2) {
         size_t n = (size_t)BOARD_LCD_V_RES * l * 2; // landscape rows are 1280 px wide
         if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) < n + 1024 ||
             heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) < 2 * n + margin)
@@ -406,6 +412,56 @@ static lv_display_t *display_init(esp_lcd_panel_handle_t panel)
     return disp;
 }
 
+
+#endif // CONFIG_DESKLING_FAST_DISPLAY
+
+/** The esp_lvgl_port path (PPA rotation into a band buffer, then DMA2D into the framebuffer). */
+static lv_display_t *display_init_port(esp_lcd_panel_io_handle_t io, esp_lcd_panel_handle_t panel)
+{
+    size_t band_px = BOARD_LCD_H_RES * 160; // PSRAM fallback: 1280 x 100 lines
+    bool internal = false;
+    const size_t margin = 160 * 1024;
+    for (size_t lines = 40; lines >= 20 && !internal; lines /= 2) {
+        size_t px = BOARD_LCD_H_RES * (lines * BOARD_LCD_V_RES / BOARD_LCD_H_RES); // lines of the 1280-wide landscape
+        size_t bytes = px * 2;
+        size_t free_dma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+        size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+        if (largest >= bytes + 1024 && free_dma >= 3 * bytes + margin) {
+            band_px = px;
+            internal = true;
+        }
+    }
+    s_perf.last.internal_bands = internal;
+    s_perf.last.band_lines = band_px / BOARD_LCD_V_RES;
+    ESP_LOGI(TAG, "render bands: %u lines in %s (internal free %u KB)", (unsigned)(band_px / BOARD_LCD_V_RES),
+             internal ? "internal RAM" : "PSRAM", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+
+    const lvgl_port_display_cfg_t disp_cfg = {
+        .io_handle = io,
+        .panel_handle = panel,
+        .buffer_size = band_px,
+        .double_buffer = true,
+        .hres = BOARD_LCD_H_RES,
+        .vres = BOARD_LCD_V_RES,
+        .color_format = LV_COLOR_FORMAT_RGB565,
+        .flags =
+            {
+                .buff_dma = internal,
+                .buff_spiram = !internal,
+                .sw_rotate = true, // done by the P4's PPA engine
+            },
+    };
+    const lvgl_port_display_dsi_cfg_t dsi_cfg = {.flags = {.avoid_tearing = false}};
+    lv_display_t *disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
+    assert(disp);
+    // Copy rotated bands into the framebuffer with DMA2D instead of a CPU memcpy.
+    if (esp_lcd_dpi_panel_enable_dma2d(panel) != ESP_OK) ESP_LOGW(TAG, "DMA2D unavailable, copying bands with the CPU");
+    lvgl_port_lock(0);
+    lv_display_set_rotation(disp, ROTATE_180 ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_90);
+    lvgl_port_unlock();
+    return disp;
+}
+
 lv_display_t *board_init(void)
 {
     backlight_init();
@@ -422,8 +478,12 @@ lv_display_t *board_init(void)
     port_cfg.timer_period_ms = 5;
     ESP_ERROR_CHECK(lvgl_port_init(&port_cfg));
 
+#if CONFIG_DESKLING_FAST_DISPLAY
     lv_display_t *disp = display_init(panel);
     assert(disp);
+#else
+    lv_display_t *disp = display_init_port(io, panel);
+#endif
 
     lvgl_port_lock(0);
     perf_init(disp);

@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { makeZip, type ZipEntry } from "./zip";
 import type {
   Agent,
   AgentState,
@@ -54,6 +55,9 @@ function clip(s: unknown, max: number): string {
   const t = s.trim();
   return t.length > max ? t.slice(0, max - 1) + "…" : t;
 }
+
+// Where the plugin's files are published (this repo's hooks/ folder).
+const PLUGIN_SOURCE = "https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/";
 
 function baseName(path: unknown): string {
   if (typeof path !== "string" || !path) return "";
@@ -148,14 +152,24 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     }
 
     if (req.method === "POST" && path === "/hook") {
-      const body = await readJson();
+      const raw = await req.text();
+      let body: Record<string, unknown> | null = null;
+      try {
+        body = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        body = null;
+      }
       if (!body) return json({ error: "bad json" }, 400);
+      // The same event twice within a few seconds means two copies of the plugin are installed
+      // (say the marketplace one and your personal one): only act on the first.
+      if (this.seenRecently(raw)) return empty();
       const host = oneLine(req.headers.get("x-deskling-host") ?? "", 40) || "computer";
       const os = oneLine(req.headers.get("x-deskling-os") ?? "", 20) || "unknown";
       const src = (req.headers.get("x-deskling-source") ?? "claude-code").toLowerCase() as Source;
       const wait = Math.min(MAX_WAIT_S, Math.max(0, Number(url.searchParams.get("wait") ?? DEFAULT_WAIT_S) || DEFAULT_WAIT_S));
       if (src === "cursor") return this.onCursorHook(body, host, os, wait, url.searchParams.get("approve") === "1");
-      return this.onHook(body, host, os, wait);
+      const label = oneLine(req.headers.get("x-deskling-label") ?? "", 30);
+      return this.onHook(body, host, os, wait, label);
     }
 
     if (req.method === "POST" && path === "/api/event") {
@@ -177,6 +191,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       return json({ ok: true, screens: this.ctx.getWebSockets().length, agents: Object.keys(this.state.agents).length, pending: this.state.pending.length });
     }
 
+    if (req.method === "GET" && path === "/plugin.zip") return this.personalPlugin(url);
+
     if (req.method === "GET" && path === "/api/state") {
       this.prune();
       return json(this.state);
@@ -191,10 +207,78 @@ export class Hub extends DurableObject<Record<string, unknown>> {
 
   // ------------------------------------------------------ Claude Code hooks
 
-  private async onHook(body: Record<string, unknown>, host: string, os: string, wait: number): Promise<Response> {
+  // ------------------------------------------------------ personal plugin
+
+  /**
+   * The Deskling plugin with this relay's address and token built in, for the Claude app:
+   * uploaded there once, it syncs to Cowork (on your computer and in the cloud) and to Claude
+   * Code, none of which can be configured by hand the way a local install can.
+   */
+  private async personalPlugin(url: URL): Promise<Response> {
+    const files: { path: string; executable?: boolean }[] = [
+      { path: ".claude-plugin/plugin.json" },
+      { path: ".claude-plugin/icon.png" },
+      { path: "hooks/hooks.json" },
+      { path: "scripts/deskling-hook.sh", executable: true },
+      { path: "scripts/deskling-hook.ps1" },
+      { path: "scripts/deskling", executable: true },
+      { path: "channel/deskling-channel.mjs" },
+      { path: "README.md" },
+    ];
+    const entries: ZipEntry[] = [];
+    for (const f of files) {
+      const r = await fetch(PLUGIN_SOURCE + f.path, { cf: { cacheTtl: 300 } } as RequestInit);
+      if (!r.ok) {
+        if (f.path.endsWith("plugin.json") || f.path.endsWith("hooks.json") || f.path.endsWith(".sh")) {
+          return json({ error: `couldn't fetch ${f.path} from GitHub (${r.status})` }, 502);
+        }
+        continue;
+      }
+      let data: Uint8Array = new Uint8Array(await r.arrayBuffer());
+      if (f.path === ".claude-plugin/plugin.json") {
+        const manifest = JSON.parse(new TextDecoder().decode(data)) as Record<string, unknown>;
+        manifest.name = "deskling-personal";
+        manifest.displayName = "Deskling (yours)";
+        manifest.description = `Sends Claude activity to your Deskling screen through ${url.host}. Keep it private: it holds your relay token.`;
+        data = new TextEncoder().encode(JSON.stringify(manifest, null, 2) + "\n");
+      }
+      entries.push({ path: f.path, data, executable: f.executable });
+    }
+    const conf =
+      `# Made by ${url.origin}/setup. This copy of the plugin holds your relay token, so keep it private.\n` +
+      `# ~/.deskling/config (or the plugin options) on a computer still win over these.\n` +
+      `DESKLING_URL=${url.origin}\n` +
+      `DESKLING_TOKEN=${String(this.env.DESKLING_TOKEN ?? "")}\n`;
+    entries.push({ path: "deskling.conf", data: new TextEncoder().encode(conf) });
+    return new Response(makeZip(entries), {
+      headers: {
+        "content-type": "application/zip",
+        "content-disposition": 'attachment; filename="deskling-personal.zip"',
+        "cache-control": "no-store",
+      },
+    });
+  }
+
+  private recent = new Map<string, number>();
+
+  /** True if this exact hook body arrived in the last few seconds. */
+  private seenRecently(raw: string): boolean {
+    const now = Date.now();
+    for (const [k, t] of this.recent) if (now - t > 5000) this.recent.delete(k);
+    let h = 2166136261;
+    for (let i = 0; i < raw.length; i++) h = Math.imul(h ^ raw.charCodeAt(i), 16777619);
+    const key = `${raw.length}:${h >>> 0}`;
+    if (this.recent.has(key)) return true;
+    this.recent.set(key, now);
+    return false;
+  }
+
+  private async onHook(body: Record<string, unknown>, host: string, os: string, wait: number, label = ""): Promise<Response> {
     const event = String(body.hook_event_name ?? "");
     const sid = String(body.session_id ?? "") || `${host}-unknown`;
-    const name = baseName(body.cwd) || "claude";
+    // Cowork sessions without a project folder run in a home directory: name them after the app.
+    const dir = baseName(body.cwd);
+    const name = label && /^(claude|root|user|home|)$/i.test(dir) ? label : dir || label || "claude";
 
     if (event === "SessionEnd") {
       this.removeAgent(sid);
@@ -621,6 +705,20 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       if (a && msg.remove === true) this.removeAgent(a.id);
       else if (a && a.state === "done") this.setAgent(a, "idle", "Ready for a prompt");
       await this.commit({ kind: "agent" });
+      return;
+    }
+    if (type === "feed_dismiss") {
+      const id = String(msg.id ?? "");
+      const before = this.state.feed.length;
+      this.state.feed = this.state.feed.filter((f) => f.id !== id);
+      if (this.state.feed.length !== before) await this.commit({ kind: "feed_removed", id });
+      return;
+    }
+    if (type === "feed_clear") {
+      if (this.state.feed.length) {
+        this.state.feed = [];
+        await this.commit({ kind: "feed_removed" });
+      }
       return;
     }
     if (type === "reminder_done") {
