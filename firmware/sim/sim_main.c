@@ -599,6 +599,233 @@ static double handler_ms(void)
 }
 #endif
 
+
+// ---- chaos: random snapshots (sessions coming and going, huge and odd text, requests for
+// sessions that don't exist, too many of everything) while moving between screens and tapping
+// around. Run under AddressSanitizer (tools/run_sim.sh with DESKLING_SIM_ASAN=1) to catch crashes.
+static uint32_t s_rng = 12345;
+static uint32_t rnd(uint32_t n)
+{
+    s_rng = s_rng * 1103515245u + 12345u;
+    return n ? (s_rng >> 8) % n : 0;
+}
+static void rnd_text(char *out, size_t cap, size_t max)
+{
+    static const char *bits[] = {"fix ", "the ", "login ", "flow ", "é", "漢字", "😀 ", "\n", "\"quoted\" ", "C:\\path\\x ", "<b>", "&amp; ", "  ", "a", "%s %d ", "verylongwordwithoutanyspacesatallthatkeepsgoing "};
+    size_t len = 0, want = rnd((uint32_t)max + 1);
+    out[0] = 0;
+    while (len < want && len + 64 < cap) {
+        const char *b = bits[rnd(sizeof(bits) / sizeof(bits[0]))];
+        size_t l = strlen(b);
+        memcpy(out + len, b, l);
+        len += l;
+        out[len] = 0;
+    }
+}
+static const char *pick(const char *const *list, size_t n) { return list[rnd((uint32_t)n)]; }
+#define PICK(list) pick(list, sizeof(list) / sizeof(list[0]))
+
+static void chaos(int rounds)
+{
+    static const char *sources[] = {"claude-code", "cursor", "codex", "gemini", "opencode", "custom", "weird"};
+    static const char *states[] = {"idle", "working", "waiting", "needs_you", "done", "bogus"};
+    static const char *froms[] = {"you", "agent", "tool", "thought"};
+    static const char *statuses[] = {"queued", "delivered", "typed", "sent"};
+    static const char *causes[] = {"hello", "agent", "chat", "done", "permission", "question", "feed", "reminder", "reminder_due", "ping", "permission_closed"};
+    static const char *screens_ok[] = {"home", "sessions", "chat", "new", "night"};
+    static char text[4096];
+    char id[32];
+    for (int r = 0; r < rounds; r++) {
+        cJSON *root = cJSON_CreateObject();
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        double now = (double)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+        cJSON_AddStringToObject(root, "type", "snapshot");
+        cJSON_AddNumberToObject(root, "now", now);
+        cJSON *cause = cJSON_AddObjectToObject(root, "cause");
+        cJSON_AddStringToObject(cause, "kind", PICK(causes));
+        snprintf(id, sizeof(id), "ag%u", rnd(16));
+        cJSON_AddStringToObject(cause, "id", id);
+        cJSON *agents = cJSON_AddArrayToObject(root, "agents");
+        int na = (int)rnd(15);
+        for (int i = 0; i < na; i++) {
+            cJSON *a = cJSON_CreateObject();
+            snprintf(id, sizeof(id), "ag%u", rnd(16));
+            cJSON_AddStringToObject(a, "id", id);
+            cJSON_AddStringToObject(a, "source", PICK(sources));
+            rnd_text(text, sizeof(text), 90);
+            cJSON_AddStringToObject(a, "name", text);
+            cJSON_AddStringToObject(a, "host", rnd(2) ? "MacBook" : "");
+            cJSON_AddStringToObject(a, "os", "mac");
+            cJSON_AddStringToObject(a, "state", PICK(states));
+            rnd_text(text, sizeof(text), 200);
+            cJSON_AddStringToObject(a, "task", text);
+            rnd_text(text, sizeof(text), 400);
+            cJSON_AddStringToObject(a, "lastMessage", text);
+            cJSON_AddNumberToObject(a, "updated", now - rnd(600000));
+            cJSON_AddBoolToObject(a, "canMessage", rnd(2));
+            cJSON_AddBoolToObject(a, "listening", rnd(2));
+            if (rnd(2)) cJSON_AddStringToObject(a, "model", "ollama/qwen3-coder:30b-a-very-long-model-name-indeed");
+            cJSON_AddNumberToObject(a, "context", rnd(900000));
+            cJSON *chat = cJSON_AddArrayToObject(a, "chat");
+            int nc = (int)rnd(45);
+            for (int c = 0; c < nc; c++) {
+                cJSON *l = cJSON_CreateObject();
+                snprintf(id, sizeof(id), "c%u", rnd(60));
+                cJSON_AddStringToObject(l, "id", id);
+                cJSON_AddStringToObject(l, "from", PICK(froms));
+                rnd_text(text, sizeof(text), rnd(8) ? 200 : 3000);
+                cJSON_AddStringToObject(l, "text", text);
+                cJSON_AddStringToObject(l, "status", PICK(statuses));
+                cJSON_AddNumberToObject(l, "ts", now - rnd(60000));
+                if (!rnd(8)) cJSON_AddStringToObject(l, "image", rnd(2) ? "img1" : "nope");
+                if (!rnd(8)) {
+                    rnd_text(text, sizeof(text), 600);
+                    cJSON_AddStringToObject(l, "quote", text);
+                }
+                cJSON_AddItemToArray(chat, l);
+            }
+            cJSON *helpers = cJSON_AddArrayToObject(a, "helpers");
+            for (int h = 0, nh = (int)rnd(7); h < nh; h++) {
+                cJSON *x = cJSON_CreateObject();
+                snprintf(id, sizeof(id), "h%d", h);
+                cJSON_AddStringToObject(x, "id", id);
+                rnd_text(text, sizeof(text), 120);
+                cJSON_AddStringToObject(x, "name", text);
+                cJSON_AddStringToObject(x, "task", "Reading");
+                cJSON_AddBoolToObject(x, "done", rnd(2));
+                cJSON_AddItemToArray(helpers, x);
+            }
+            cJSON_AddItemToArray(agents, a);
+        }
+        cJSON *pending = cJSON_AddArrayToObject(root, "pending");
+        for (int i = 0, np = (int)rnd(4); i < np; i++) {
+            cJSON *p = cJSON_CreateObject();
+            snprintf(id, sizeof(id), "p%u", rnd(5));
+            cJSON_AddStringToObject(p, "id", id);
+            bool q = rnd(2);
+            cJSON_AddStringToObject(p, "kind", q ? "question" : "permission");
+            snprintf(id, sizeof(id), "ag%u", rnd(20));
+            cJSON_AddStringToObject(p, "agentId", id);
+            cJSON_AddStringToObject(p, "source", PICK(sources));
+            cJSON_AddStringToObject(p, "name", "web-app");
+            cJSON_AddStringToObject(p, "host", "MacBook");
+            cJSON_AddStringToObject(p, "tool", rnd(2) ? "Bash" : "SomeVeryLongToolNameThatGoesOnAndOn");
+            rnd_text(text, sizeof(text), 500);
+            cJSON_AddStringToObject(p, "summary", text);
+            cJSON_AddStringToObject(p, "detail", "detail");
+            cJSON_AddNumberToObject(p, "expires", now + rnd(120000));
+            cJSON *qs = cJSON_AddArrayToObject(p, "questions");
+            for (int k = 0, nq = q ? (int)rnd(6) : 0; k < nq; k++) {
+                cJSON *qq = cJSON_CreateObject();
+                rnd_text(text, sizeof(text), 200);
+                cJSON_AddStringToObject(qq, "question", text);
+                cJSON_AddBoolToObject(qq, "multiSelect", rnd(2));
+                cJSON *opts = cJSON_AddArrayToObject(qq, "options");
+                for (int o = 0, no = (int)rnd(7); o < no; o++) {
+                    cJSON *op = cJSON_CreateObject();
+                    rnd_text(text, sizeof(text), 80);
+                    cJSON_AddStringToObject(op, "label", text);
+                    cJSON_AddStringToObject(op, "description", "");
+                    cJSON_AddItemToArray(opts, op);
+                }
+                cJSON_AddItemToArray(qs, qq);
+            }
+            cJSON_AddItemToArray(pending, p);
+        }
+        cJSON *feed = cJSON_AddArrayToObject(root, "feed");
+        for (int i = 0, nf = (int)rnd(16); i < nf; i++) {
+            cJSON *f = cJSON_CreateObject();
+            snprintf(id, sizeof(id), "f%d", i);
+            cJSON_AddStringToObject(f, "id", id);
+            cJSON_AddStringToObject(f, "level", rnd(2) ? "alert" : "good");
+            rnd_text(text, sizeof(text), 120);
+            cJSON_AddStringToObject(f, "title", text);
+            cJSON_AddStringToObject(f, "body", "body");
+            snprintf(id, sizeof(id), "ag%u", rnd(20));
+            if (rnd(2)) cJSON_AddStringToObject(f, "agentId", id);
+            cJSON_AddNumberToObject(f, "ts", now - rnd(100000));
+            cJSON_AddItemToArray(feed, f);
+        }
+        cJSON *rem = cJSON_AddArrayToObject(root, "reminders");
+        for (int i = 0, nr = (int)rnd(16); i < nr; i++) {
+            cJSON *x = cJSON_CreateObject();
+            snprintf(id, sizeof(id), "r%d", i);
+            cJSON_AddStringToObject(x, "id", id);
+            rnd_text(text, sizeof(text), 120);
+            cJSON_AddStringToObject(x, "title", text);
+            cJSON_AddNumberToObject(x, "due", now + (double)rnd(200000) - 100000);
+            cJSON_AddStringToObject(x, "from", "you");
+            cJSON_AddBoolToObject(x, "done", rnd(2));
+            cJSON_AddItemToArray(rem, x);
+        }
+        cJSON *targets = cJSON_AddArrayToObject(root, "targets");
+        for (int i = 0, nt = (int)rnd(9); i < nt; i++) {
+            cJSON *t = cJSON_CreateObject();
+            snprintf(id, sizeof(id), "t%d", i);
+            cJSON_AddStringToObject(t, "id", id);
+            rnd_text(text, sizeof(text), 80);
+            cJSON_AddStringToObject(t, "name", text);
+            cJSON_AddStringToObject(t, "kind", i == 0 ? "cloud" : "computer");
+            cJSON *pj = cJSON_AddArrayToObject(t, "projects");
+            for (int k = 0, n = (int)rnd(16); k < n; k++) {
+                rnd_text(text, sizeof(text), 70);
+                cJSON_AddItemToArray(pj, cJSON_CreateString(text));
+            }
+            cJSON *en = cJSON_AddArrayToObject(t, "engines");
+            for (int k = 0, n = (int)rnd(11); k < n; k++) {
+                cJSON *e = cJSON_CreateObject();
+                snprintf(id, sizeof(id), "e%d", k);
+                cJSON_AddStringToObject(e, "id", k == 0 ? "claude" : id);
+                rnd_text(text, sizeof(text), 40);
+                cJSON_AddStringToObject(e, "name", text);
+                cJSON *ms = cJSON_AddArrayToObject(e, "models");
+                for (int j = 0, nm = (int)rnd(11); j < nm; j++) {
+                    cJSON *m = cJSON_CreateObject();
+                    rnd_text(text, sizeof(text), 90);
+                    cJSON_AddStringToObject(m, "id", text);
+                    if (rnd(2)) cJSON_AddStringToObject(m, "name", text);
+                    cJSON_AddItemToArray(ms, m);
+                }
+                cJSON_AddItemToArray(en, e);
+            }
+            cJSON_AddItemToArray(targets, t);
+        }
+        char *json = cJSON_PrintUnformatted(root);
+        cJSON_Delete(root);
+        static dk_model_t m;
+        if (dk_model_parse(json, strlen(json), &m)) ui_apply_model(&m);
+        free(json);
+        run(rnd(250));
+
+        // Move around and poke at things (never Settings: it can restart or update).
+        switch (rnd(6)) {
+        case 0: {
+            const char *where = PICK(screens_ok);
+            if (!strcmp(where, "home")) ui_go(SCR_HOME);
+            else if (!strcmp(where, "sessions")) ui_go(SCR_SESSIONS);
+            else if (!strcmp(where, "new")) ui_go(SCR_NEW);
+            else if (!strcmp(where, "night")) ui_go(SCR_NIGHT);
+            else {
+                snprintf(id, sizeof(id), "ag%u", rnd(16));
+                ui_open_chat(id);
+            }
+            break;
+        }
+        case 1:
+        case 2: {
+            scr_id_t cur = ui_current();
+            if (cur == SCR_HOME || cur == SCR_SESSIONS || cur == SCR_CHAT || cur == SCR_NEW || cur == SCR_ALERT)
+                tap_at(40 + (int)rnd(W - 80), 100 + (int)rnd(H - 200)); // away from the rail and edges
+            break;
+        }
+        default:
+            break;
+        }
+        if (ui_current() == SCR_SETTINGS || ui_current() == SCR_UPDATE || ui_current() == SCR_SETUP || ui_current() == SCR_CALIB) ui_go(SCR_HOME);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3) {
@@ -1049,6 +1276,13 @@ int main(int argc, char **argv)
         expect_screen(SCR_HOME, "home (back swipe started on a rail button)");
     }
 
+    {
+        // DK_CHAOS=<rounds> for a longer run.
+        const char *cr = getenv("DK_CHAOS");
+        int rounds = cr ? atoi(cr) : 150;
+        chaos(rounds);
+        printf("PASS  %d rounds of random snapshots and taps without a crash\n", rounds);
+    }
     printf(s_failures ? "\n%d check(s) failed\n" : "\nall checks passed\n", s_failures);
     return s_failures ? 1 : 0;
 }
