@@ -53,10 +53,12 @@ static void sender(const char *json)
     printf("  -> sent %s\n", json);
 }
 
+static void device_tick(void);
 static void run(uint32_t ms)
 {
     for (uint32_t t = 0; t < ms; t += 5) {
         s_tick += 5;
+        device_tick();
         lv_timer_handler();
     }
 }
@@ -227,6 +229,57 @@ static void expect_text(const char *text)
     if (!ok) s_failures++;
 }
 
+// ------------------------------------------------------- fake device
+static ui_device_info_t s_info;
+static int s_pending_scan, s_pending_connect, s_pending_update;
+
+static void fake_scan(void) { s_pending_scan = 1; }
+static void fake_connect(const char *ssid, const char *pw)
+{
+    printf("  -> wifi_connect %s / %s\n", ssid, pw);
+    snprintf(s_info.ssid, sizeof(s_info.ssid), "%s", ssid);
+    s_pending_connect = 1;
+}
+static void fake_relay_set(const char *url, const char *token)
+{
+    printf("  -> relay_set %s %s\n", url, token);
+    snprintf(s_info.relay_url, sizeof(s_info.relay_url), "%s", url);
+    s_info.relay_configured = true;
+    ui_set_device_info(&s_info);
+}
+static void fake_check(void) { ui_update_status(UI_UPDATE_CHECKING, 0, NULL, NULL); s_pending_update = 1; }
+static void fake_start(void) { ui_update_status(UI_UPDATE_DOWNLOADING, 0, "v0.3.0", NULL); s_pending_update = 2; }
+static void fake_bright(uint8_t v) { printf("  -> brightness %u\n", v); }
+static void fake_restart(void) { printf("  -> restart\n"); }
+static const ui_platform_t s_fake = {fake_scan, fake_connect, fake_relay_set, fake_check, fake_start, fake_bright, fake_restart};
+
+// Deliver the fake device's async results after a little delay, like the real one.
+static void device_tick(void)
+{
+    if (s_pending_scan && ++s_pending_scan > 60) {
+        static const ui_wifi_ap_t aps[] = {{"HomeNet", -48, true}, {"HomeNet-5G", -61, true}, {"Neighbours Wi-Fi", -79, true}, {"Cafe Guest", -84, false}};
+        ui_wifi_scan_done(aps, 4);
+        s_pending_scan = 0;
+    }
+    if (s_pending_connect && ++s_pending_connect > 120) {
+        s_pending_connect = 0;
+        s_info.wifi_configured = s_info.wifi_connected = true;
+        snprintf(s_info.ip, sizeof(s_info.ip), "192.168.1.42");
+        snprintf(s_info.hostname, sizeof(s_info.hostname), "deskling.local");
+        s_info.ap_ssid[0] = 0;
+        ui_set_device_info(&s_info);
+        ui_wifi_connect_result(true, NULL);
+    }
+    if (s_pending_update == 1 && ++s_pending_update > 1) {
+        ui_update_status(UI_UPDATE_AVAILABLE, 0, "v0.3.0", NULL);
+        s_pending_update = 0;
+    }
+    if (s_pending_update >= 2) {
+        int pct = (s_pending_update - 2) / 2;
+        if (pct <= 100) ui_update_status(UI_UPDATE_DOWNLOADING, pct, "v0.3.0", NULL), s_pending_update++;
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3) {
@@ -250,8 +303,41 @@ int main(int argc, char **argv)
 
     dk_set_sender(sender);
     ui_init();
-    ui_set_connection(DK_CONN_RELAY, NULL);
+    ui_set_platform(&s_fake);
+
+    // ---- first-run setup
+    snprintf(s_info.code, sizeof(s_info.code), "4821");
+    snprintf(s_info.ap_ssid, sizeof(s_info.ap_ssid), "Deskling-7F3A");
+    snprintf(s_info.version, sizeof(s_info.version), "v0.2.0");
+    snprintf(s_info.variant, sizeof(s_info.variant), "p4r1-lcd1");
+    s_info.brightness = 90;
+    ui_set_device_info(&s_info);
+    ui_set_connection(DK_CONN_SETUP, NULL);
     run(1200);
+    shot("00a_setup_welcome");
+    expect_text("Hi! I'm Deskling.");
+    tap("Choose Wi-Fi");
+    run(800);
+    shot("00b_setup_wifi_list");
+    expect_text("HomeNet");
+    tap("HomeNet");
+    run(600);
+    shot("00c_setup_password");
+    expect_text("Password for HomeNet");
+    lv_textarea_set_text(find_class(lv_screen_active(), &lv_textarea_class), "hunter22");
+    tap("Connect");
+    run(300);
+    shot("00d_setup_joining");
+    run(1200);
+    shot("00e_setup_pair");
+    expect_text("Now let's meet your relay");
+    expect_text("Code: 4821");
+    fake_relay_set("https://deskling-relay.joe.workers.dev", "secret");
+    run(900);
+    shot("00f_setup_done");
+    expect_text("All set!");
+    ui_set_connection(DK_CONN_RELAY, NULL);
+    run(5000);
     shot("01_home_connecting");
 
     apply("empty");
@@ -333,6 +419,16 @@ int main(int argc, char **argv)
     run(5000);
     tap("Sessions");
     run(800);
+    tap("Settings");
+    run(800);
+    shot("16_settings");
+    expect_text("Settings");
+    tap("Check for updates");
+    run(300);
+    expect_text("Version v0.3.0 is available.");
+    tap("Update now");
+    run(500);
+    shot("17_settings_updating");
     tap("Night");
     run(1500);
     shot("14_night");

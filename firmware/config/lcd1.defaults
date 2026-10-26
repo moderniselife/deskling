@@ -1,0 +1,2 @@
+# LCD V1: label batch number below 2624
+CONFIG_DESKLING_LCD_V1=y

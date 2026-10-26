@@ -14,6 +14,13 @@ static dk_model_t *s_model;
 const dk_model_t *g_model;
 dk_conn_t g_conn = DK_CONN_WIFI;
 char g_conn_detail[96];
+ui_device_info_t g_info = {.brightness = 90};
+const ui_platform_t *g_platform;
+ui_update_state_t g_update_state = UI_UPDATE_IDLE;
+int g_update_progress;
+char g_update_latest[32];
+char g_update_message[96];
+static bool s_have_info;
 
 static lv_obj_t *s_scr[SCR_COUNT];
 static scr_id_t s_cur = SCR_HOME;
@@ -187,8 +194,11 @@ lv_obj_t *ui_nav_rail(lv_obj_t *parent, scr_id_t active)
         scr_id_t id;
         const char *icon;
         const char *label;
-    } items[] = {{SCR_HOME, LV_SYMBOL_HOME, "Home"}, {SCR_SESSIONS, LV_SYMBOL_LIST, "Sessions"}, {SCR_NIGHT, LV_SYMBOL_EYE_CLOSE, "Night"}};
-    for (size_t i = 0; i < 3; i++) {
+    } items[] = {{SCR_HOME, LV_SYMBOL_HOME, "Home"},
+                 {SCR_SESSIONS, LV_SYMBOL_LIST, "Sessions"},
+                 {SCR_NIGHT, LV_SYMBOL_EYE_CLOSE, "Night"},
+                 {SCR_SETTINGS, LV_SYMBOL_SETTINGS, "Settings"}};
+    for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
         bool on = items[i].id == active;
         lv_obj_t *b = lv_button_create(rail);
         lv_obj_remove_style_all(b);
@@ -258,6 +268,8 @@ void ui_go(scr_id_t id)
     set_backlight(id == SCR_NIGHT ? 25 : 100);
     if (id == SCR_SESSIONS) scr_sessions_refresh();
     if (id == SCR_NIGHT) scr_night_refresh();
+    if (id == SCR_SETTINGS) scr_settings_refresh();
+    if (id == SCR_SETUP) scr_setup_refresh();
     if (id == SCR_HOME) scr_home_refresh(DK_CAUSE_HELLO, "");
     lv_screen_load_anim(s_scr[id], how, ms, 0, false);
 }
@@ -356,6 +368,8 @@ void ui_init(void)
     s_scr[SCR_CHAT] = scr_chat_create();
     s_scr[SCR_ALERT] = scr_alert_create();
     s_scr[SCR_NIGHT] = scr_night_create();
+    s_scr[SCR_SETUP] = scr_setup_create();
+    s_scr[SCR_SETTINGS] = scr_settings_create();
     s_cur = SCR_HOME;
     lv_screen_load(s_scr[SCR_HOME]);
     lv_timer_create(tick_cb, 1000, NULL);
@@ -392,6 +406,7 @@ void ui_apply_model(const dk_model_t *m)
     scr_chat_refresh(m->cause);
     scr_night_refresh();
 
+    if (s_cur == SCR_SETUP) return; // finish setting up first
     if (alert && s_cur != SCR_ALERT) {
         set_backlight(100);
         ui_go(SCR_ALERT);
@@ -421,5 +436,74 @@ void ui_apply_model(const dk_model_t *m)
         break;
     default:
         break;
+    }
+}
+
+// ------------------------------------------------- device setup & settings
+
+const char *ui_portal_url(void)
+{
+    static char url[64];
+    if (g_info.hostname[0]) snprintf(url, sizeof(url), "http://%s", g_info.hostname);
+    else if (g_info.ip[0]) snprintf(url, sizeof(url), "http://%s", g_info.ip);
+    else snprintf(url, sizeof(url), "http://192.168.4.1");
+    return url;
+}
+
+lv_obj_t *ui_qr(lv_obj_t *parent, const char *text, int32_t size)
+{
+    lv_obj_t *frame = dk_card(parent, lv_color_white(), 20);
+    lv_obj_set_style_pad_all(frame, 12, 0);
+    lv_obj_t *qr = lv_qrcode_create(frame);
+    lv_qrcode_set_size(qr, size);
+    lv_qrcode_set_dark_color(qr, DK_INK);
+    lv_qrcode_set_light_color(qr, lv_color_white());
+    lv_qrcode_update(qr, text, (uint32_t)strlen(text));
+    return frame;
+}
+
+void ui_set_platform(const ui_platform_t *p)
+{
+    g_platform = p;
+}
+
+void ui_set_device_info(const ui_device_info_t *info)
+{
+    bool first = !s_have_info;
+    bool was_ready = s_have_info && g_info.wifi_configured && g_info.relay_configured;
+    g_info = *info;
+    s_have_info = true;
+    bool ready = g_info.wifi_configured && g_info.relay_configured;
+    scr_setup_refresh();
+    scr_settings_refresh();
+    if (!ready && (first || s_cur != SCR_SETTINGS) && s_cur != SCR_SETUP) {
+        ui_go(SCR_SETUP);
+    } else if (ready && s_cur == SCR_SETUP && !was_ready) {
+        ui_go(SCR_HOME);
+        ui_banner("All set!", "I'm online and listening for your agents.", DK_GOOD_BG);
+    }
+}
+
+void ui_wifi_scan_done(const ui_wifi_ap_t *aps, int n)
+{
+    scr_setup_scan_done(aps, n);
+}
+
+void ui_wifi_connect_result(bool ok, const char *message)
+{
+    scr_setup_connect_result(ok, message);
+}
+
+void ui_update_status(ui_update_state_t state, int progress, const char *latest, const char *message)
+{
+    g_update_state = state;
+    g_update_progress = progress;
+    if (latest) snprintf(g_update_latest, sizeof(g_update_latest), "%s", latest);
+    snprintf(g_update_message, sizeof(g_update_message), "%s", message ? message : "");
+    scr_settings_refresh();
+    if (state == UI_UPDATE_AVAILABLE && s_cur == SCR_HOME) {
+        char body[96];
+        snprintf(body, sizeof(body), "Version %s is ready. Install it from Settings.", g_update_latest);
+        ui_banner("Update available", body, DK_LILAC_SOFT);
     }
 }

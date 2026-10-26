@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deskling settings</title>
+<style>
+:root{--ground:#FBF6EF;--card:#fff;--ink:#2A2433;--soft:#3A3346;--muted:#6A6274;--lilac:#CFC4F2;--purple:#5B4FA8;--good:#2F8A63;--goodbg:#D3EEDF;--alert:#C8553D;--alertbg:#FDE8E1;--line:#E4DCCF}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:600 16px/1.45 ui-rounded,"Nunito","SF Pro Rounded",system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px 64px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.face{width:56px;height:52px;border-radius:24px;background:var(--lilac);position:relative;flex:none}
+.face:before,.face:after{content:"";position:absolute;top:18px;width:7px;height:10px;border-radius:50%;background:var(--ink);animation:blink 4s infinite}
+.face:before{left:17px}.face:after{right:17px}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+h1{margin:0;font-size:28px;font-weight:900}
+h2{margin:0 0 10px;font-size:13px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+section{background:var(--card);border-radius:24px;padding:20px;margin-bottom:16px}
+label{display:block;font-weight:800;margin:10px 0 4px}
+input,select{width:100%;font:inherit;padding:12px 14px;border-radius:14px;border:2px solid var(--line);background:var(--ground);color:var(--ink)}
+input:focus,select:focus{outline:none;border-color:var(--purple)}
+button{font:inherit;font-weight:800;border:3px solid var(--ink);border-radius:16px;background:var(--ink);color:var(--ground);padding:11px 20px;cursor:pointer;margin-top:12px;min-height:44px}
+button.ghost{background:var(--card);color:var(--ink)}
+button:disabled{opacity:.5}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.muted{color:var(--muted);font-weight:600}
+.pill{display:inline-block;border-radius:999px;padding:3px 12px;font-size:14px;font-weight:800;background:var(--line)}
+.pill.ok{background:var(--goodbg);color:var(--good)}.pill.bad{background:var(--alertbg);color:var(--alert)}
+.msg{margin-top:10px;font-weight:800}.msg.ok{color:var(--good)}.msg.bad{color:var(--alert)}
+.nets{display:grid;gap:8px;margin-top:10px}
+.nets button{margin:0;text-align:left;background:var(--ground);color:var(--ink);border:2px solid var(--line)}
+progress{width:100%;height:14px;margin-top:12px;accent-color:var(--purple)}
+#gate{position:fixed;inset:0;background:var(--ground);display:flex;align-items:center;justify-content:center;padding:16px}
+#gate section{max-width:420px;width:100%;text-align:center}
+#code{font-size:32px;letter-spacing:12px;text-align:center}
+code{background:var(--ground);padding:2px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+<div id="gate"><section>
+  <div class="face" style="margin:0 auto 12px"></div>
+  <h1>Hi! Prove you're here</h1>
+  <p class="muted">Type the 4-digit code shown on Deskling's screen (Settings, or the setup screen).</p>
+  <input id="code" inputmode="numeric" maxlength="4" autocomplete="one-time-code" aria-label="Code from the screen">
+  <button id="go">Continue</button>
+  <div id="gatemsg" class="msg bad"></div>
+</section></div>
+
+<main hidden id="app">
+  <header><div class="face"></div><div><h1>Deskling</h1><div class="muted" id="ver"></div></div></header>
+
+  <section>
+    <h2>Relay</h2>
+    <div class="row"><span id="relaystate" class="pill">…</span><span class="muted" id="relayurl"></span></div>
+    <label for="url">Relay URL</label>
+    <input id="url" placeholder="https://deskling-relay.you.workers.dev" autocomplete="off">
+    <label for="token">Relay token</label>
+    <input id="token" type="password" placeholder="Leave empty to keep the current one" autocomplete="off">
+    <p class="muted">Both are on your relay's setup page: open your relay URL and add <code>/setup</code>.</p>
+    <button id="saverelay">Save relay</button>
+    <div id="relaymsg" class="msg"></div>
+  </section>
+
+  <section>
+    <h2>Wi-Fi</h2>
+    <div class="row"><span id="wifistate" class="pill">…</span><span class="muted" id="wifiinfo"></span></div>
+    <button class="ghost" id="scan">Find networks</button>
+    <div class="nets" id="nets"></div>
+    <label for="ssid">Network name</label>
+    <input id="ssid" autocomplete="off">
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="off">
+    <button id="savewifi">Join</button>
+    <div id="wifimsg" class="msg"></div>
+  </section>
+
+  <section>
+    <h2>Time zone</h2>
+    <p class="muted">Your browser says <b id="browsertz"></b>.</p>
+    <select id="tz"></select>
+    <label for="tzraw">Or a POSIX TZ string</label>
+    <input id="tzraw" placeholder="AEST-10AEDT,M10.1.0,M4.1.0/3">
+    <button id="savetz">Save time zone</button>
+    <div id="tzmsg" class="msg"></div>
+  </section>
+
+  <section>
+    <h2>Screen brightness</h2>
+    <input id="bright" type="range" min="10" max="100" aria-label="Brightness">
+  </section>
+
+  <section>
+    <h2>Firmware</h2>
+    <p class="muted">Running <b id="fwver"></b> (<span id="fwvar"></span>). Deskling checks for updates by itself; you can also install a <code>.bin</code> from the <code>firmware-dist</code> branch here.</p>
+    <input id="fwfile" type="file" accept=".bin">
+    <button id="upload">Install firmware</button>
+    <progress id="fwprog" max="100" value="0" hidden></progress>
+    <div id="fwmsg" class="msg"></div>
+    <button class="ghost" id="restart">Restart Deskling</button>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let code = '';
+try { code = sessionStorage.getItem('dk-code') || ''; } catch {}
+
+// Common IANA zones → POSIX TZ (what the device understands).
+const ZONES = {
+  'Australia/Sydney':'AEST-10AEDT,M10.1.0,M4.1.0/3','Australia/Melbourne':'AEST-10AEDT,M10.1.0,M4.1.0/3','Australia/Hobart':'AEST-10AEDT,M10.1.0,M4.1.0/3',
+  'Australia/Brisbane':'AEST-10','Australia/Adelaide':'ACST-9:30ACDT,M10.1.0,M4.1.0/3','Australia/Darwin':'ACST-9:30','Australia/Perth':'AWST-8',
+  'Pacific/Auckland':'NZST-12NZDT,M9.5.0,M4.1.0/3','Asia/Tokyo':'JST-9','Asia/Seoul':'KST-9','Asia/Shanghai':'CST-8','Asia/Hong_Kong':'HKT-8',
+  'Asia/Singapore':'<+08>-8','Asia/Kolkata':'IST-5:30','Asia/Dubai':'<+04>-4','Europe/London':'GMT0BST,M3.5.0/1,M10.5.0','Europe/Dublin':'IST-1GMT0,M10.5.0,M3.5.0/1',
+  'Europe/Paris':'CET-1CEST,M3.5.0,M10.5.0/3','Europe/Berlin':'CET-1CEST,M3.5.0,M10.5.0/3','Europe/Amsterdam':'CET-1CEST,M3.5.0,M10.5.0/3','Europe/Madrid':'CET-1CEST,M3.5.0,M10.5.0/3',
+  'Europe/Stockholm':'CET-1CEST,M3.5.0,M10.5.0/3','Europe/Athens':'EET-2EEST,M3.5.0/3,M10.5.0/4','Europe/Helsinki':'EET-2EEST,M3.5.0/3,M10.5.0/4',
+  'America/New_York':'EST5EDT,M3.2.0,M11.1.0','America/Toronto':'EST5EDT,M3.2.0,M11.1.0','America/Chicago':'CST6CDT,M3.2.0,M11.1.0',
+  'America/Denver':'MST7MDT,M3.2.0,M11.1.0','America/Phoenix':'MST7','America/Los_Angeles':'PST8PDT,M3.2.0,M11.1.0','America/Vancouver':'PST8PDT,M3.2.0,M11.1.0',
+  'America/Anchorage':'AKST9AKDT,M3.2.0,M11.1.0','Pacific/Honolulu':'HST10','America/Sao_Paulo':'<-03>3','America/Mexico_City':'CST6','UTC':'UTC0'
+};
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { 'X-Deskling-Code': code, ...(opts.headers || {}) } });
+  if (res.status === 401) { showGate('That code doesn’t match the screen.'); throw new Error('code'); }
+  if (res.status === 429) { showGate('Too many tries. Wait a minute.'); throw new Error('locked'); }
+  const text = await res.text();
+  let body = {};
+  try { body = JSON.parse(text); } catch { body = { message: text }; }
+  if (!res.ok) throw new Error(body.message || res.statusText);
+  return body;
+}
+const post = (path, data) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+function say(id, text, ok) { const el = $(id); el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'bad'); }
+
+function showGate(msg) { $('app').hidden = true; $('gate').hidden = false; $('gatemsg').textContent = msg || ''; }
+async function unlock() {
+  code = $('code').value.trim();
+  try { await api('/api/status'); } catch { return; }
+  try { sessionStorage.setItem('dk-code', code); } catch {}
+  $('gate').hidden = true; $('app').hidden = false;
+  refresh(); setInterval(refresh, 4000);
+}
+$('go').onclick = unlock;
+$('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
+
+async function refresh() {
+  const s = await api('/api/status');
+  $('ver').textContent = `${s.version} · ${s.ip || 'hotspot'}`;
+  $('fwver').textContent = s.version; $('fwvar').textContent = s.variant;
+  $('relaystate').textContent = s.relay.online ? 'Connected' : s.relay.configured ? 'Not connected' : 'Not set up';
+  $('relaystate').className = 'pill ' + (s.relay.online ? 'ok' : 'bad');
+  $('relayurl').textContent = s.relay.url;
+  if (!$('url').value && s.relay.url) $('url').value = s.relay.url;
+  $('wifistate').textContent = s.wifi.connected ? 'Connected' : 'Not connected';
+  $('wifistate').className = 'pill ' + (s.wifi.connected ? 'ok' : 'bad');
+  $('wifiinfo').textContent = s.wifi.ssid ? `${s.wifi.ssid}${s.wifi.ip ? ' · ' + s.wifi.ip : ''}` : '';
+  if (document.activeElement !== $('bright')) $('bright').value = s.brightness;
+  if (!$('tzraw').value) $('tzraw').placeholder = s.tz;
+}
+
+$('saverelay').onclick = async () => {
+  const url = $('url').value.trim();
+  if (!/^https?:\/\//.test(url)) return say('relaymsg', 'The URL should start with https://', false);
+  try { await post('/api/relay', { url, token: $('token').value.trim() }); $('token').value = ''; say('relaymsg', 'Saved! Deskling is connecting…', true); }
+  catch (e) { say('relaymsg', e.message, false); }
+};
+
+$('scan').onclick = async () => {
+  $('nets').textContent = 'Looking…';
+  try {
+    await post('/api/scan', {});
+    await new Promise((r) => setTimeout(r, 3500));
+    const r = await api('/api/scan');
+    $('nets').replaceChildren(...r.networks.map((n) => {
+      const b = document.createElement('button');
+      b.textContent = `${n.ssid}  ${n.secure ? '🔒' : ''}  ${n.rssi} dBm`;
+      b.onclick = () => { $('ssid').value = n.ssid; $('pw').focus(); };
+      return b;
+    }));
+    if (!r.networks.length) $('nets').textContent = 'No networks found.';
+  } catch (e) { $('nets').textContent = e.message; }
+};
+$('savewifi').onclick = async () => {
+  try { await post('/api/wifi', { ssid: $('ssid').value.trim(), password: $('pw').value }); say('wifimsg', 'Joining… If you’re on Deskling’s hotspot, switch back to your normal Wi-Fi and open http://deskling.local', true); }
+  catch (e) { say('wifimsg', e.message, false); }
+};
+
+const btz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+$('browsertz').textContent = btz;
+for (const name of Object.keys(ZONES).sort()) { const o = new Option(name.replace(/_/g, ' '), ZONES[name]); if (name === btz) o.selected = true; $('tz').add(o); }
+$('savetz').onclick = async () => {
+  const tz = $('tzraw').value.trim() || $('tz').value;
+  try { await post('/api/tz', { tz }); say('tzmsg', 'Saved!', true); } catch (e) { say('tzmsg', e.message, false); }
+};
+$('bright').onchange = () => post('/api/brightness', { value: +$('bright').value }).catch(() => {});
+
+$('upload').onclick = () => {
+  const f = $('fwfile').files[0];
+  if (!f) return say('fwmsg', 'Pick a .bin file first.', false);
+  const x = new XMLHttpRequest();
+  x.open('POST', '/api/update');
+  x.setRequestHeader('X-Deskling-Code', code);
+  x.upload.onprogress = (e) => { $('fwprog').hidden = false; $('fwprog').value = (e.loaded / e.total) * 100; };
+  x.onload = () => say('fwmsg', x.status === 200 ? 'Installed! Deskling is restarting.' : x.responseText, x.status === 200);
+  x.onerror = () => say('fwmsg', 'Upload failed.', false);
+  $('upload').disabled = true;
+  x.send(f);
+};
+$('restart').onclick = () => post('/api/restart', {}).then(() => say('fwmsg', 'Restarting…', true)).catch(() => {});
+
+if (code) { $('code').value = code; unlock(); }
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+# ESP32-P4 silicon v3.x (newer boards)
+CONFIG_ESP32P4_REV_MIN_300=y

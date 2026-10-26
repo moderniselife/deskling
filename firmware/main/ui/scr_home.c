@@ -22,6 +22,12 @@ static void open_sessions(lv_event_t *e)
     ui_go(SCR_SESSIONS);
 }
 
+static void open_settings(lv_event_t *e)
+{
+    (void)e;
+    ui_go(SCR_SETTINGS);
+}
+
 static void open_agent(lv_event_t *e)
 {
     const char *id = lv_event_get_user_data(e);
@@ -157,10 +163,17 @@ lv_obj_t *scr_home_create(void)
     dk_col(hr, 6);
     lv_obj_set_flex_align(hr, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
     h.date = dk_label(hr, DK_FONT_L, DK_INK, "");
-    lv_obj_t *conn = dk_box(hr);
+    lv_obj_t *conn = lv_button_create(hr);
+    lv_obj_remove_style_all(conn);
+    lv_obj_set_size(conn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_ver(conn, 6, 0);
+    lv_obj_set_ext_click_area(conn, 16);
     dk_row(conn, 8);
+    lv_obj_add_event_cb(conn, open_settings, LV_EVENT_CLICKED, NULL);
+    dk_press_style(conn);
     h.conn_dot = dk_dot(conn, 10, DK_MUTED, false);
     h.conn_label = dk_label(conn, DK_FONT_S, DK_MUTED, "Connecting…");
+    dk_label(conn, &lv_font_montserrat_14, DK_MUTED, LV_SYMBOL_SETTINGS);
 
     lv_obj_t *mid = dk_box(right);
     lv_obj_set_width(mid, lv_pct(100));

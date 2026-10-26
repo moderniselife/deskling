@@ -11,3 +11,4 @@ dependencies:
   espressif/cjson: "^1.7.19"
   espressif/esp_hosted: "^3.0.10"
   espressif/esp_wifi_remote: "^1.6.5"
+  espressif/mdns: "^1.14.1"

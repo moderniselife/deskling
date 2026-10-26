@@ -11,12 +11,18 @@
 #include "theme.h"
 #include "ui.h"
 
-typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_COUNT } scr_id_t;
+typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_COUNT } scr_id_t;
 
 /** The latest snapshot (never NULL after ui_init). */
 extern const dk_model_t *g_model;
 extern dk_conn_t g_conn;
 extern char g_conn_detail[96];
+extern ui_device_info_t g_info;
+extern const ui_platform_t *g_platform;
+extern ui_update_state_t g_update_state;
+extern int g_update_progress;
+extern char g_update_latest[32];
+extern char g_update_message[96];
 
 void ui_go(scr_id_t id);
 scr_id_t ui_current(void);
@@ -64,7 +70,21 @@ lv_obj_t *scr_night_create(void);
 void scr_night_refresh(void);
 void scr_night_tick(void);
 
+lv_obj_t *scr_setup_create(void);
+void scr_setup_refresh(void);
+/** Jump straight to the Wi-Fi list (from Settings). */
+void scr_setup_wifi(void);
+void scr_setup_scan_done(const ui_wifi_ap_t *aps, int n);
+void scr_setup_connect_result(bool ok, const char *message);
+
+lv_obj_t *scr_settings_create(void);
+void scr_settings_refresh(void);
+
 /** Shared widgets */
+/** A QR code for `text`, `size` px square, with a white quiet zone. */
+lv_obj_t *ui_qr(lv_obj_t *parent, const char *text, int32_t size);
+/** "http://deskling.local" (or the IP when mDNS isn't up yet). */
+const char *ui_portal_url(void);
 lv_obj_t *ui_nav_rail(lv_obj_t *parent, scr_id_t active);
 void ui_nav_rail_update(lv_obj_t *rail);
 lv_obj_t *ui_eq_bars(lv_obj_t *parent, int n, int32_t h, lv_color_t color);

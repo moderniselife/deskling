@@ -11,6 +11,7 @@
 #include "esp_lvgl_port.h"
 #include "gsl3680.h"
 #include "jd9365_init.h"
+#include "settings.h"
 #include "sdkconfig.h"
 
 static const char *TAG = "board";
@@ -68,8 +69,8 @@ static void backlight_init(void)
 void board_set_backlight(uint8_t percent)
 {
     if (percent > 100) percent = 100;
-    // Scale the UI's 0..100 by the configured daytime brightness.
-    uint32_t duty = (uint32_t)percent * CONFIG_DESKLING_BRIGHTNESS * 1023 / 10000;
+    // Scale the UI's 0..100 (100 = day, 25 = night) by the saved daytime brightness.
+    uint32_t duty = (uint32_t)percent * settings()->brightness * 1023 / 10000;
     ledc_set_duty(LEDC_LOW_SPEED_MODE, BL_CHANNEL, duty);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, BL_CHANNEL);
 }

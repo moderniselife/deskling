@@ -28,6 +28,12 @@ menu "Deskling"
             Sydney by default. Examples: "PST8PDT,M3.2.0,M11.1.0" (Los Angeles),
             "GMT0BST,M3.5.0/1,M10.5.0" (London), "CET-1CEST,M3.5.0,M10.5.0/3" (Berlin).
 
+    config DESKLING_UPDATE_URL
+        string "Where to look for firmware updates"
+        default "https://raw.githubusercontent.com/moderniselife/deskling/firmware-dist/"
+        help
+            Folder holding manifest.json and the app images (tools/release.sh publishes them).
+
     choice DESKLING_LCD
         prompt "LCD revision"
         default DESKLING_LCD_V1

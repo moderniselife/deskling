@@ -1,10 +1,14 @@
 file(GLOB UI_SRCS "ui/*.c" "ui/fonts/*.c")
 
 idf_component_register(
-    SRCS "main.c" "board/board.c" "board/gsl3680.c" "net/net.c" "app/model.c" ${UI_SRCS}
+    SRCS "main.c" "board/board.c" "board/gsl3680.c"
+         "net/net.c" "net/portal.c" "net/ota.c"
+         "app/model.c" "app/settings.c" ${UI_SRCS}
     INCLUDE_DIRS "." "app" "ui" "board" "net"
+    EMBED_TXTFILES "net/portal.html"
     PRIV_REQUIRES esp_lcd esp_driver_gpio esp_driver_ledc esp_driver_i2c esp_hw_support esp_timer
-                  nvs_flash esp_wifi esp_netif esp_event mbedtls
+                  nvs_flash esp_wifi esp_netif esp_event mbedtls esp_http_server esp_http_client
+                  esp_https_ota app_update esp_app_format
 )
 
 # The GSL3680 needs its RAM firmware uploaded on every boot. That table comes

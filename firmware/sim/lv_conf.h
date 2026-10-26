@@ -30,5 +30,9 @@
 #define LV_USE_BUTTONMATRIX 1
 #define LV_LABEL_TEXT_SELECTION 1
 #define LV_USE_THEME_DEFAULT 1
+#define LV_USE_QRCODE 1
+#define LV_USE_SLIDER 1
+#define LV_USE_BAR 1
+#define LV_USE_SPINNER 1
 
 #endif
