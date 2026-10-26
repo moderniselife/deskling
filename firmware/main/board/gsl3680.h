@@ -1,6 +1,9 @@
 // GSL3680 touch controller driver with the startup fixes the stock drivers lack.
 #pragma once
 
+/** Diagnostics: also sample this GPIO (the touch INT line) on every read. */
+void dk_gsl3680_diag_int_pin(int gpio);
+
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_touch.h"
 

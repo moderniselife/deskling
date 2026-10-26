@@ -58,7 +58,7 @@ menu "Deskling"
     config DESKLING_VOLUME
         int "Sound volume (%) (0 = silent)"
         range 0 100
-        default 60
+        default 75
 
     config DESKLING_TOUCH_SWAP_XY
         bool "Touch: swap X and Y"

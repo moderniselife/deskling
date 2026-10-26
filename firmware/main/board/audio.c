@@ -23,7 +23,7 @@ static const char *TAG = "audio";
 
 static QueueHandle_t s_queue;
 static esp_codec_dev_handle_t s_dev;
-static volatile uint8_t s_volume = 60;
+static volatile uint8_t s_volume = 75;
 static uint8_t s_applied = 255;
 static bool s_open;
 
@@ -142,6 +142,11 @@ void audio_init(i2c_master_bus_handle_t i2c)
     esp_codec_dev_cfg_t dev_cfg = {.dev_type = ESP_CODEC_DEV_TYPE_OUT, .codec_if = codec, .data_if = data_if};
     s_dev = esp_codec_dev_new(&dev_cfg);
     if (!s_dev) return;
+    // The default curve is linear in dB from -50 to 0, so 50% is a whisper on this little speaker.
+    // This one is shaped for ears: 25% is quiet, 50% is clearly audible, 100% is as loud as it goes.
+    static esp_codec_dev_vol_map_t points[] = {{0, -60.0f}, {1, -38.0f}, {25, -20.0f}, {50, -10.0f}, {75, -4.0f}, {100, 0.0f}};
+    esp_codec_dev_vol_curve_t curve = {.vol_map = points, .count = sizeof(points) / sizeof(points[0])};
+    esp_codec_dev_set_vol_curve(s_dev, &curve);
     xTaskCreatePinnedToCore(audio_task, "audio", 4096, NULL, 6, NULL, 0);
     ESP_LOGI(TAG, "speaker ready");
 }

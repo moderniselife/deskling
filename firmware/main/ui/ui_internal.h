@@ -27,6 +27,14 @@ extern char g_update_message[96];
 void ui_go(scr_id_t id);
 scr_id_t ui_current(void);
 void ui_open_chat(const char *agent_id);
+/** Go back one level (chat → where you came from, sessions/settings/night → home). False if there's nowhere to go. */
+bool ui_back(void);
+
+// Edge gestures (gestures.c)
+void ui_gestures_init(void);
+void ui_gestures_on_screen(scr_id_t id);
+void ui_gestures_refresh(void);
+bool ui_gestures_panel_open(void);
 /** The alert screen finished its "Sent!" moment. */
 void ui_alert_finished(void);
 void ui_banner(const char *title, const char *body, lv_color_t bg);

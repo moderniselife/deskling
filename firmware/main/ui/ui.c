@@ -272,6 +272,7 @@ void ui_go(scr_id_t id)
     if (id == SCR_SETUP) scr_setup_refresh();
     if (id == SCR_HOME) scr_home_refresh(DK_CAUSE_HELLO, "");
     lv_screen_load_anim(s_scr[id], how, ms, 0, false);
+    ui_gestures_on_screen(id);
 }
 
 void ui_alert_finished(void)
@@ -279,8 +280,27 @@ void ui_alert_finished(void)
     if (!scr_alert_refresh() && s_cur == SCR_ALERT) ui_go(s_before_alert == SCR_NIGHT ? SCR_HOME : s_before_alert);
 }
 
+static scr_id_t s_chat_from = SCR_SESSIONS;
+
+bool ui_back(void)
+{
+    switch (s_cur) {
+    case SCR_CHAT:
+        ui_go(s_chat_from == SCR_CHAT || s_chat_from == SCR_ALERT ? SCR_SESSIONS : s_chat_from);
+        return true;
+    case SCR_SESSIONS:
+    case SCR_SETTINGS:
+    case SCR_NIGHT:
+        ui_go(SCR_HOME);
+        return true;
+    default:
+        return false;
+    }
+}
+
 void ui_open_chat(const char *agent_id)
 {
+    if (s_cur != SCR_CHAT) s_chat_from = s_cur;
     scr_chat_show(agent_id);
     ui_go(SCR_CHAT);
 }
@@ -376,6 +396,8 @@ void ui_init(void)
     s_cur = SCR_HOME;
     lv_screen_load(s_scr[SCR_HOME]);
     lv_timer_create(tick_cb, 1000, NULL);
+    ui_gestures_init();
+    ui_gestures_on_screen(SCR_HOME);
 }
 
 void ui_set_backlight_cb(ui_backlight_fn fn)
@@ -408,6 +430,7 @@ void ui_apply_model(const dk_model_t *m)
     scr_sessions_refresh();
     scr_chat_refresh(m->cause);
     scr_night_refresh();
+    ui_gestures_refresh();
 
     if (s_cur == SCR_SETUP) return; // finish setting up first
     if (alert && s_cur != SCR_ALERT) {

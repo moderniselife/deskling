@@ -21,6 +21,7 @@
 #include "driver/gpio.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gsl3680_firmware.h"
@@ -138,10 +139,44 @@ static uint16_t scale(int32_t raw, uint16_t gain, uint16_t range, uint16_t exten
     return (uint16_t)px;
 }
 
+// Touch diagnostics: a summary every 3 s, plus the raw packet whenever the chip reports anything.
+static int s_diag_int_gpio = -1;
+static void diag(esp_err_t err, const uint8_t *pkt)
+{
+    static uint32_t reads, errors, nonzero, int_low, int_high;
+    static int64_t last;
+    reads++;
+    if (err != ESP_OK) errors++;
+    if (s_diag_int_gpio >= 0) {
+        if (gpio_get_level(s_diag_int_gpio)) int_high++;
+        else int_low++;
+    }
+    bool any = false;
+    for (int i = 0; i < 12; i++) any |= pkt[i] != 0;
+    if (err == ESP_OK && any) {
+        if (nonzero++ < 40) {
+            ESP_LOGI(TAG, "raw %02x %02x %02x %02x | %02x %02x %02x %02x | %02x %02x %02x %02x", pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5],
+                     pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]);
+        }
+    }
+    int64_t now = esp_timer_get_time();
+    if (now - last > 3000000) {
+        last = now;
+        ESP_LOGI(TAG, "diag: %lu reads, %lu errors (%s), %lu non-zero, INT pin low %lu / high %lu", (unsigned long)reads, (unsigned long)errors,
+                 esp_err_to_name(err), (unsigned long)nonzero, (unsigned long)int_low, (unsigned long)int_high);
+    }
+}
+
+void dk_gsl3680_diag_int_pin(int gpio)
+{
+    s_diag_int_gpio = gpio;
+}
+
 static esp_err_t read_data(esp_lcd_touch_handle_t tp)
 {
-    uint8_t pkt[PACKET_SIZE];
+    uint8_t pkt[PACKET_SIZE] = {0};
     esp_err_t err = esp_lcd_panel_io_rx_param(tp->io, DATA_REG, pkt, sizeof(pkt));
+    diag(err, pkt);
     uint8_t n = 0;
     esp_lcd_touch_point_data_t pts[MAX_POINTS] = {0};
     if (err == ESP_OK && pkt[0] <= MAX_CONTACTS) {

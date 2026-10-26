@@ -1,5 +1,6 @@
 #include "board.h"
 
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
 #include "esp_check.h"
@@ -175,6 +176,10 @@ static esp_lcd_touch_handle_t touch_init(void)
     };
     esp_lcd_touch_handle_t tp = NULL;
     if (dk_gsl3680_new(io, &cfg, &tp) != ESP_OK) return NULL;
+    // Watch the INT line in the diagnostics, without using it as an interrupt.
+    const gpio_config_t int_in = {.mode = GPIO_MODE_INPUT, .pin_bit_mask = BIT64(BOARD_TOUCH_INT_GPIO)};
+    gpio_config(&int_in);
+    dk_gsl3680_diag_int_pin(BOARD_TOUCH_INT_GPIO);
     return tp;
 }
 

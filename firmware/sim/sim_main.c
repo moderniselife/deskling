@@ -12,6 +12,7 @@
 #include "lvgl.h"
 #include "model.h"
 #include "ui.h"
+#include "ui_internal.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -183,6 +184,38 @@ static bool tap(const char *text)
     s_ptr_state = LV_INDEV_STATE_RELEASED;
     run(60);
     return true;
+}
+
+/** Press at (x0,y0), move to (x1,y1) over ms, optionally hold there, release. */
+static void drag(int x0, int y0, int x1, int y1, uint32_t ms, uint32_t hold_ms)
+{
+    printf("drag %d,%d -> %d,%d%s\n", x0, y0, x1, y1, hold_ms ? " (hold)" : "");
+    s_ptr.x = x0;
+    s_ptr.y = y0;
+    s_ptr_state = LV_INDEV_STATE_PRESSED;
+    run(40);
+    int steps = ms / 20 ? ms / 20 : 1;
+    for (int i = 1; i <= steps; i++) {
+        s_ptr.x = x0 + (x1 - x0) * i / steps;
+        s_ptr.y = y0 + (y1 - y0) * i / steps;
+        run(20);
+    }
+    if (hold_ms) run(hold_ms);
+    s_ptr_state = LV_INDEV_STATE_RELEASED;
+    run(80);
+}
+
+static void expect_screen(scr_id_t id, const char *name)
+{
+    bool ok = ui_current() == id;
+    printf("%s  on the %s screen\n", ok ? "PASS" : "FAIL", name);
+    if (!ok) s_failures++;
+}
+
+static void check(bool ok, const char *what)
+{
+    printf("%s  %s\n", ok ? "PASS" : "FAIL", what);
+    if (!ok) s_failures++;
 }
 
 static lv_obj_t *find_class(lv_obj_t *o, const lv_obj_class_t *cls)
@@ -461,6 +494,43 @@ int main(int argc, char **argv)
     tap("deskling");
     run(800);
     shot("15_back_home");
+
+    // ---- gestures
+    expect_screen(SCR_HOME, "home");
+    drag(640, 8, 640, 420, 300, 0);
+    run(500);
+    check(ui_gestures_panel_open(), "swipe down from the top opens notifications");
+    check(find_label(lv_layer_top(), "Notifications") != NULL, "notification panel has its heading");
+    shot("18_notifications");
+    drag(640, 420, 640, 120, 200, 0);
+    run(400);
+    check(!ui_gestures_panel_open(), "swipe up closes notifications");
+    drag(640, 795, 640, 560, 250, 700);
+    run(500);
+    expect_screen(SCR_SESSIONS, "sessions (swipe up and hold)");
+    tap("web-app");
+    run(600);
+    expect_screen(SCR_CHAT, "chat");
+    drag(6, 420, 280, 430, 250, 0);
+    run(600);
+    expect_screen(SCR_SESSIONS, "sessions (swipe back from chat)");
+    drag(640, 795, 640, 600, 150, 0);
+    run(600);
+    expect_screen(SCR_HOME, "home (swipe up)");
+    tap("See all");
+    run(600);
+    tap("Settings");
+    run(600);
+    expect_screen(SCR_SETTINGS, "settings");
+    {
+        // A back swipe that starts on the rail's Sessions button must not press it.
+        lv_obj_t *l = find_label(lv_screen_active(), "Sessions");
+        lv_area_t a;
+        lv_obj_get_coords(l, &a);
+        drag(14, (a.y1 + a.y2) / 2 - 20, 290, (a.y1 + a.y2) / 2 - 20, 250, 0);
+        run(600);
+        expect_screen(SCR_HOME, "home (back swipe started on a rail button)");
+    }
 
     printf(s_failures ? "\n%d check(s) failed\n" : "\nall checks passed\n", s_failures);
     return s_failures ? 1 : 0;
