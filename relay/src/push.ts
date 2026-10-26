@@ -99,6 +99,7 @@ export async function sendPush(sub: PushSub, vapid: Vapid, message: Record<strin
 
 /** Push services are https; plain http only for testing on this computer. */
 export function validEndpoint(u: unknown): string | null {
+  if (typeof u !== "string" || u.length > 1024) return null; // real ones are a few hundred characters
   try {
     const url = new URL(String(u));
     if (url.protocol === "https:" || (url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost"))) return url.toString();

@@ -126,7 +126,9 @@ function projects() {
 }
 
 async function relay(path, init = {}) {
+  // Long polls wait up to ~110 s on the relay; anything else that hangs gives up sooner.
   const res = await fetch(URL_BASE + path, {
+    signal: AbortSignal.timeout(/\/(poll|ask)/.test(path) ? 130_000 : 20_000),
     ...init,
     headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json", ...(init.headers ?? {}) },
   });

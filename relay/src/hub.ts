@@ -1657,16 +1657,18 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     return item;
   }
 
-  private vapid: Vapid | null = null;
-  /** This relay's own key for signing pushes, made the first time it's needed. */
-  private async getVapid(): Promise<Vapid> {
-    if (this.vapid) return this.vapid;
-    let v = await this.ctx.storage.get<Vapid>("vapid");
-    if (!v) {
-      v = await makeVapid();
-      await this.ctx.storage.put("vapid", v);
-    }
-    return (this.vapid = v);
+  private vapid: Promise<Vapid> | null = null;
+  /** This relay's own key for signing pushes, made the first time it's needed (only once). */
+  private getVapid(): Promise<Vapid> {
+    this.vapid ??= (async () => {
+      let v = await this.ctx.storage.get<Vapid>("vapid");
+      if (!v) {
+        v = await makeVapid();
+        await this.ctx.storage.put("vapid", v);
+      }
+      return v;
+    })();
+    return this.vapid;
   }
 
   /** A notification to every browser that asked; ones that have gone away are forgotten. */

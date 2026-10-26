@@ -23,11 +23,15 @@ self.addEventListener("push", (e) => {
   try { m = e.data ? e.data.json() : {}; } catch (x) {}
   e.waitUntil(self.registration.showNotification(m.title || "Deskling", { body: m.body || "", icon: "/app-icon.svg", badge: "/app-icon.svg", tag: m.tag || undefined, data: { agentId: m.agentId || "" } }));
 });
+// The browser renewed the subscription: the page hands the new one to the relay on its next visit.
+self.addEventListener("pushsubscriptionchange", (e) => {
+  e.waitUntil(self.clients.matchAll({ type: "window" }).then((list) => list.forEach((c) => c.postMessage({ resubscribe: true }))));
+});
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const id = (e.notification.data && e.notification.data.agentId) || "";
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-    for (const c of list) if (new URL(c.url).pathname === "/app") { c.postMessage({ open: id }); return c.focus(); }
+    for (const c of list) if (["/app", "/sim"].includes(new URL(c.url).pathname)) { c.postMessage({ open: id }); return c.focus(); }
     return self.clients.openWindow("/app" + (id ? "#" + encodeURIComponent(id) : ""));
   }));
 });

@@ -159,7 +159,7 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
       };
       if (s.helpers.size) body.helpers = [...s.helpers.values()].slice(-4);
       try {
-        await fetch(`${URL_BASE}/agent/update`, { method: "POST", headers: auth, body: JSON.stringify(body) });
+        await fetch(`${URL_BASE}/agent/update`, { method: "POST", headers: auth, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
       } catch {
         /* relay unreachable: the next update carries on */
       }
@@ -239,11 +239,20 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
     const questions = (q.questions || []).map((x) => ({ question: x.question, header: x.header || "", multiSelect: !!x.multiple, options: (x.options || []).map((o) => ({ label: o.label, description: o.description || "" })) }));
     const r = await ask(q.sessionID, { key: q.id, kind: "question", tool: "Question", summary: questions[0]?.question || "", detail: questions[0]?.header || "", questions });
     if (!r.answers) return;
-    // The relay keys answers by the question's text (tidied up), in the order asked.
-    const given = Object.values(r.answers);
+    // The relay shortens long questions and labels for the screen: match them back the same way.
+    const short = (t, max) => {
+      const f = String(t ?? "").replace(/\s+/g, " ").trim();
+      return f.length > max ? f.slice(0, max - 1) + "…" : f;
+    };
+    const clip = (t, max) => {
+      const f = String(t ?? "").trim();
+      return f.length > max ? f.slice(0, max - 1) + "…" : f;
+    };
     const answers = questions.map((x, i) => {
-      const a = r.answers[x.question] ?? r.answers[String(x.question).trim()] ?? given[i];
-      return Array.isArray(a) ? a.map(String) : a ? String(a).split("\n") : [];
+      const a = r.answers[x.question] ?? r.answers[clip(x.question, 200)];
+      const picked = Array.isArray(a) ? a.map(String) : a ? String(a).split("\n") : [];
+      const opts = (q.questions?.[i]?.options || []).map((o) => o.label);
+      return picked.map((p) => opts.find((l) => l === p || short(l, 60) === p) ?? p);
     });
     if (!answers.some((a) => a.length)) return; // nothing picked: OpenCode's own question stays
     await oc(`/question/${q.id}/reply`, { answers }).catch(() => {});

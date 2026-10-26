@@ -145,7 +145,8 @@ try {
     $q = if ($Mode -eq "live") { "?live=1" } else { "" }
     Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook$q" -Headers $headers `
       -ContentType "application/json" -Body $body -TimeoutSec 5 | Out-Null
-    Send-Transcript -Background
+    # Like the bash hook: in step with the session, so the Stop hook never finds it mid-upload.
+    Send-Transcript
   }
 } catch { }
 exit 0

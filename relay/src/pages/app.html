@@ -438,7 +438,8 @@ function api(path, body) {
 }
 function keyBytes(k) { var s = atob(k.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((k.length + 3) % 4)); var a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
 function startPush() {
-  return navigator.serviceWorker.register("/app-sw.js").then(function (reg) {
+  // Subscribing needs the service worker running, not just registered.
+  return navigator.serviceWorker.register("/app-sw.js").then(function () { return navigator.serviceWorker.ready; }).then(function (reg) {
     return api("/api/push/key").then(function (r) {
       return reg.pushManager.getSubscription().then(function (old) {
         return old || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(r.key) });
@@ -450,7 +451,8 @@ function stopPush() {
   return navigator.serviceWorker.getRegistration("/app-sw.js").then(function (reg) {
     return reg && reg.pushManager.getSubscription().then(function (sub) {
       if (!sub) return;
-      return api("/api/push/unsubscribe", { endpoint: sub.endpoint }).then(function () { return sub.unsubscribe(); });
+      var drop = function () { return sub.unsubscribe(); };
+      return api("/api/push/unsubscribe", { endpoint: sub.endpoint }).then(drop, drop);
     });
   }).catch(function () {});
 }
@@ -475,8 +477,22 @@ function notifyNew() {
   }
   seenFeed = ids;
 }
+// The relay can forget a subscription (another device replaced it, the browser renewed it):
+// hand it over again on every visit, and fall back to in-page notifications if it's gone.
+if (canPush && pref() === "push" && token) {
+  navigator.serviceWorker.getRegistration("/app-sw.js").then(function (reg) {
+    return reg ? reg.pushManager.getSubscription() : null;
+  }).then(function (sub) {
+    if (sub) return api("/api/push/subscribe", sub.toJSON());
+    setPref("1");
+    return startPush().then(function () { setPref("push"); });
+  }).catch(function () {}).then(notifyButton);
+}
 // A tapped notification opens that session's chat.
-if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", function (e) { if (e.data && e.data.open) openChat(e.data.open); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", function (e) {
+  if (e.data && e.data.open) openChat(e.data.open);
+  if (e.data && e.data.resubscribe && pref() === "push") startPush().catch(function () {});
+});
 var wantOpen = decodeURIComponent((location.hash || "").slice(1));
 var renderInner = render;
 render = function (force) {
