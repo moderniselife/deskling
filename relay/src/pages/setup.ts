@@ -113,7 +113,7 @@ a{color:var(--purple)}
       <h2>Start sessions from Deskling</h2>
       <p>Tap <b>New session</b> on the screen, pick where it runs and what it should do, and it starts already listening for you, so the whole conversation can happen on Deskling.</p>
       <h3>On your computers</h3>
-      <p>Run the small Deskling runner on each computer you want to start sessions on. It needs Node 18 or newer and the <code>~/.deskling/config</code> above. It offers the git projects in your usual code folders (change that with <code>DESKLING_PROJECTS</code>) and starts Claude Code in the background there. With OpenCode installed, it offers OpenCode and your models too.</p>
+      <p>Run the small Deskling runner on each computer you want to start sessions on. It needs Node 18 or newer and the <code>~/.deskling/config</code> above. It offers the git projects in your usual code folders (change that with <code>DESKLING_PROJECTS</code>) and starts Claude Code in the background there. With OpenCode installed, it offers OpenCode and your models too, including Ollama and LM Studio models on that computer, and it finds Gemini CLI, Cursor, Codex, Copilot, Goose, Qwen Code, Kimi and Kiro if they're installed.</p>
       <p class="muted">Mac or Linux, in Terminal:</p>
       <div class="copy"><code id="runmac"></code><button class="ghost" data-copy="runmac">Copy</button></div>
       <p class="muted">Windows, in PowerShell:</p>
