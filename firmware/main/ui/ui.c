@@ -405,10 +405,16 @@ void ui_alert_finished(void)
 
 static scr_id_t s_chat_from = SCR_SESSIONS;
 
+void ui_chat_detail(dk_detail_t *d)
+{
+    scr_chat_detail(d);
+}
+
 bool ui_back(void)
 {
     switch (s_cur) {
     case SCR_CHAT:
+        if (scr_chat_back()) return true;
         ui_go(s_chat_from == SCR_CHAT || s_chat_from == SCR_ALERT ? SCR_SESSIONS : s_chat_from);
         return true;
     case SCR_NEW:

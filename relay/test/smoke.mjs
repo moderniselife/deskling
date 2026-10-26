@@ -31,7 +31,21 @@ ws.onmessage = (e) => {
     snapshots.push(m);
     onSnap?.(m);
   }
+  if (m.type === "detail") onDetail?.(m);
 };
+let onDetail = null;
+const askDetail = (agentId, lineId) =>
+  new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error("timeout waiting for detail")), 3000);
+    onDetail = (m) => {
+      if (m.lineId === lineId) {
+        clearTimeout(t);
+        onDetail = null;
+        res(m);
+      }
+    };
+    ws.send(JSON.stringify({ type: "detail", agentId, lineId }));
+  });
 await new Promise((res, rej) => {
   ws.onopen = res;
   ws.onerror = rej;
@@ -166,7 +180,7 @@ const tr = await fetch(`${URL_BASE}/transcript?sid=s-smoke`, { method: "POST", h
 check("transcript accepted", tr.ok);
 s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.image));
 const ag = s.agents.find((a) => a.id === "s-smoke");
-check("Claude's words arrive from the transcript", ag.chat.some((c) => c.from === "agent" && c.text === "Found it: reset link is missing."));
+check("Claude's words arrive from the transcript", ag.chat.some((c) => c.from === "agent" && c.text === "Found it: **reset** link is missing." && ag.lastMessage !== c.text));
 check("thoughts arrive", ag.chat.filter((c) => c.from === "thought").length === 2);
 check("steps arrive", ag.chat.some((c) => c.from === "tool" && c.text === "Editing Login.tsx"));
 check("helpers' own transcript lines are skipped", !ag.chat.some((c) => c.text === "helper chatter"));
@@ -300,6 +314,26 @@ check("a bridged session finishing notifies", s.feed.some((f) => f.title === "Op
 await agentPost("/agent/update", { id: "oc-smoke", end: true });
 s = await waitFor((m) => !m.agents.some((a) => a.id === "oc-smoke"));
 check("a bridge can end its session", true);
+
+// Long replies keep their Markdown and can be read in full; hidden steps can be opened.
+ws.send(JSON.stringify({ type: "view", agentId: "s-smoke" }));
+const longReply = "## Summary\n\n**Done.** Ran `npm test` \u2192 all green.\n\n" + Array.from({ length: 60 }, (_, i) => `- item ${i} with some words to make it long`).join("\n") + "\n\nThe end.";
+await hook({ hook_event_name: "Stop", last_assistant_message: longReply });
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.more));
+const longLine = s.agents.find((a) => a.id === "s-smoke").chat.find((c) => c.more);
+check("a reply keeps its Markdown", longLine.text.startsWith("## Summary\n\n**Done.** Ran `npm test` -> all green."), JSON.stringify(longLine.text.slice(0, 60)));
+check("a long reply is cut and marked", longLine.text.length <= 1200);
+check("the session's latest message stays plain", !s.agents.find((a) => a.id === "s-smoke").lastMessage.includes("**"));
+const det = await askDetail("s-smoke", longLine.id);
+check("Show all returns the whole reply", det.text?.endsWith("The end.") && det.text.length > 1200, String(det.text?.length));
+await agentPost("/agent/update", { id: "oc-steps", source: "opencode", name: "steps", host: "test-mac", os: "mac", state: "working", lines: [...Array.from({ length: 9 }, (_, i) => ({ key: "t" + i, from: "tool", text: "Read file" + i + ".ts" })), { key: "a1", from: "agent", text: "All read." }] });
+ws.send(JSON.stringify({ type: "view", agentId: "oc-steps" }));
+s = await waitFor((m) => m.agents.find((a) => a.id === "oc-steps")?.chat?.some((c) => c.hidden));
+const stepsRow = s.agents.find((a) => a.id === "oc-steps").chat.find((c) => c.hidden);
+check("earlier steps say how many", stepsRow.hidden === 6 && stepsRow.text === "6 earlier steps", JSON.stringify(stepsRow));
+const stepsDet = await askDetail("oc-steps", stepsRow.id);
+check("earlier steps can be opened", stepsDet.steps?.length === 6 && stepsDet.steps[0].text === "Read file0.ts", JSON.stringify(stepsDet).slice(0, 120));
+await agentPost("/agent/update", { id: "oc-steps", end: true });
 
 await hook({ hook_event_name: "SessionEnd", reason: "other" });
 s = await waitFor((m) => !m.agents.some((a) => a.id === "s-smoke"));

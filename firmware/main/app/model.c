@@ -133,6 +133,8 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
             line->step = line->thought || str_is(c, "from", "tool");
             copy_str(line->image, sizeof(line->image), c, "image");
             copy_str(line->quote, sizeof(line->quote), c, "quote");
+            line->more = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(c, "more"));
+            line->hidden = (int)get_i64(c, "hidden");
             line->status = str_is(c, "status", "queued") ? DK_CHAT_QUEUED : str_is(c, "status", "delivered") ? DK_CHAT_DELIVERED : str_is(c, "status", "typed") ? DK_CHAT_TYPED : DK_CHAT_SENT;
             line->ts = get_i64(c, "ts");
         }
@@ -386,6 +388,69 @@ void dk_send_view(const char *agent_id)
 void dk_resend_view(void)
 {
     send_view();
+}
+
+void dk_send_detail(const char *agent_id, const char *line_id)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "detail");
+    cJSON_AddStringToObject(o, "agentId", agent_id ? agent_id : "");
+    cJSON_AddStringToObject(o, "lineId", line_id ? line_id : "");
+    send_obj(o);
+}
+
+static char *dup_str(const cJSON *v, size_t max)
+{
+    if (!cJSON_IsString(v) || !v->valuestring) return NULL;
+    size_t n = strlen(v->valuestring);
+    if (n > max) {
+        n = max;
+        while (n > 0 && ((unsigned char)v->valuestring[n] & 0xC0) == 0x80) n--;
+    }
+    char *s = malloc(n + 1);
+    if (!s) return NULL;
+    memcpy(s, v->valuestring, n);
+    s[n] = '\0';
+    return s;
+}
+
+bool dk_detail_parse(const char *json, size_t len, dk_detail_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    cJSON *root = cJSON_ParseWithLength(json, len);
+    if (!root) return false;
+    if (!str_is(root, "type", "detail")) {
+        cJSON_Delete(root);
+        return false;
+    }
+    copy_str(out->agent_id, sizeof(out->agent_id), root, "agentId");
+    copy_str(out->line_id, sizeof(out->line_id), root, "lineId");
+    out->text = dup_str(cJSON_GetObjectItemCaseSensitive(root, "text"), 24000);
+    const cJSON *steps = cJSON_GetObjectItemCaseSensitive(root, "steps");
+    int n = cJSON_IsArray(steps) ? cJSON_GetArraySize(steps) : 0;
+    if (n > 200) n = 200;
+    if (n > 0 && (out->steps = calloc((size_t)n, sizeof(dk_detail_step_t)))) {
+        const cJSON *c;
+        cJSON_ArrayForEach(c, steps)
+        {
+            if (out->steps_n >= n) break;
+            char *t = dup_str(cJSON_GetObjectItemCaseSensitive(c, "text"), 1200);
+            if (!t) continue;
+            out->steps[out->steps_n].thought = str_is(c, "from", "thought");
+            out->steps[out->steps_n++].text = t;
+        }
+    }
+    cJSON_Delete(root);
+    return true;
+}
+
+void dk_detail_free(dk_detail_t *d)
+{
+    if (!d) return;
+    free(d->text);
+    for (int i = 0; i < d->steps_n; i++) free(d->steps[i].text);
+    free(d->steps);
+    memset(d, 0, sizeof(*d));
 }
 
 void dk_send_hello(void)

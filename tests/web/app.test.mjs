@@ -54,6 +54,29 @@ check("the conversation shows: your prompt, thinking, steps and replies", (await
 check("model, context and helpers show", await page.getByText("ollama/qwen3-coder:30b · 18k tokens in context").isVisible() && await page.getByText("Plan the change · done").isVisible());
 if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-chat.png` });
 
+// Replies in Markdown, "Show all" for a long one, and earlier steps that open.
+const long = "## Plan\n\n**Rate limit** the `login` route:\n\n1. Count per IP\n2. Answer *429*\n   - with `Retry-After`\n\n| Limit | Window |\n| --- | --- |\n| 5 | 1 min |\n\n```\nnpm test\n```\n\n<img src=x onerror=\"window.pwned=1\"> [docs](javascript:alert(1)) and [site](https://example.com)\n\n" + "More words to make it long. ".repeat(60) + "\n\nThe very end.";
+await post("/agent/update", { id: "oc-md", source: "opencode", name: "md-demo", host: "MacBook", os: "mac", state: "done", task: "Done",
+  lines: [...Array.from({ length: 6 }, (_, i) => ({ key: "s" + i, from: "tool", text: "Reading file" + i + ".ts" })), { key: "r", from: "agent", text: long }] });
+await page.getByText("md-demo", { exact: true }).first().click();
+await page.locator(".b.agent h4").first().waitFor({ timeout: 5000 });
+check("a reply's Markdown is drawn: heading, bold, code, lists, table, code block", (await page.locator(".b.agent strong").count()) >= 1 && (await page.locator(".b.agent ol > li").count()) === 2 && (await page.locator(".b.agent ul li").count()) === 1 && (await page.locator(".b.agent table td").count()) === 2 && (await page.locator(".b.agent pre code").count()) === 1);
+check("no raw Markdown marks show", !(await page.locator(".b.agent").first().innerText()).includes("**"));
+check("HTML in a reply stays text, and only web links are links", (await page.evaluate(() => !window.pwned && !document.querySelector(".b.agent img"))) && (await page.locator('.b.agent a[href^="javascript"]').count()) === 0 && (await page.locator('.b.agent a[href="https://example.com"]').count()) === 1);
+check("a long reply is cut, with Show all", !(await page.getByText("The very end.").isVisible()) && (await page.getByRole("button", { name: "Show all" }).isVisible()));
+await page.getByRole("button", { name: "Show all" }).click();
+await page.getByText("The very end.").waitFor({ timeout: 5000 });
+check("Show all shows the whole reply", await page.getByRole("button", { name: "Show less" }).isVisible());
+await page.getByRole("button", { name: "3 earlier steps" }).click();
+await page.locator(".stepsopen .step.tool").first().waitFor({ timeout: 5000 });
+check("earlier steps open in place", (await page.locator(".stepsopen .step.tool").count()) === 3 && (await page.getByText("Reading file0.ts").isVisible()));
+if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-markdown.png` });
+await page.getByRole("button", { name: "3 earlier steps" }).click();
+check("and fold away again", (await page.locator(".stepsopen").count()) === 0);
+await post("/agent/update", { id: "oc-md", end: true });
+await page.getByText("api-server", { exact: true }).first().click();
+await page.getByText("I'll allow 5 attempts").waitFor({ timeout: 5000 });
+
 // A permission, answered in the page.
 const ask = post("/agent/ask", { id: "oc-app", key: "k1", kind: "permission", tool: "Bash", summary: "npm test", detail: "Run the tests", wait: 20 }).then((r) => r.json());
 await page.getByText("OpenCode wants to run a command").first().waitFor({ timeout: 5000 });

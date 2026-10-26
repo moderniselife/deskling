@@ -24,6 +24,8 @@ import type {
 const FEED_MAX = 40;
 const CHAT_MAX = 80; // messages and tool steps kept per session
 const CHAT_TEXT_MAX = 1200; // the screen keeps this much of each chat line
+const CHAT_FULL_MAX = 20000; // all of a long reply, kept apart for "Show all"
+const FULL_KEPT = 80; // long replies kept in full
 const SNAPSHOT_CHAT = 30; // chat lines per session sent to the screen
 const TAIL_CHAT = 2; // for sessions that aren't open on the screen
 const STEPS_SHOWN = 3; // tool steps shown in a row before they collapse into a count
@@ -112,6 +114,26 @@ function readable(s: unknown): string {
     .trim();
 }
 
+/**
+ * A reply for the chat: like readable() but the Markdown stays (the screen draws it), and only
+ * characters the screen's fonts lack are swapped for plain ones.
+ */
+function mdText(s: unknown): string {
+  if (typeof s !== "string") return "";
+  return s
+    .replace(/<(system-reminder|agent-message|task-notification|local-command-stdout|local-command-stderr|command-message|command-args)(\s[^>]*)?>[\s\S]*?<\/\1>/g, "")
+    .replace(/\[Image #\d+\]/g, "[photo]")
+    .replace(/@"[^"]*excerpt_from_previous_claude_message\.txt"\s*/g, "")
+    .replace(/@"[^"]*[\\/]([^"\\/]+)"/g, "[$1]")
+    .replace(/<command-name>\s*([\s\S]*?)\s*<\/command-name>/g, "$1")
+    .replace(/\u2192/g, "->")
+    .replace(/\u2190/g, "<-")
+    .replace(/[\u2022\u25CF]/g, "-")
+    .replace(/\u00A0/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function clip(s: unknown, max: number): string {
   if (typeof s !== "string") return "";
   const t = s.trim();
@@ -154,7 +176,7 @@ function chatView(lines: ChatLine[]): ChatLine[] {
   const flush = () => {
     if (run.length > STEPS_SHOWN) {
       const hidden = run.length - STEPS_SHOWN;
-      out.push({ ...run[0], from: "tool", id: run[0].id + "m", text: `${hidden} earlier step${hidden > 1 ? "s" : ""}` });
+      out.push({ ...run[0], from: "tool", id: run[0].id + "m", text: `${hidden} earlier step${hidden > 1 ? "s" : ""}`, hidden });
     }
     out.push(...run.slice(-STEPS_SHOWN));
     run = [];
@@ -583,12 +605,13 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       case "Stop": {
         // Later rounds of a listening Stop hook: just keep waiting.
         if (round > 0) return this.listen(agent, sid);
-        const full = clip(readable(body.last_assistant_message), CHAT_TEXT_MAX);
-        const summary = oneLine(full, 120);
-        agent.lastMessage = full;
+        const plain = clip(readable(body.last_assistant_message), CHAT_TEXT_MAX);
+        const summary = oneLine(plain, 120);
+        agent.lastMessage = plain;
         // Skip it if the same words already arrived mid-turn (a message Claude sent while working).
         const chat = this.state.chats[sid] ?? [];
-        if (full && !chat.slice(-12).some((c) => c.from === "agent" && c.text === full)) this.pushChat(sid, "agent", full, "sent");
+        const said = this.replyText(body.last_assistant_message).text;
+        if (said && !chat.slice(-12).some((c) => c.from === "agent" && c.text === said)) this.pushReply(sid, body.last_assistant_message);
         // Anything queued on the screen keeps Claude going instead of stopping.
         const queued = this.channelLive(sid) ? [] : this.takeQueued(sid);
         if (queued.length) {
@@ -674,11 +697,9 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       case "PostToolUse": {
         // A message Claude sends you while it works (SendUserMessage in the Claude app and Cowork).
         const input = (body.tool_input ?? {}) as Record<string, unknown>;
-        const text = agent.streaming ? "" : clip(readable(input.message ?? input.text ?? ""), CHAT_TEXT_MAX);
+        const raw = agent.streaming ? "" : (input.message ?? input.text ?? "");
         if (agent.state === "needs_you" && !this.state.pending.some((p) => p.agentId === sid)) this.setAgent(agent, "working", "Working");
-        if (text) {
-          this.pushChat(sid, "agent", text, "sent");
-          agent.lastMessage = text;
+        if (this.pushReply(sid, raw)) {
           await this.commit({ kind: "chat", id: sid });
         } else {
           agent.updated = Date.now();
@@ -779,7 +800,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         if (m && !(k && chat.some((c) => c.key === k)) && (await this.addImage(id, from === "you" ? "you" : "agent", { source: { type: "base64", media_type: m[1], data: m[2] } }, k))) message = true;
         continue;
       }
-      const text = from === "thought" ? oneLine(readable(l.text), 140) : clip(readable(l.text), CHAT_TEXT_MAX);
+      const reply = from === "agent" ? this.replyText(l.text) : null;
+      const text = reply ? reply.text : from === "thought" ? oneLine(readable(l.text), 140) : clip(readable(l.text), CHAT_TEXT_MAX);
       if (!text) continue;
       const key = l.key ? oneLine(l.key, 80) : "";
       const same = key ? chat.find((c) => c.key === key) : undefined;
@@ -787,15 +809,20 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         // Streaming: the line grows in place. That's live activity, not a new message (no chime).
         if (same.text !== text) {
           same.text = text;
-          if (from === "agent") agent.lastMessage = text;
+          if (reply) {
+            this.keepFull(same, reply.full);
+            agent.lastMessage = clip(readable(l.text), CHAT_TEXT_MAX);
+          }
         }
         continue;
       }
       // Your message from the screen comes back from the agent as its prompt: don't show it twice.
       if (from === "you" && chat.slice(-6).some((c) => c.from === "you" && c.text === text)) continue;
-      chat.push({ id: shortId(), from, text, status: from === "you" ? "typed" : "sent", ts: Date.now(), ...(key ? { key } : {}) });
-      if (from === "agent") {
-        agent.lastMessage = text;
+      const line: ChatLine = { id: shortId(), from, text, status: from === "you" ? "typed" : "sent", ts: Date.now(), ...(key ? { key } : {}) };
+      chat.push(line);
+      if (reply) {
+        this.keepFull(line, reply.full);
+        agent.lastMessage = clip(readable(l.text), CHAT_TEXT_MAX);
         message = true;
       }
       if (from === "you") agent.lastPrompt = clip(text, 400);
@@ -1051,22 +1078,12 @@ export class Hub extends DurableObject<Record<string, unknown>> {
             for (const t of thoughtLines(b.thinking)) this.pushChat(sid, "thought", t, "sent");
             changed = true;
           } else if (b.type === "text" && typeof b.text === "string") {
-            const t = clip(readable(b.text), CHAT_TEXT_MAX);
-            if (t) {
-              this.pushChat(sid, "agent", t, "sent");
-              agent.lastMessage = t;
-              changed = message = true;
-            }
+            if (this.pushReply(sid, b.text)) changed = message = true;
           } else if (b.type === "tool_use") {
             const name = String(b.name ?? "");
             const input = (b.input ?? {}) as Record<string, unknown>;
             if (name === "SendUserMessage") {
-              const t = clip(readable(input.message ?? ""), CHAT_TEXT_MAX);
-              if (t) {
-                this.pushChat(sid, "agent", t, "sent");
-                agent.lastMessage = t;
-                changed = message = true;
-              }
+              if (this.pushReply(sid, input.message ?? "")) changed = message = true;
             } else if (name !== "Agent" && name !== "Task") {
               this.pushChat(sid, "tool", activity(name, input), "sent");
               changed = true;
@@ -1306,9 +1323,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const text = clip(body.text, 600);
     if (!text) return json({ error: "text required" }, 400);
     if (ch.agentId) {
-      this.pushChat(ch.agentId, "agent", text, "sent");
-      const a = this.state.agents[ch.agentId];
-      if (a) a.lastMessage = text;
+      this.pushReply(ch.agentId, body.text);
     } else {
       this.addFeed("info", ch.name, text, null);
     }
@@ -1427,6 +1442,11 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       const view = oneLine(msg.agentId, 72);
       ws.serializeAttachment({ view });
       ws.send(this.snapshot({ kind: "agent", id: view }, view));
+      return;
+    }
+    if (msg.type === "detail") {
+      // "Show all" on a long reply, or opening "12 earlier steps": only the asking screen gets it.
+      ws.send(JSON.stringify(await this.detail(oneLine(msg.agentId, 72), oneLine(msg.lineId, 40))));
       return;
     }
     await this.onClientMessage(msg);
@@ -1691,10 +1711,58 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     }
   }
 
-  private pushChat(agentId: string, from: ChatLine["from"], text: string, status: ChatLine["status"]): void {
+  private pushChat(agentId: string, from: ChatLine["from"], text: string, status: ChatLine["status"]): ChatLine {
     const chat = (this.state.chats[agentId] ??= []);
-    chat.push({ id: shortId(), from, text, status, ts: Date.now() });
+    const line: ChatLine = { id: shortId(), from, text, status, ts: Date.now() };
+    chat.push(line);
     if (chat.length > CHAT_MAX) chat.splice(0, chat.length - CHAT_MAX);
+    return line;
+  }
+
+  /** The chat text for a reply (Markdown kept, cut at CHAT_TEXT_MAX). */
+  private replyText(raw: unknown): { text: string; full: string } {
+    const full = clip(mdText(raw), CHAT_FULL_MAX);
+    return { text: clip(full, CHAT_TEXT_MAX), full };
+  }
+
+  /** Put a reply's whole text aside when the chat line only has the start of it. */
+  private keepFull(line: ChatLine, full: string): void {
+    if (full.length <= CHAT_TEXT_MAX) {
+      delete line.more;
+      return;
+    }
+    line.more = true;
+    void this.ctx.storage.put("full:" + line.id, full);
+    const ids = (this.state.fullIds ??= []).filter((x) => x !== line.id);
+    ids.push(line.id);
+    while (ids.length > FULL_KEPT) void this.ctx.storage.delete("full:" + ids.shift());
+    this.state.fullIds = ids;
+  }
+
+  /** An agent's reply in the chat: formatted, with its whole text kept if it's long. */
+  private pushReply(agentId: string, raw: unknown): ChatLine | null {
+    const { text, full } = this.replyText(raw);
+    if (!text) return null;
+    const line = this.pushChat(agentId, "agent", text, "sent");
+    this.keepFull(line, full);
+    const a = this.state.agents[agentId];
+    if (a) a.lastMessage = clip(readable(raw), CHAT_TEXT_MAX);
+    return line;
+  }
+
+  /** What the screen asked to see in full: a long reply, or the steps behind "12 earlier steps". */
+  private async detail(agentId: string, lineId: string): Promise<Record<string, unknown>> {
+    const chat = this.state.chats[agentId] ?? [];
+    if (lineId.endsWith("m") && !chat.some((c) => c.id === lineId)) {
+      const i = chat.findIndex((c) => c.id === lineId.slice(0, -1));
+      if (i < 0) return { type: "detail", agentId, lineId, steps: [] };
+      const run: ChatLine[] = [];
+      for (let j = i; j < chat.length && (chat[j].from === "tool" || chat[j].from === "thought"); j++) run.push(chat[j]);
+      return { type: "detail", agentId, lineId, steps: run.slice(0, Math.max(0, run.length - STEPS_SHOWN)).slice(-200).map((c) => ({ from: c.from, text: c.text })) };
+    }
+    const line = chat.find((c) => c.id === lineId);
+    const full = line?.more ? await this.ctx.storage.get<string>("full:" + lineId) : undefined;
+    return { type: "detail", agentId, lineId, text: full ?? line?.text ?? "" };
   }
 
   /** Mark this agent's queued screen messages delivered and return their text. */

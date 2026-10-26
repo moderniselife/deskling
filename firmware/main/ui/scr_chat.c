@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "md.h"
 #include "ui_internal.h"
 
 static struct {
@@ -12,7 +13,26 @@ static struct {
     bool follow; // the conversation is pinned to its newest line (you haven't scrolled back)
     char agent_id[72];
     char last_line[16];
+    bool keep_place; // the next redraw stays where you are (you opened or closed something)
+    lv_obj_t *reader, *reader_title, *reader_body;
+    lv_timer_t *reader_timer;
+    char reader_line[24];
 } c;
+
+/* "6 earlier steps" groups you opened, with the steps once they've arrived. */
+#define STEPS_OPEN_MAX 6
+static struct {
+    char id[24];
+    int hidden; // how many steps it stood for when they were fetched
+    bool have;
+    dk_detail_t d;
+} s_open[STEPS_OPEN_MAX];
+static int s_open_n;
+
+static md_style_t MD_REPLY; // set in scr_chat_create (the colours aren't compile-time constants)
+
+static void rebuild(bool animate_new);
+static uint32_t s_head_sig, s_chat_sig;
 
 static const char *QUICK[] = {"Yes please", "Continue", "Run the tests", "Wrap up and summarise"};
 
@@ -92,6 +112,7 @@ static void ta_cb(lv_event_t *e)
 
 lv_obj_t *scr_chat_create(void)
 {
+    MD_REPLY = (md_style_t){.ink = DK_INK, .soft = DK_MUTED, .accent = DK_PURPLE, .code_bg = DK_FACE};
     c.scr = lv_obj_create(NULL);
     lv_obj_remove_flag(c.scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(c.scr, DK_GROUND, 0);
@@ -245,7 +266,31 @@ lv_obj_t *scr_chat_create(void)
     return c.scr;
 }
 
-static lv_obj_t *bubble(const char *text, bool mine, const char *meta, const char *image, const char *quote)
+static void reader_open(const char *line_id);
+
+/* A button that acts on a chat line keeps its own copy of the line's id: the model under it
+   is rewritten by every snapshot. */
+static void id_free_cb(lv_event_t *e)
+{
+    lv_free(lv_event_get_user_data(e));
+}
+
+static void attach_id(lv_obj_t *o, lv_event_cb_t cb, const char *id)
+{
+    size_t n = strlen(id) + 1;
+    char *copy = lv_malloc(n);
+    if (!copy) return;
+    memcpy(copy, id, n);
+    lv_obj_add_event_cb(o, cb, LV_EVENT_CLICKED, copy);
+    lv_obj_add_event_cb(o, id_free_cb, LV_EVENT_DELETE, copy);
+}
+
+static void show_all_cb(lv_event_t *e)
+{
+    reader_open((const char *)lv_event_get_user_data(e));
+}
+
+static lv_obj_t *bubble(const char *text, bool mine, const char *meta, const char *image, const char *quote, const char *more_id)
 {
     lv_obj_t *wrap = dk_box(c.bubbles);
     lv_obj_set_width(wrap, lv_pct(100));
@@ -254,7 +299,7 @@ static lv_obj_t *bubble(const char *text, bool mine, const char *meta, const cha
     lv_obj_t *b = dk_card(wrap, mine ? DK_INK : DK_LINE, 24);
     lv_obj_set_style_pad_hor(b, 18, 0);
     lv_obj_set_style_pad_ver(b, 14, 0);
-    if ((image && image[0]) || (quote && quote[0])) dk_col(b, 10);
+    if ((image && image[0]) || (quote && quote[0]) || !mine || more_id) dk_col(b, 10);
     if (quote && quote[0]) {
         // What you replied to: a quiet block with a bar down its side, like a reply in the app.
         lv_obj_t *q = dk_box(b);
@@ -284,10 +329,28 @@ static lv_obj_t *bubble(const char *text, bool mine, const char *meta, const cha
             lv_obj_center(pl);
         }
     }
-    if (text && text[0]) {
-        lv_obj_t *l = dk_label(b, DK_FONT_M, mine ? DK_GROUND : DK_INK, text);
+    if (text && text[0] && mine) {
+        lv_obj_t *l = dk_label(b, DK_FONT_M, DK_GROUND, text);
         lv_obj_set_style_max_width(l, 680, 0);
         lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
+    } else if (text && text[0]) {
+        // Replies are Markdown: headings, bold, code, lists and tables drawn as such.
+        md_render(b, text, 680, &MD_REPLY);
+    }
+    if (more_id) {
+        // The reply goes on: open it whole in the reader.
+        lv_obj_t *btn = lv_button_create(b);
+        lv_obj_remove_style_all(btn);
+        lv_obj_set_style_bg_color(btn, DK_CARD, 0);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_pad_hor(btn, 18, 0);
+        lv_obj_set_height(btn, 48);
+        dk_row(btn, 8);
+        dk_label(btn, DK_FONT_S, DK_PURPLE, "Show all");
+        dk_label(btn, &lv_font_montserrat_20, DK_PURPLE, LV_SYMBOL_RIGHT);
+        attach_id(btn, show_all_cb, more_id);
+        dk_press_style(btn);
     }
     if (meta) dk_label(wrap, DK_FONT_XS, DK_MUTED, meta);
     return wrap;
@@ -312,6 +375,246 @@ static lv_obj_t *step_row(const char *text, bool thought)
     return row;
 }
 
+static const dk_chat_t *find_line(const char *id);
+
+static int open_find(const char *id)
+{
+    for (int i = 0; i < s_open_n; i++)
+        if (strcmp(s_open[i].id, id) == 0) return i;
+    return -1;
+}
+
+static void open_drop(int i)
+{
+    dk_detail_free(&s_open[i].d);
+    s_open[i] = s_open[--s_open_n];
+    memset(&s_open[s_open_n], 0, sizeof(s_open[0]));
+}
+
+static void open_clear(void)
+{
+    while (s_open_n) open_drop(0);
+}
+
+static void redraw_here(void)
+{
+    c.keep_place = true;
+    s_chat_sig = 0;
+    rebuild(false);
+}
+
+static void steps_cb(lv_event_t *e)
+{
+    const char *id = lv_event_get_user_data(e);
+    const dk_chat_t *line = find_line(id);
+    if (!line) return;
+    int i = open_find(line->id);
+    if (i >= 0) {
+        open_drop(i); // close it
+    } else {
+        if (s_open_n == STEPS_OPEN_MAX) open_drop(0);
+        i = s_open_n++;
+        memset(&s_open[i], 0, sizeof(s_open[i]));
+        snprintf(s_open[i].id, sizeof(s_open[i].id), "%s", line->id);
+        s_open[i].hidden = line->hidden;
+        dk_send_detail(c.agent_id, line->id);
+    }
+    redraw_here();
+}
+
+/* "6 earlier steps": tap to list them here, tap again to fold them away. */
+static lv_obj_t *steps_group(const dk_chat_t *line)
+{
+    int i = open_find(line->id);
+    // More steps joined the group since it was opened: fetch the longer list.
+    if (i >= 0 && s_open[i].have && s_open[i].hidden != line->hidden) {
+        dk_detail_free(&s_open[i].d);
+        s_open[i].have = false;
+        s_open[i].hidden = line->hidden;
+        dk_send_detail(c.agent_id, line->id);
+    }
+    lv_obj_t *wrap = dk_box(c.bubbles);
+    lv_obj_set_width(wrap, lv_pct(100));
+    dk_col(wrap, 10);
+    lv_obj_t *row = lv_button_create(wrap);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_style_bg_color(row, DK_LINE, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(row, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_pad_hor(row, 16, 0);
+    lv_obj_set_height(row, 44);
+    dk_row(row, 10);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    dk_label(row, &lv_font_montserrat_20, DK_PURPLE, i >= 0 ? LV_SYMBOL_DOWN : LV_SYMBOL_RIGHT);
+    dk_label(row, DK_FONT_S, DK_INK_SOFT, line->text);
+    attach_id(row, steps_cb, line->id);
+    dk_press_style(row);
+    if (i < 0) return wrap;
+
+    lv_obj_t *list = dk_box(wrap);
+    lv_obj_set_width(list, lv_pct(100));
+    dk_col(list, 12);
+    lv_obj_set_style_pad_left(list, 14, 0);
+    lv_obj_set_style_border_side(list, LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_set_style_border_width(list, 3, 0);
+    lv_obj_set_style_border_color(list, DK_LILAC, 0);
+    if (!s_open[i].have) {
+        dk_label(list, DK_FONT_S, DK_MUTED, "Loading the steps...");
+    } else if (!s_open[i].d.steps_n) {
+        dk_label(list, DK_FONT_S, DK_MUTED, "These steps are no longer kept.");
+    } else {
+        for (int k = 0; k < s_open[i].d.steps_n; k++) {
+            lv_obj_t *r = dk_box(list);
+            lv_obj_set_width(r, lv_pct(100));
+            dk_row(r, 10);
+            lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            lv_obj_t *dot = dk_box(r);
+            lv_obj_set_size(dot, 8, 8);
+            lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_color(dot, s_open[i].d.steps[k].thought ? DK_PEACH : DK_LILAC, 0);
+            lv_obj_t *l = dk_label(r, DK_FONT_S, s_open[i].d.steps[k].thought ? DK_INK_SOFT : DK_MUTED, s_open[i].d.steps[k].text);
+            lv_obj_set_flex_grow(l, 1);
+            lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
+        }
+    }
+    return wrap;
+}
+
+// ------------------------------------------------------------ the reader
+
+static void reader_close(void)
+{
+    if (c.reader_timer) {
+        lv_timer_delete(c.reader_timer);
+        c.reader_timer = NULL;
+    }
+    c.reader_line[0] = '\0';
+    if (c.reader) lv_obj_add_flag(c.reader, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void reader_close_cb(lv_event_t *e)
+{
+    (void)e;
+    reader_close();
+}
+
+static void reader_fill(const char *text, bool whole)
+{
+    lv_obj_clean(c.reader_body);
+    if (!whole) {
+        lv_obj_t *n = dk_label(c.reader_body, DK_FONT_S, DK_ALERT_INK, "Couldn't fetch the rest of this reply. Here's the start of it.");
+        lv_obj_set_width(n, lv_pct(100));
+        lv_label_set_long_mode(n, LV_LABEL_LONG_MODE_WRAP);
+    }
+    md_render_wide(c.reader_body, text, 1060, &MD_REPLY);
+    lv_obj_scroll_to_y(c.reader_body, 0, LV_ANIM_OFF);
+}
+
+static const dk_chat_t *find_line(const char *id)
+{
+    const dk_agent_t *a = dk_model_find_agent(g_model, c.agent_id);
+    for (int i = 0; a && i < a->chat_n; i++)
+        if (strcmp(a->chat[i].id, id) == 0) return &a->chat[i];
+    return NULL;
+}
+
+static void reader_timeout(lv_timer_t *t)
+{
+    (void)t;
+    c.reader_timer = NULL;
+    const dk_chat_t *line = find_line(c.reader_line);
+    if (c.reader_line[0]) reader_fill(line ? line->text : "", false);
+}
+
+static void reader_open(const char *line_id)
+{
+    if (!c.reader) {
+        c.reader = dk_box(c.scr);
+        lv_obj_add_flag(c.reader, LV_OBJ_FLAG_FLOATING);
+        lv_obj_set_pos(c.reader, -32, -28); // over the screen's padding too
+        lv_obj_set_size(c.reader, DK_W, DK_H);
+        lv_obj_set_style_bg_color(c.reader, DK_GROUND, 0);
+        lv_obj_set_style_bg_opa(c.reader, LV_OPA_COVER, 0);
+        lv_obj_set_style_pad_hor(c.reader, 32, 0);
+        lv_obj_set_style_pad_ver(c.reader, 28, 0);
+        dk_col(c.reader, 18);
+        lv_obj_t *head = dk_box(c.reader);
+        lv_obj_set_width(head, lv_pct(100));
+        dk_row(head, 18);
+        lv_obj_set_flex_align(head, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_t *back = lv_button_create(head);
+        lv_obj_remove_style_all(back);
+        lv_obj_set_style_bg_color(back, DK_LILAC, 0);
+        lv_obj_set_style_bg_opa(back, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(back, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_pad_hor(back, 18, 0);
+        lv_obj_set_height(back, 52);
+        dk_row(back, 8);
+        dk_label(back, &lv_font_montserrat_20, DK_INK, LV_SYMBOL_LEFT);
+        dk_label(back, DK_FONT_S, DK_INK, "Back to the chat");
+        lv_obj_add_event_cb(back, reader_close_cb, LV_EVENT_CLICKED, NULL);
+        dk_press_style(back);
+        c.reader_title = dk_label(head, DK_FONT_L, DK_INK, "");
+        lv_obj_set_flex_grow(c.reader_title, 1);
+        lv_label_set_long_mode(c.reader_title, LV_LABEL_LONG_MODE_DOTS);
+        lv_obj_t *page = dk_card(c.reader, DK_CARD, 28);
+        lv_obj_set_width(page, lv_pct(100));
+        lv_obj_set_flex_grow(page, 1);
+        lv_obj_set_style_pad_all(page, 0, 0);
+        c.reader_body = dk_box(page);
+        lv_obj_set_size(c.reader_body, lv_pct(100), lv_pct(100));
+        lv_obj_set_style_pad_hor(c.reader_body, 40, 0);
+        lv_obj_set_style_pad_ver(c.reader_body, 30, 0);
+        dk_col(c.reader_body, 14);
+        lv_obj_add_flag(c.reader_body, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_ELASTIC);
+        lv_obj_set_scroll_dir(c.reader_body, LV_DIR_VER);
+        lv_obj_set_scrollbar_mode(c.reader_body, LV_SCROLLBAR_MODE_ACTIVE);
+    }
+    const dk_agent_t *a = dk_model_find_agent(g_model, c.agent_id);
+    char title[96];
+    snprintf(title, sizeof(title), "%s's reply%s%s", a && a->source != DK_SRC_CLAUDE ? dk_source_label(a->source) : "Claude", a ? " in " : "", a ? a->name : "");
+    dk_set_text(c.reader_title, title);
+    snprintf(c.reader_line, sizeof(c.reader_line), "%s", line_id);
+    lv_obj_clean(c.reader_body);
+    dk_label(c.reader_body, DK_FONT_M, DK_MUTED, "Loading the whole reply...");
+    lv_obj_remove_flag(c.reader, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(c.reader);
+    dk_anim_rise(c.reader, 0);
+    if (c.reader_timer) lv_timer_delete(c.reader_timer);
+    c.reader_timer = lv_timer_create(reader_timeout, 6000, NULL);
+    lv_timer_set_repeat_count(c.reader_timer, 1);
+    dk_send_detail(c.agent_id, line_id);
+}
+
+bool scr_chat_back(void)
+{
+    if (!c.reader || lv_obj_has_flag(c.reader, LV_OBJ_FLAG_HIDDEN)) return false;
+    reader_close();
+    return true;
+}
+
+void scr_chat_detail(dk_detail_t *d)
+{
+    if (!c.scr || strcmp(d->agent_id, c.agent_id) != 0) return;
+    if (c.reader_line[0] && strcmp(d->line_id, c.reader_line) == 0) {
+        if (c.reader_timer) {
+            lv_timer_delete(c.reader_timer);
+            c.reader_timer = NULL;
+        }
+        const dk_chat_t *line = find_line(d->line_id);
+        if (d->text && d->text[0]) reader_fill(d->text, true);
+        else reader_fill(line ? line->text : "", false);
+        return;
+    }
+    int i = open_find(d->line_id);
+    if (i < 0 || s_open[i].have) return;
+    s_open[i].d = *d; // the steps are ours now
+    memset(d, 0, sizeof(*d));
+    s_open[i].have = true;
+    redraw_here();
+}
+
 static void typing(void)
 {
     lv_obj_t *b = dk_card(c.bubbles, DK_LINE, 24);
@@ -329,7 +632,6 @@ static void typing(void)
     dk_anim_pop(b, 0);
 }
 
-static uint32_t s_head_sig, s_chat_sig;
 
 static bool near_bottom(void)
 {
@@ -474,6 +776,8 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
         for (int i = 0; i < a->chat_n; i++) {
             sig = dk_hash_str(sig, a->chat[i].id);
             sig = dk_hash_str(sig, a->chat[i].image);
+            sig = dk_hash_str(sig, a->chat[i].text); // a streamed reply grows in place
+            sig = dk_hash(sig, &a->chat[i].more, sizeof(a->chat[i].more));
             sig = dk_hash(sig, &a->chat[i].status, sizeof(a->chat[i].status));
         }
         if (!a->chat_n) {
@@ -489,7 +793,8 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     // Follow the newest line if you're at the bottom (or just opened the chat); if you've
     // scrolled back to read, new lines arrive below without moving you.
     bool opening = c.last_line[0] == '\0';
-    bool follow = c.follow || near_bottom() || opening;
+    bool follow = !c.keep_place && (c.follow || near_bottom() || opening);
+    c.keep_place = false;
     lv_coord_t keep = lv_obj_get_scroll_y(c.bubbles);
     lv_obj_clean(c.bubbles);
     lv_obj_t *spacer = dk_box(c.bubbles);
@@ -498,8 +803,8 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     if (!a) return;
 
     if (a->chat_n == 0) {
-        if (a->last_prompt[0]) bubble(a->last_prompt, true, "From your computer", NULL, NULL);
-        if (a->last_message[0]) bubble(a->last_message, false, dk_source_label(a->source), NULL, NULL);
+        if (a->last_prompt[0]) bubble(a->last_prompt, true, "From your computer", NULL, NULL, NULL);
+        if (a->last_message[0]) bubble(a->last_message, false, dk_source_label(a->source), NULL, NULL, NULL);
         if (!a->last_prompt[0] && !a->last_message[0]) {
             lv_obj_t *l = dk_label(c.bubbles, DK_FONT_M, DK_MUTED, "Nothing said yet. Send a message or a quick reply.");
             lv_obj_set_width(l, lv_pct(100));
@@ -509,7 +814,9 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     lv_obj_t *last = NULL;
     for (int i = 0; i < a->chat_n; i++) {
         const dk_chat_t *line = &a->chat[i];
-        last = line->step ? step_row(line->text, line->thought) : bubble(line->text, line->from_you, chat_meta(a, line), line->image, line->quote);
+        if (line->hidden > 0) last = steps_group(line);
+        else if (line->step) last = step_row(line->text, line->thought);
+        else last = bubble(line->text, line->from_you, chat_meta(a, line), line->image, line->quote, line->more && !line->from_you ? line->id : NULL);
     }
     if (typing_on) typing();
     if (animate_new && last && new_line) dk_anim_pop(lv_obj_get_child(last, 0), 0);
@@ -520,6 +827,7 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
         c.follow = true;
     } else {
         lv_obj_scroll_to_y(c.bubbles, keep, LV_ANIM_OFF);
+        c.follow = near_bottom();
     }
 }
 
@@ -537,7 +845,9 @@ const char *scr_chat_agent(void)
 
 void scr_chat_show(const char *agent_id)
 {
+    if (strcmp(c.agent_id, agent_id ? agent_id : "") != 0) open_clear();
     snprintf(c.agent_id, sizeof(c.agent_id), "%s", agent_id ? agent_id : "");
+    reader_close();
     c.last_line[0] = '\0';
     c.follow = true;
     lv_textarea_set_text(c.ta, "");

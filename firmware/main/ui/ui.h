@@ -96,6 +96,9 @@ void ui_update_status(ui_update_state_t state, int progress, const char *latest,
 void ui_start_touch_calibration(void);
 /** A chat picture arrived (pixels are copied; NULL = it couldn't be fetched). Call with the LVGL lock held. */
 void ui_image_ready(const char *id, const uint16_t *rgb565, int w, int h);
+/* The relay answered "Show all" or an opened steps group (call with the LVGL lock held; it may
+   take d's text and steps, so free d afterwards). */
+void ui_chat_detail(dk_detail_t *d);
 /** Play a sound, unless muted or it's quiet hours. */
 void ui_sound(dk_sound_t s);
 

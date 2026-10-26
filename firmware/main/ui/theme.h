@@ -41,6 +41,7 @@
 LV_FONT_DECLARE(deskling_font_15)
 LV_FONT_DECLARE(deskling_font_17)
 LV_FONT_DECLARE(deskling_font_19)
+LV_FONT_DECLARE(deskling_font_19b)
 LV_FONT_DECLARE(deskling_font_22)
 LV_FONT_DECLARE(deskling_font_26)
 LV_FONT_DECLARE(deskling_font_34)
@@ -48,6 +49,7 @@ LV_FONT_DECLARE(deskling_font_48)
 LV_FONT_DECLARE(deskling_font_72)
 LV_FONT_DECLARE(deskling_font_200)
 LV_FONT_DECLARE(deskling_font_mono_22)
+LV_FONT_DECLARE(deskling_font_mono_17)
 
 #define DK_FONT_XS (&deskling_font_15)
 #define DK_FONT_S (&deskling_font_17)
@@ -59,6 +61,8 @@ LV_FONT_DECLARE(deskling_font_mono_22)
 #define DK_FONT_CLOCK (&deskling_font_72)
 #define DK_FONT_BIGCLOCK (&deskling_font_200)
 #define DK_FONT_MONO (&deskling_font_mono_22)
+#define DK_FONT_M_BOLD (&deskling_font_19b)   // **bold** in replies
+#define DK_FONT_MONO_S (&deskling_font_mono_17) // `code` in replies
 
 void dk_theme_init(void);
 

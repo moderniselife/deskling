@@ -217,6 +217,17 @@ void net_push_info(void)
 
 static void deliver_snapshot(const char *json, size_t len)
 {
+    if (len > 16 && strncmp(json, "{\"type\":\"detail\"", 16) == 0) {
+        // "Show all" or opened steps: only this screen asked, so it isn't part of the model.
+        dk_detail_t d;
+        if (!dk_detail_parse(json, len, &d)) return;
+        if (lvgl_port_lock(2000)) {
+            ui_chat_detail(&d);
+            lvgl_port_unlock();
+        }
+        dk_detail_free(&d);
+        return;
+    }
     if (!dk_model_parse(json, len, s_model)) return;
     if (lvgl_port_lock(2000)) {
         ui_apply_model(s_model);

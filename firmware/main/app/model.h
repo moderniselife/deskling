@@ -49,6 +49,8 @@ typedef struct {
     bool thought; // a line of its thinking (shown like a step)
     char image[24]; // a picture in this message, fetched from the relay by id
     char quote[420]; // the bit of Claude's message you replied to
+    bool more;       // the reply goes on: dk_send_detail fetches all of it
+    int hidden;      // "6 earlier steps": how many steps this line stands for (dk_send_detail lists them)
     dk_chat_status_t status;
     int64_t ts;
 } dk_chat_t;
@@ -208,6 +210,27 @@ void dk_send_hello(void);
    the others, which keeps snapshots small. dk_resend_view repeats it after a reconnect. */
 void dk_send_view(const char *agent_id);
 void dk_resend_view(void);
+/* Ask for the whole of a long reply, or the steps behind an "N earlier steps" line. The answer
+   arrives as a "detail" message (dk_detail_parse). */
+void dk_send_detail(const char *agent_id, const char *line_id);
+
+typedef struct {
+    bool thought;
+    char *text;
+} dk_detail_step_t;
+
+/* The answer to dk_send_detail. text and steps are heap copies: free with dk_detail_free. */
+typedef struct {
+    char agent_id[72];
+    char line_id[24];
+    char *text;              // a long reply in full (NULL for steps)
+    dk_detail_step_t *steps; // the hidden steps, oldest first
+    int steps_n;
+} dk_detail_t;
+
+/** Parse a "detail" message. Returns false if it isn't one. */
+bool dk_detail_parse(const char *json, size_t len, dk_detail_t *out);
+void dk_detail_free(dk_detail_t *d);
 
 const char *dk_state_label(dk_state_t s);
 const char *dk_source_label(dk_source_t s);

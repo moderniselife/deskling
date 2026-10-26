@@ -631,7 +631,9 @@ static uint32_t rnd(uint32_t n)
 }
 static void rnd_text(char *out, size_t cap, size_t max)
 {
-    static const char *bits[] = {"fix ", "the ", "login ", "flow ", "é", "漢字", "😀 ", "\n", "\"quoted\" ", "C:\\path\\x ", "<b>", "&amp; ", "  ", "a", "%s %d ", "verylongwordwithoutanyspacesatallthatkeepsgoing "};
+    static const char *bits[] = {"fix ", "the ", "login ", "flow ", "é", "漢字", "😀 ", "\n", "\"quoted\" ", "C:\\path\\x ", "<b>", "&amp; ", "  ", "a", "%s %d ", "verylongwordwithoutanyspacesatallthatkeepsgoing ",
+                                 /* Markdown, whole and broken */
+                                 "**", "`", "```\n", "# ", "\n## ", "\n- ", "\n  - ", "\n1. ", "\n> ", "|", "\n| a | b |\n| --- | --- |\n", "\n---\n", "[x](", "](y)", "~~", "_", "*", "\\", "    "};
     size_t len = 0, want = rnd((uint32_t)max + 1);
     out[0] = 0;
     while (len < want && len + 64 < cap) {
@@ -699,6 +701,8 @@ static void chaos(int rounds)
                 cJSON_AddStringToObject(l, "status", PICK(statuses));
                 cJSON_AddNumberToObject(l, "ts", now - rnd(60000));
                 if (!rnd(8)) cJSON_AddStringToObject(l, "image", rnd(2) ? "img1" : "nope");
+                if (!rnd(4)) cJSON_AddBoolToObject(l, "more", true);
+                if (!rnd(6)) cJSON_AddNumberToObject(l, "hidden", rnd(3) ? rnd(30) : -5);
                 if (!rnd(8)) {
                     rnd_text(text, sizeof(text), 600);
                     cJSON_AddStringToObject(l, "quote", text);
@@ -817,6 +821,36 @@ static void chaos(int rounds)
         if (dk_model_parse(json, strlen(json), &m)) ui_apply_model(&m);
         free(json);
         run(rnd(250));
+
+        // The answer to "Show all" or opened steps, for whatever chat is open (or a stale one).
+        if (!rnd(3)) {
+            cJSON *d = cJSON_CreateObject();
+            cJSON_AddStringToObject(d, "type", "detail");
+            snprintf(id, sizeof(id), "ag%u", rnd(16));
+            cJSON_AddStringToObject(d, "agentId", rnd(2) ? scr_chat_agent() : id);
+            snprintf(id, sizeof(id), "c%u", rnd(60));
+            cJSON_AddStringToObject(d, "lineId", id);
+            if (rnd(2)) {
+                rnd_text(text, sizeof(text), 4000);
+                cJSON_AddStringToObject(d, "text", text);
+            } else {
+                cJSON *st = cJSON_AddArrayToObject(d, "steps");
+                for (int k = 0, n = (int)rnd(40); k < n; k++) {
+                    cJSON *x = cJSON_CreateObject();
+                    cJSON_AddStringToObject(x, "from", rnd(2) ? "tool" : "thought");
+                    rnd_text(text, sizeof(text), 200);
+                    cJSON_AddStringToObject(x, "text", text);
+                    cJSON_AddItemToArray(st, x);
+                }
+            }
+            char *dj = cJSON_PrintUnformatted(d);
+            cJSON_Delete(d);
+            dk_detail_t det;
+            if (dk_detail_parse(dj, strlen(dj), &det)) ui_chat_detail(&det);
+            dk_detail_free(&det);
+            free(dj);
+            run(rnd(120));
+        }
 
         // Move around and poke at things (never Settings: it can restart or update).
         switch (rnd(6)) {
@@ -1104,6 +1138,55 @@ int main(int argc, char **argv)
         run(300);
         expect_sent("\"type\":\"listen\"");
     }
+
+    /* Replies in Markdown, "Show all" for a long one, and steps you can open. */
+    apply("chat_markdown");
+    run(900);
+    shot("08d_chat_markdown");
+    check(find_class(lv_screen_active(), &lv_spangroup_class) != NULL, "a reply is drawn as formatted text");
+    expect_text("Show all");
+    tap("9 earlier steps");
+    run(200);
+    expect_sent("\"type\":\"detail\",\"agentId\":\"s-web\",\"lineId\":\"m2\"");
+    expect_text("Loading the steps...");
+    {
+        const char *j = "{\"type\":\"detail\",\"agentId\":\"s-web\",\"lineId\":\"m2\",\"steps\":["
+                        "{\"from\":\"tool\",\"text\":\"Reading net.c\"},{\"from\":\"thought\",\"text\":\"The installer wrote at 0x0.\"},"
+                        "{\"from\":\"tool\",\"text\":\"Searching for merge-bin\"}]}";
+        dk_detail_t d;
+        check(dk_detail_parse(j, strlen(j), &d) && d.steps_n == 3, "a detail message parses");
+        ui_chat_detail(&d);
+        dk_detail_free(&d);
+    }
+    run(400);
+    expect_text("Reading net.c");
+    expect_text("Searching for merge-bin");
+    shot("08e_chat_steps_open");
+    tap("9 earlier steps");
+    run(300);
+    check(!find_label(lv_screen_active(), "Reading net.c"), "tapping the steps again folds them away");
+    ui_open_chat("s-web"); /* from the top: opening a chat starts at its newest line */
+    run(600);
+    shot("08d2_chat_markdown_end");
+    tap("Show all");
+    run(300);
+    expect_sent("\"lineId\":\"m6\"");
+    expect_text("Loading the whole reply...");
+    {
+        static char j[4096];
+        snprintf(j, sizeof(j), "{\"type\":\"detail\",\"agentId\":\"s-web\",\"lineId\":\"m6\",\"text\":\"%s\"}",
+                 "# The whole reply\\n\\nEverything Claude wrote, with **nothing** cut.\\n\\n## Steps\\n\\n1. One\\n2. Two with `code`\\n\\n| A | B |\\n| - | - |\\n| 1 | 2 |\\n\\nThe end.");
+        dk_detail_t d;
+        dk_detail_parse(j, strlen(j), &d);
+        ui_chat_detail(&d);
+        dk_detail_free(&d);
+    }
+    run(500);
+    shot("08f_chat_reader");
+    expect_text("Back to the chat");
+    check(ui_back() && ui_current() == SCR_CHAT, "back closes the reader first");
+    run(300);
+    check(!find_label(lv_screen_active(), "Back to the chat"), "the reader is closed");
 
     // OpenCode: its own badge, model and helpers, and its permission prompts.
     apply("opencode");

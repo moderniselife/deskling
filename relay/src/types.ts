@@ -91,6 +91,8 @@ export interface ChatLine {
   image?: string; // id of a picture in the chat (GET /img/<id>)
   key?: string; // set by bridges: the same key again updates this line (text that's still streaming)
   quote?: string; // the bit of Claude's message you were replying to
+  more?: boolean; // the text is cut short here; the screen can ask for all of it ("detail")
+  hidden?: number; // a "12 earlier steps" line: how many steps it stands for
   text: string;
   status: "queued" | "delivered" | "sent" | "typed"; // "sent" = an agent reply, "typed" = you, on the computer
   ts: number;
@@ -143,6 +145,7 @@ export interface State {
   focus: boolean;
   pingWhenDone: boolean;
   push?: import("./push").PushSub[]; // browsers that asked for notifications (/app)
+  fullIds?: string[]; // chat lines whose whole text is kept apart ("full:<id>"), oldest first
 }
 
 export type Decision = "allow" | "deny" | "computer";

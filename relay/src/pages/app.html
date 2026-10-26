@@ -113,6 +113,30 @@ h2 { font-size: 13px; letter-spacing: .06em; color: var(--muted); margin: 14px 8
 .step { display: flex; gap: 10px; align-items: baseline; color: var(--muted); font-size: 15px; padding: 1px 4px; white-space: pre-wrap; }
 .step::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lilac-deep); flex: none; transform: translateY(-1px); }
 .step.thought::before { background: var(--peach); }
+.b.agent { white-space: normal; }
+.b.agent > :first-child { margin-top: 0; } .b.agent > :last-child { margin-bottom: 0; }
+.b.agent p, .b.agent ul, .b.agent ol, .b.agent pre, .b.agent blockquote, .b.agent table { margin: 0 0 10px; }
+.b.agent h3, .b.agent h4, .b.agent h5 { margin: 4px 0 6px; line-height: 1.3; font-weight: 900; }
+.b.agent h3 { font-size: 20px; } .b.agent h4 { font-size: 18px; } .b.agent h5 { font-size: 16px; }
+.b.agent ul, .b.agent ol { padding-left: 24px; }
+.b.agent li::marker { color: var(--muted); }
+.b.agent strong { font-weight: 900; }
+.b.agent code { font: 500 .92em ui-monospace, Menlo, monospace; color: var(--purple); }
+.b.agent pre { background: var(--card); border-radius: 14px; padding: 10px 14px; overflow-x: auto; white-space: pre; }
+.b.agent pre code { color: var(--ink); }
+.b.agent blockquote { border-left: 4px solid var(--lilac); padding-left: 12px; color: var(--muted); }
+.b.agent hr { border: 0; border-top: 2px solid var(--line); margin: 12px 0; }
+.b.agent a { color: var(--purple); }
+.b.agent .tbl { overflow-x: auto; margin: 0 0 10px; }
+.b.agent table { border-collapse: collapse; background: var(--card); border-radius: 12px; font-size: 15px; }
+.b.agent th, .b.agent td { text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.b.agent tr:last-child td { border-bottom: 0; }
+.b .more { margin-top: 6px; min-height: 36px; padding: 2px 14px; border-width: 2px; font-size: 14px; color: var(--purple); border-color: var(--purple); background: var(--card); }
+.steps { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 14px; border: 0; background: var(--sunk); color: var(--ink-2); font-size: 15px; }
+.steps::before { content: ""; width: 7px; height: 7px; border-right: 2.5px solid var(--purple); border-bottom: 2.5px solid var(--purple); transform: rotate(-45deg); transition: transform .15s ease; }
+.steps[aria-expanded="true"]::before { transform: rotate(45deg) translate(-2px, -2px); }
+.stepsopen { display: flex; flex-direction: column; gap: 2px; border-left: 3px solid var(--lilac); margin-left: 10px; padding-left: 6px; }
+@media (prefers-reduced-motion: reduce) { .steps::before { transition: none; } }
 .typing { align-self: flex-start; background: var(--bubble); border-radius: 22px; padding: 12px 18px; letter-spacing: 3px; }
 .compose { padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); border-top: 2px solid var(--sunk); }
 .compose form { display: flex; gap: 10px; align-items: flex-end; }
@@ -212,7 +236,15 @@ function connect() {
   var proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(proto + "://" + location.host + "/ws?token=" + encodeURIComponent(token));
   ws.onopen = function () { retry = 1000; $("conn").className = "conn ok"; $("conn").title = "Connected"; send({ type: "view", agentId: open }); };
-  ws.onmessage = function (e) { var m = JSON.parse(e.data); if (m.type === "snapshot") { S = m; render(); } };
+  ws.onmessage = function (e) {
+    var m = JSON.parse(e.data);
+    if (m.type === "snapshot") { S = m; render(); }
+    if (m.type === "detail" && m.agentId === open) {
+      if (m.steps && m.lineId in openSteps) openSteps[m.lineId] = m.steps;
+      if (typeof m.text === "string" && m.lineId in fullText) { if (m.text) fullText[m.lineId] = m.text; else delete fullText[m.lineId]; }
+      rerender();
+    }
+  };
   ws.onclose = function (e) {
     $("conn").className = "conn"; $("conn").title = "Reconnecting";
     var again = function () { setTimeout(connect, retry); retry = Math.min(retry * 2, 15000); };
@@ -235,6 +267,7 @@ document.querySelectorAll("[data-action]").forEach(function (b) { b.onclick = fu
 function ago(ts) { var s = Math.max(0, (Date.now() - ts) / 1000); return s < 60 ? "now" : s < 3600 ? Math.floor(s / 60) + " min" : Math.floor(s / 3600) + " h"; }
 
 function openChat(id) {
+  if (id !== open) { openSteps = {}; fullText = {}; }
   open = id;
   $("app").classList.toggle("chatting", !!id);
   send({ type: "view", agentId: id });
@@ -293,6 +326,88 @@ function picture(id) {
 }
 
 var lastSig = "";
+var openSteps = {}, fullText = {}, keepPlace = false; // per chat line: opened steps, whole replies
+
+/* Markdown for replies, built as DOM nodes (never innerHTML): headings, paragraphs, lists,
+   quotes, code, tables, rules, **bold**, *emphasis*, `code`, ~~strike~~ and links. */
+function mdInline(s) {
+  var out = [], re = /(`+)([\s\S]*?[^`])\1(?!`)|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|~~([\s\S]+?)~~|\[([^\]]+)\]\(([^)\s]+)\)|(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s.,;:!?)]|$)|\\([\\`*_{}\[\]()#+\-.!~|>])/g, last = 0, m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    if (m[1]) out.push(el("code", { text: m[2].trim() }));
+    else if (m[3] || m[4]) out.push(el("strong", null, mdInline(m[3] || m[4])));
+    else if (m[5]) out.push(el("s", null, mdInline(m[5])));
+    else if (m[6]) out.push(/^(https?:|mailto:)/i.test(m[7]) ? el("a", { href: m[7], target: "_blank", rel: "noopener noreferrer" }, mdInline(m[6])) : el("span", null, mdInline(m[6])));
+    else if (m[9]) out.push(m[8], el("em", null, mdInline(m[9])));
+    else if (m[10]) out.push(m[10]);
+    last = re.lastIndex;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+function md(text) {
+  var lines = String(text || "").replace(/\r/g, "").split("\n"), out = [], i = 0;
+  var cells = function (l) { return l.trim().replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); }); };
+  var isList = function (l) { return /^\s*([-*+]|\d+[.)])\s+/.test(l); };
+  while (i < lines.length) {
+    var l = lines[i];
+    if (!l.trim()) { i++; continue; }
+    var fence = /^\s*(```|~~~)/.exec(l);
+    if (fence) {
+      var code = []; i++;
+      while (i < lines.length && lines[i].trim().indexOf(fence[1]) !== 0) code.push(lines[i++]);
+      i++;
+      out.push(el("pre", null, el("code", { text: code.join("\n") })));
+      continue;
+    }
+    var h = /^\s*(#{1,6})\s+(.*?)\s*#*\s*$/.exec(l);
+    if (h) { out.push(el("h" + Math.min(5, h[1].length + 2), null, mdInline(h[2]))); i++; continue; }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { out.push(el("hr")); i++; continue; }
+    if (/\|/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(lines[i + 1])) {
+      var head = cells(l), rows = []; i += 2;
+      while (i < lines.length && /\|/.test(lines[i]) && lines[i].trim()) rows.push(cells(lines[i++]));
+      out.push(el("div", { class: "tbl" }, el("table", null,
+        el("thead", null, el("tr", null, head.map(function (c) { return el("th", null, mdInline(c)); }))),
+        el("tbody", null, rows.map(function (r) { return el("tr", null, head.map(function (_, k) { return el("td", null, mdInline(r[k] || "")); })); })))));
+      continue;
+    }
+    if (/^\s*>/.test(l)) {
+      var q = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, ""));
+      out.push(el("blockquote", null, md(q.join("\n"))));
+      continue;
+    }
+    if (isList(l)) {
+      // Nested lists by indent: a stack of open lists.
+      var stack = [], root = null;
+      while (i < lines.length && (isList(lines[i]) || (lines[i].trim() && /^\s{2,}/.test(lines[i]) && stack.length))) {
+        var li = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(lines[i]);
+        if (!li) { var lastLi = stack[stack.length - 1].list.lastChild; lastLi.append.apply(lastLi, [" "].concat(mdInline(lines[i].trim()))); i++; continue; }
+        var ind = li[1].replace(/\t/g, "    ").length, ordered = /\d/.test(li[2]);
+        while (stack.length && ind < stack[stack.length - 1].ind) stack.pop();
+        if (!stack.length || ind > stack[stack.length - 1].ind) {
+          var list = el(ordered ? "ol" : "ul");
+          if (ordered && parseInt(li[2], 10) > 1) list.setAttribute("start", String(parseInt(li[2], 10)));
+          if (stack.length) stack[stack.length - 1].list.lastChild.append(list); else root = list;
+          stack.push({ ind: ind, list: list });
+        }
+        stack[stack.length - 1].list.append(el("li", null, mdInline(li[3])));
+        i++;
+      }
+      out.push(root);
+      continue;
+    }
+    var para = [];
+    while (i < lines.length && lines[i].trim() && !/^\s*(```|~~~|#{1,6}\s|>)/.test(lines[i]) && !isList(lines[i])) para.push(lines[i++].trim());
+    if (!para.length) para.push(lines[i++].trim());
+    var p = el("p");
+    para.forEach(function (t, k) { if (k) p.append(/ {2}$|\\$/.test(para[k - 1]) ? el("br") : " "); p.append.apply(p, mdInline(t.replace(/\\$/, ""))); });
+    out.push(p);
+  }
+  return out;
+}
+function askDetail(agentId, lineId) { send({ type: "detail", agentId: agentId, lineId: lineId }); }
+function rerender() { keepPlace = true; renderChat(true); }
 function render(force) {
   if (!S) return;
   $("gate").classList.add("hide"); $("shell").classList.remove("hide");
@@ -343,12 +458,28 @@ function renderChat(force) {
   var chat = a.chat || [];
   if (!chat.length) {
     if (a.lastPrompt) list.append(el("div", { class: "b you", text: a.lastPrompt }));
-    if (a.lastMessage) list.append(el("div", { class: "b agent", text: a.lastMessage }));
+    if (a.lastMessage) list.append(el("div", { class: "b agent" }, md(a.lastMessage)));
   }
   chat.forEach(function (c) {
+    if (c.hidden) {
+      // "6 earlier steps": open it to list them, like the steps in the Claude app.
+      var isOpen = c.id in openSteps, got = openSteps[c.id];
+      if (isOpen && got && got.length !== c.hidden) { openSteps[c.id] = null; askDetail(a.id, c.id); got = null; }
+      list.append(el("button", { type: "button", class: "steps", "aria-expanded": isOpen ? "true" : "false", onclick: function () {
+        if (c.id in openSteps) delete openSteps[c.id]; else { openSteps[c.id] = null; askDetail(a.id, c.id); }
+        rerender();
+      } }, c.text));
+      if (isOpen) list.append(el("div", { class: "stepsopen" }, !got ? el("div", { class: "step", text: "Loading the steps…" }) : !got.length ? el("div", { class: "step", text: "These steps are no longer kept." }) : got.map(function (st) { return el("div", { class: "step " + st.from, text: st.text }); })));
+      return;
+    }
     if (c.from === "tool" || c.from === "thought") { list.append(el("div", { class: "step " + c.from, text: c.text })); return; }
     if (c.quote) list.append(el("div", { class: "quote", text: c.quote }));
-    var bub = el("div", { class: "b " + (c.from === "you" ? "you" : "agent"), text: c.text });
+    var whole = c.more && fullText[c.id];
+    var bub = c.from === "you" ? el("div", { class: "b you", text: c.text }) : el("div", { class: "b agent" }, md(whole || c.text));
+    if (c.more && c.from !== "you") bub.append(el("button", { type: "button", class: "more", onclick: function () {
+      if (c.id in fullText) delete fullText[c.id]; else { fullText[c.id] = ""; askDetail(a.id, c.id); }
+      rerender();
+    } }, whole ? "Show less" : c.id in fullText ? "Loading…" : "Show all"));
     if (c.image) bub.append(picture(c.image));
     list.append(bub);
     if (c.from === "you") list.append(el("div", { class: "cap you", text: c.status === "queued" ? "Queued" : c.status === "typed" ? "From your computer" : "Sent from Deskling" }));
@@ -373,7 +504,8 @@ function renderChat(force) {
   var focused = document.activeElement && document.activeElement.tagName === "TEXTAREA" && main.contains(document.activeElement);
   main.replaceChildren(head, list, compose);
   if (focused) { var t2 = main.querySelector("textarea"); if (t2) { t2.focus(); t2.setSelectionRange(t2.value.length, t2.value.length); } }
-  list.scrollTop = atBottom ? list.scrollHeight : keep;
+  list.scrollTop = atBottom && !keepPlace ? list.scrollHeight : keep;
+  keepPlace = false;
   list.dataset.follow = atBottom ? "1" : "0";
   list.addEventListener("scroll", function () { list.dataset.follow = list.scrollHeight - list.scrollTop - list.clientHeight < 80 ? "1" : "0"; });
 }

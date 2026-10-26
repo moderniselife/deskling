@@ -15,7 +15,7 @@ import sys
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 w = sys.argv[1]
-for src, wght, dst in [("Nunito-VF.ttf", 800, "Nunito-800.ttf"), ("Nunito-VF.ttf", 900, "Nunito-900.ttf"), ("Mono-VF.ttf", 500, "Mono-500.ttf")]:
+for src, wght, dst in [("Nunito-VF.ttf", 800, "Nunito-800.ttf"), ("Nunito-VF.ttf", 900, "Nunito-900.ttf"), ("Nunito-VF.ttf", 1000, "Nunito-1000.ttf"), ("Mono-VF.ttf", 500, "Mono-500.ttf")]:
     f = TTFont(f"{w}/{src}")
     instantiateVariableFont(f, {"wght": wght}, inplace=True)
     f.save(f"{w}/{dst}")
@@ -32,6 +32,7 @@ gen() { # name ttf size range
 gen deskling_font_15 Nunito-800.ttf 15 "$RANGE"
 gen deskling_font_17 Nunito-800.ttf 17 "$RANGE"
 gen deskling_font_19 Nunito-800.ttf 19 "$RANGE"
+gen deskling_font_19b Nunito-1000.ttf 19 "$RANGE" # **bold** in chat replies
 gen deskling_font_22 Nunito-800.ttf 22 "$RANGE"
 gen deskling_font_26 Nunito-900.ttf 26 "$RANGE"
 gen deskling_font_34 Nunito-900.ttf 34 "$RANGE"
@@ -39,8 +40,9 @@ gen deskling_font_48 Nunito-900.ttf 48 "$RANGE"
 gen deskling_font_72 Nunito-900.ttf 72 "0x20,0x30-0x3A,0x61,0x6D,0x70"
 gen deskling_font_200 Nunito-900.ttf 200 "0x30-0x3A"
 gen deskling_font_mono_22 Mono-500.ttf 22 "$RANGE"
+gen deskling_font_mono_17 Mono-500.ttf 17 "$RANGE" # `code` in chat replies
 # Fall back to LVGL's Montserrat for LV_SYMBOL_* icons (the fonts are const, so set it here).
-for f in deskling_font_15 deskling_font_17 deskling_font_19 deskling_font_22; do
+for f in deskling_font_15 deskling_font_17 deskling_font_19 deskling_font_19b deskling_font_22; do
   sed -i.bak 's/\.fallback = NULL,/.fallback = \&lv_font_montserrat_20,/' "$OUT/$f.c" && rm -f "$OUT/$f.c.bak"
 done
 for f in deskling_font_26 deskling_font_34; do

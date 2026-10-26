@@ -7,6 +7,9 @@ Being tested as the `v0.3.2-testN` builds. Install the newest one over the air o
 ### On the screen
 
 - **Whole conversations.** A session's chat shows your messages, Claude's replies as it writes them, its thinking, each step it takes, its helpers, pictures and the passages you quoted. It scrolls, and keeps your place when new lines arrive.
+- **Formatted replies.** Replies show their Markdown: headings, bold, `code`, lists, quotes, code blocks, tables and links.
+- **Show all.** A long reply has a Show all button that opens the whole of it in a reader.
+- **Earlier steps open.** "12 earlier steps" opens in place to list them, and folds away again, like the steps in the Claude app.
 - **Keep listening.** A finished session waits for your next message from Deskling, so you can carry on the conversation without the computer.
 - **New session.** Start a session from the screen: in the cloud (with a routine), or on one of your computers running the Deskling runner, in one of its projects. Pick the agent too: Claude Code, OpenCode with any of your models (local ones included), or Gemini CLI, Cursor, Codex, Copilot, Goose and others the runner finds.
 - **OpenCode.** OpenCode sessions show up like Claude Code ones, with an "Oc" badge, and you can approve, answer and message them.
@@ -20,6 +23,7 @@ Being tested as the `v0.3.2-testN` builds. Install the newest one over the air o
 ### Deskling in your browser
 
 - `/app` on your relay is Deskling in a browser: sessions, whole conversations, approvals, questions, messages, reminders, notifications and New session. It works on a phone, can be added to the home screen, and can push notifications even when it's closed.
+- Replies in `/app` are formatted too, long ones have Show all, and earlier steps open in place.
 
 ### The board
 

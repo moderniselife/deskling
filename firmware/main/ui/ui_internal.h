@@ -71,6 +71,10 @@ lv_obj_t *scr_chat_create(void);
 void scr_chat_show(const char *agent_id);
 const char *scr_chat_agent(void);
 void scr_chat_refresh(dk_cause_t cause);
+/* The answer to "Show all" or an opened steps group; may take d's text and steps. */
+void scr_chat_detail(dk_detail_t *d);
+/* Swipe back on the chat: closes the reader first. */
+bool scr_chat_back(void);
 
 lv_obj_t *scr_alert_create(void);
 /** Returns true if there is a request to show. */
