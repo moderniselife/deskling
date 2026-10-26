@@ -113,6 +113,8 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
         a->updated = get_i64(it, "updated");
         a->channel = get_bool(it, "channel");
         a->can_message = get_bool(it, "canMessage");
+        a->listening = get_bool(it, "listening");
+        a->listen_until = get_i64(it, "listenUntil");
         const cJSON *c;
         const cJSON *chat = cJSON_GetObjectItemCaseSensitive(it, "chat");
         int skip = cJSON_GetArraySize(chat) - DK_MAX_CHAT; // keep the newest lines
@@ -263,6 +265,15 @@ void dk_send_message(const char *agent_id, const char *text)
     cJSON_AddStringToObject(o, "type", "message");
     cJSON_AddStringToObject(o, "agentId", agent_id);
     cJSON_AddStringToObject(o, "text", text);
+    send_obj(o);
+}
+
+void dk_send_listen(const char *agent_id, int minutes)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "listen");
+    cJSON_AddStringToObject(o, "agentId", agent_id);
+    cJSON_AddNumberToObject(o, "minutes", minutes);
     send_obj(o);
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "deskling",
   "displayName": "Deskling",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Sends Claude Code activity to your Deskling desk screen and lets you approve permission requests from it.",
   "author": {
     "name": "moderniselife"

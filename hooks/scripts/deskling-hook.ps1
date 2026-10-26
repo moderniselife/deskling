@@ -53,6 +53,16 @@ try {
     $res = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook?wait=$wait" -Headers $headers `
       -ContentType "application/json" -Body $body -TimeoutSec ($wait + 10)
     if ($res.Content) { [Console]::Out.Write($res.Content) }
+  } elseif ($Mode -eq "stop") {
+    # Stop: if "Keep listening" is on, the relay holds this until a message arrives from the screen.
+    $round = 0
+    while ($true) {
+      $res = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook?hold=1&round=$round" -Headers $headers `
+        -ContentType "application/json" -Body $body -TimeoutSec 100
+      if ($res.Content -and $res.Content -like '*"again":true*') { $round++; if ($round -gt 80) { break }; continue }
+      if ($res.Content) { [Console]::Out.Write($res.Content) }
+      break
+    }
   } elseif ($Mode -eq "sync") {
     $res = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook" -Headers $headers `
       -ContentType "application/json" -Body $body -TimeoutSec 4

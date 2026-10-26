@@ -743,6 +743,9 @@ int main(int argc, char **argv)
         printf("%s  live activity keeps your place in the chat\n", kept ? "PASS" : "FAIL");
         if (!kept) s_failures++;
         expect_text("Working · Running the sim tests");
+        tap("Keep listening");
+        run(300);
+        expect_sent("\"type\":\"listen\"");
     }
 
     apply("permission");

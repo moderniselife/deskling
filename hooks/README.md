@@ -29,6 +29,10 @@ What you get:
 - **Messages to a session:** type or quick-reply on Deskling. A busy session gets the message when it finishes its current step. An idle session gets it with your next prompt, or straight away with channels (below).
 - **Tools for Claude:** `deskling_remind` ("remind me at 3pm to…"), `deskling_notify`, `deskling_reply`. These need Node 18+ on the machine. Without Node, everything else still works.
 
+### Keep listening (any session, including Cowork and cloud)
+
+On a session's screen on Deskling, tap **Keep listening**. When Claude next finishes, it doesn't stop: it waits (for up to 30 minutes) for a message from Deskling, and that message becomes its next prompt. Tap it again to stop listening. While it's listening, the session counts as still running on your computer, so turn it off before you go back to typing there.
+
 ### Talking to idle sessions (channels, research preview)
 
 Start Claude with Deskling as a channel:
@@ -50,9 +54,13 @@ The hooks are bash scripts. Claude Code runs them through Git Bash, which comes 
     "SessionStart":      [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\"", "async": true }] }],
     "UserPromptSubmit":  [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\" sync", "timeout": 8 }] }],
     "Notification":      [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\"", "async": true }] }],
-    "Stop":              [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\" sync", "timeout": 8 }] }],
+    "Stop":              [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\" stop", "timeout": 7200 }] }],
     "SessionEnd":        [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\"", "async": true }] }],
-    "PreToolUse":        [{ "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\" wait", "timeout": 130 }] }],
+    "PreToolUse":        [{ "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\" wait", "timeout": 130 }] },
+                          { "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\" live", "async": true, "timeout": 5 }] }],
+    "PostToolUse":       [{ "matcher": "SendUserMessage", "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\"", "async": true, "timeout": 5 }] }],
+    "SubagentStart":     [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\"", "async": true, "timeout": 5 }] }],
+    "SubagentStop":      [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\"", "async": true, "timeout": 5 }] }],
     "PermissionRequest": [{ "hooks": [{ "type": "command", "shell": "powershell", "command": "& \"$HOME\\deskling\\deskling-hook.ps1\" wait", "timeout": 130 }] }]
   }
 }

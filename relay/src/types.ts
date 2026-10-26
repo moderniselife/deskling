@@ -16,6 +16,7 @@ export interface Agent {
   since: number; // ms epoch when the current state started
   updated: number;
   helpers?: Helper[]; // subagents it has handed work to
+  listenUntil?: number; // "Keep listening" from the screen: when it finishes, it waits for you until then
   helperNames?: string[]; // descriptions from Agent tool calls, waiting for their SubagentStart
 }
 

@@ -76,6 +76,8 @@ typedef struct {
     int chat_n;
     dk_helper_t helpers[DK_MAX_HELPERS];
     int helpers_n;
+    bool listening;       // "Keep listening" is on: when it finishes it waits for a message from here
+    int64_t listen_until; // relay clock, ms
 } dk_agent_t;
 
 typedef struct {
@@ -152,6 +154,8 @@ void dk_send_decision(const char *pending_id, const char *decision); // "allow" 
 /** labels[i] is the chosen label for question i; multi-select answers are joined with "\n". */
 void dk_send_answer(const dk_pending_t *p, const char *const *labels);
 void dk_send_message(const char *agent_id, const char *text);
+/* Keep listening for minutes (0 = stop): when the session finishes, it waits for a message from the screen. */
+void dk_send_listen(const char *agent_id, int minutes);
 void dk_send_reminder_done(const char *reminder_id, bool done);
 void dk_send_action(const char *name); // "focus" | "snooze_all" | "ping_when_done"
 /** Remove one notification from the feed, or all of them when feed_id is NULL. */

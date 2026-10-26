@@ -4,6 +4,7 @@
 #   deskling-hook.sh        fire-and-forget (status events)
 #   deskling-hook.sh sync   quick round trip, prints the relay's reply
 #                           (Stop / UserPromptSubmit pick up messages queued on the screen)
+#   deskling-hook.sh stop   Stop: sync, or wait for the screen while "Keep listening" is on
 #   deskling-hook.sh live   fire-and-forget tool activity (what the session is doing now)
 #   deskling-hook.sh wait   PermissionRequest / AskUserQuestion: wait for an answer
 #                           on the screen and print it for Claude Code
@@ -71,6 +72,26 @@ if [ "$1" = "wait" ]; then
     -H "X-Deskling-Label: ${LABEL}" \
     -H "X-Deskling-Project: ${PROJECT}" \
     --data-binary @- 2>/dev/null || true
+elif [ "$1" = "stop" ]; then
+  # Stop: like sync, but if you tapped "Keep listening" on the screen the relay holds this hook
+  # until you send a message from there (it becomes Claude's next prompt) or listening ends.
+  # The relay answers {"again":true} every ~85 s so no connection stays open too long.
+  BODY="$(cat)"
+  ROUND=0
+  while :; do
+    OUT="$(printf '%s' "$BODY" | curl -sSf --max-time 100 -X POST "${URL}/hook?hold=1&round=${ROUND}" \
+      -H "Authorization: Bearer ${TOKEN}" \
+      -H "Content-Type: application/json" \
+      -H "X-Deskling-Host: ${NAME}" \
+      -H "X-Deskling-OS: ${OS}" \
+      -H "X-Deskling-Label: ${LABEL}" \
+      -H "X-Deskling-Project: ${PROJECT}" \
+      --data-binary @- 2>/dev/null)" || exit 0
+    case "$OUT" in
+      *'"again":true'*) ROUND=$((ROUND + 1)); [ "$ROUND" -gt 80 ] && exit 0 ;;
+      *) printf '%s' "$OUT"; exit 0 ;;
+    esac
+  done
 elif [ "$1" = "sync" ]; then
   curl -sSf --max-time 4 -X POST "${URL}/hook" \
     -H "Authorization: Bearer ${TOKEN}" \

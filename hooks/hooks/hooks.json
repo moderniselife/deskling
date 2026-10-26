@@ -10,7 +10,7 @@
       {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 10}]}
     ],
     "Stop": [
-      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" sync", "timeout": 8}]}
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" stop", "timeout": 7200}]}
     ],
     "SessionEnd": [
       {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 5}]}

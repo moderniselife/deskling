@@ -6,7 +6,8 @@
 
 static struct {
     lv_obj_t *scr, *face, *badge_row, *name, *status, *delivery;
-    lv_obj_t *bubbles, *quick, *input_row, *ta, *kb, *helpers, *helper_list;
+    lv_obj_t *bubbles, *quick, *input_row, *ta, *kb, *helpers, *helper_list, *listen, *listen_label;
+    bool listening;
     char agent_id[72];
     char last_line[16];
 } c;
@@ -24,6 +25,14 @@ static void send_text(const char *text)
     if (!text || !text[0] || !c.agent_id[0]) return;
     dk_send_message(c.agent_id, text);
     deskling_celebrate(c.face, 900);
+}
+
+static void listen_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!c.agent_id[0]) return;
+    dk_send_listen(c.agent_id, c.listening ? 0 : 30);
+    if (!c.listening) deskling_celebrate(c.face, 900);
 }
 
 static void quick_cb(lv_event_t *e)
@@ -113,6 +122,13 @@ lv_obj_t *scr_chat_create(void)
     c.delivery = dk_label(info, DK_FONT_S, DK_INK, "");
     lv_obj_set_width(c.delivery, lv_pct(100));
     lv_label_set_long_mode(c.delivery, LV_LABEL_LONG_MODE_WRAP);
+    // "Keep listening": when it finishes, it waits for your next message from here.
+    c.listen = dk_button(info, "Keep listening", false, DK_FONT_S);
+    lv_obj_set_width(c.listen, lv_pct(100));
+    lv_obj_set_style_min_height(c.listen, 48, 0);
+    lv_obj_set_style_margin_top(c.listen, 8, 0);
+    c.listen_label = lv_obj_get_child(c.listen, 0);
+    lv_obj_add_event_cb(c.listen, listen_cb, LV_EVENT_CLICKED, NULL);
 
     // Helpers: the subagents this session has handed work to.
     c.helpers = dk_card(left, DK_CARD, 22);
@@ -275,6 +291,7 @@ static void rebuild_head(const dk_agent_t *a)
         sig = dk_hash(sig, &a->can_message, sizeof(a->can_message));
         sig = dk_hash(sig, a->helpers, sizeof(a->helpers[0]) * a->helpers_n);
         sig = dk_hash(sig, &a->helpers_n, sizeof(a->helpers_n));
+        sig = dk_hash(sig, &a->listening, sizeof(a->listening));
     }
     if (sig == s_head_sig) return;
     s_head_sig = sig;
@@ -295,9 +312,20 @@ static void rebuild_head(const dk_agent_t *a)
     char st[160];
     snprintf(st, sizeof(st), "%s%s%s", dk_state_label(a->state), a->task[0] ? " · " : "", a->task);
     dk_set_text(c.status, st);
+    c.listening = a->listening;
     dk_set_text(c.delivery, a->channel ? "Live channel: messages arrive straight away."
+                            : a->listening ? "Listening: when Claude finishes, it waits for your next message from here."
                             : a->can_message ? "Messages arrive when Claude finishes its current step, or with your next prompt."
                                              : "This tool can't take messages from Deskling yet.");
+    if (a->can_message && !a->channel) {
+        lv_obj_remove_flag(c.listen, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_bg_color(c.listen, a->listening ? DK_INK : DK_CARD, 0);
+        lv_obj_set_style_border_width(c.listen, a->listening ? 0 : 3, 0);
+        lv_obj_set_style_text_color(c.listen_label, a->listening ? DK_GROUND : DK_INK, 0);
+        dk_set_text(c.listen_label, a->listening ? "Listening (tap to stop)" : "Keep listening");
+    } else {
+        lv_obj_add_flag(c.listen, LV_OBJ_FLAG_HIDDEN);
+    }
     dk_mood_t mood = ui_mood_for(a);
     if (deskling_get_mood(c.face) != mood && deskling_get_mood(c.face) != DK_MOOD_HAPPY) deskling_set_mood(c.face, mood);
 
