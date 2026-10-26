@@ -174,7 +174,10 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
                 dk_model_choice_t *mc = &e->models[e->models_n++];
                 copy_str(mc->id, sizeof(mc->id), m, "id");
                 copy_str(mc->name, sizeof(mc->name), m, "name");
-                if (!mc->name[0]) snprintf(mc->name, sizeof(mc->name), "%s", mc->id);
+                if (!mc->name[0]) {
+                    memcpy(mc->name, mc->id, sizeof(mc->name) - 1); // id is the longer of the two
+                    mc->name[sizeof(mc->name) - 1] = '\0';
+                }
             }
         }
     }
