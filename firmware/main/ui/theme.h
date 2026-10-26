@@ -72,6 +72,12 @@ lv_obj_t *dk_card(lv_obj_t *parent, lv_color_t bg, int32_t radius);
 void dk_row(lv_obj_t *o, int32_t gap);
 void dk_col(lv_obj_t *o, int32_t gap);
 lv_obj_t *dk_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, const char *text);
+/** Set a label's text only if it changed: LVGL redraws and re-lays-out on every set. */
+void dk_set_text(lv_obj_t *label, const char *text);
+/** Fingerprints for "has what this list shows changed?" (FNV-1a). Start from DK_HASH0. */
+#define DK_HASH0 2166136261u
+uint32_t dk_hash(uint32_t h, const void *p, size_t n);
+uint32_t dk_hash_str(uint32_t h, const char *s);
 /** A pill-shaped tag. */
 lv_obj_t *dk_pill(lv_obj_t *parent, lv_color_t bg, const lv_font_t *font, const char *text);
 /** A big rounded button. filled = ink background, otherwise outlined. */

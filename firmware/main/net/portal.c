@@ -139,6 +139,12 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddNumberToObject(d, "avg_ms", (int)(ds.avg_ms * 10) / 10.0);
     cJSON_AddNumberToObject(d, "worst_ms", (int)(ds.worst_ms * 10) / 10.0);
     cJSON_AddNumberToObject(d, "busy_pct", ds.busy_pct);
+    cJSON_AddNumberToObject(d, "draw_ms", (int)(ds.draw_ms * 10) / 10.0);
+    cJSON_AddNumberToObject(d, "rotate_ms", (int)(ds.flush_ms * 10) / 10.0);
+    cJSON_AddNumberToObject(d, "copy_wait_ms", (int)(ds.wait_ms * 10) / 10.0);
+    cJSON_AddNumberToObject(d, "kpx", ds.kpx);
+    cJSON_AddStringToObject(d, "bands", ds.internal_bands ? "internal" : "psram");
+    cJSON_AddNumberToObject(d, "band_lines", ds.band_lines);
     cJSON *r = cJSON_AddObjectToObject(o, "relay");
     cJSON_AddStringToObject(r, "url", st->relay_url);
     cJSON_AddBoolToObject(r, "configured", settings_relay_configured());

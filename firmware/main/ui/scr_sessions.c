@@ -168,7 +168,18 @@ void scr_sessions_refresh(void)
     if (g_model->agent_n == 0) snprintf(sub, sizeof(sub), "Nothing running right now");
     else if (need) snprintf(sub, sizeof(sub), "%d running on %d machine%s · %d need%s you", g_model->agent_n, host_n, host_n == 1 ? "" : "s", need, need == 1 ? "s" : "");
     else snprintf(sub, sizeof(sub), "%d running on %d machine%s", g_model->agent_n, host_n, host_n == 1 ? "" : "s");
-    lv_label_set_text(s.subtitle, sub);
+    dk_set_text(s.subtitle, sub);
+
+    static uint32_t sig;
+    uint32_t now = dk_hash(dk_hash(DK_HASH0, &s.filter, sizeof(s.filter)), &g_model->agent_n, sizeof(g_model->agent_n));
+    now = dk_hash(now, g_model->agents, g_model->agent_n * sizeof(g_model->agents[0]));
+    for (int i = 0; i < g_model->agent_n; i++) {
+        char ago[12];
+        ui_ago(g_model->agents[i].updated, ago, sizeof(ago));
+        now = dk_hash_str(now, ago);
+    }
+    if (now == sig) return; // the grid already shows exactly this
+    sig = now;
 
     int shown = 0;
     for (int i = 0; i < g_model->agent_n; i++) shown += matches(&g_model->agents[i]);

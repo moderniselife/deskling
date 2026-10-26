@@ -30,6 +30,12 @@ typedef struct {
     float avg_ms;     // average time per redraw (render + rotate + copy)
     float worst_ms;
     uint8_t busy_pct; // share of those 5 s spent redrawing
+    float draw_ms;    // of avg_ms: LVGL drawing
+    float flush_ms;   //            PPA rotation + handing bands over
+    float wait_ms;    //            waiting for the DMA2D copy into the framebuffer
+    uint32_t kpx;     // thousands of pixels redrawn per redraw
+    bool internal_bands;
+    uint16_t band_lines;
 } board_display_stats_t;
 /** Redraw timings from the last 5-second window with any drawing. */
 board_display_stats_t board_display_stats(void);

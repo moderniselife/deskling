@@ -135,6 +135,22 @@ static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char 
 static void build_list(void)
 {
     if (!g.list) return;
+    static uint32_t sig;
+    uint32_t now = dk_hash(dk_hash(DK_HASH0, &g_model->reminder_n, sizeof(g_model->reminder_n)), g_model->reminders,
+                           g_model->reminder_n * sizeof(g_model->reminders[0]));
+    now = dk_hash(dk_hash(now, &g_model->feed_n, sizeof(g_model->feed_n)), g_model->feed, g_model->feed_n * sizeof(g_model->feed[0]));
+    for (int i = 0; i < g_model->reminder_n; i++) {
+        char when[40] = "";
+        if (g_model->reminders[i].due) ui_due_text(g_model->reminders[i].due, when, sizeof(when));
+        now = dk_hash_str(now, when);
+    }
+    for (int i = 0; i < g_model->feed_n && i < 7; i++) {
+        char ago[12];
+        ui_ago(g_model->feed[i].ts, ago, sizeof(ago));
+        now = dk_hash_str(now, ago);
+    }
+    if (now == sig) return;
+    sig = now;
     lv_obj_clean(g.list);
     int shown = 0;
     // Upcoming reminders first: they're the things you can act on.
@@ -450,4 +466,13 @@ void ui_gestures_refresh(void)
 bool ui_gestures_panel_open(void)
 {
     return g.panel_open;
+}
+
+void ui_gestures_open_panel(void)
+{
+    if (g.panel_open || !allowed(G_TOP)) return;
+    ensure_panel();
+    build_list();
+    g.panel_y = -PANEL_H - 20;
+    open_panel();
 }

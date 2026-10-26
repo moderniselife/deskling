@@ -219,9 +219,15 @@ static void typing(void)
     dk_anim_pop(b, 0);
 }
 
+static uint32_t s_chat_sig;
+
 static void rebuild(bool animate_new)
 {
     const dk_agent_t *a = dk_model_find_agent(g_model, c.agent_id);
+    uint32_t sig = dk_hash_str(DK_HASH0, c.agent_id);
+    if (a) sig = dk_hash(sig, a, sizeof(*a));
+    if (sig == s_chat_sig) return; // nothing this screen shows has changed
+    s_chat_sig = sig;
     lv_obj_clean(c.badge_row);
     lv_obj_clean(c.bubbles);
     if (!a) {
@@ -283,6 +289,7 @@ void scr_chat_show(const char *agent_id)
     c.last_line[0] = '\0';
     lv_textarea_set_text(c.ta, "");
     kb_hide();
+    s_chat_sig = 0; // always build afresh when opening a chat
     rebuild(false);
 }
 

@@ -244,6 +244,12 @@ lv_obj_t *scr_home_create(void)
 
 static void build_agents(void)
 {
+    // Rebuild only when what the list shows has changed (snapshots arrive for all sorts of reasons).
+    static uint32_t sig;
+    int n = g_model->agent_n < 3 ? g_model->agent_n : 3;
+    uint32_t now = dk_hash(dk_hash(DK_HASH0, &g_model->agent_n, sizeof(g_model->agent_n)), g_model->agents, n * sizeof(g_model->agents[0]));
+    if (now == sig) return;
+    sig = now;
     lv_obj_clean(h.agents_list);
     if (g_model->agent_n == 0) {
         dk_label(h.agents_list, DK_FONT_M, DK_MUTED, "No sessions yet. Start Claude Code and it shows up here.");
@@ -293,6 +299,16 @@ static lv_color_t feed_tint(dk_level_t l)
 
 static void build_feed(void)
 {
+    static uint32_t sig;
+    int n = g_model->feed_n < 4 ? g_model->feed_n : 4;
+    uint32_t now = dk_hash(dk_hash(DK_HASH0, &g_model->feed_n, sizeof(g_model->feed_n)), g_model->feed, n * sizeof(g_model->feed[0]));
+    for (int i = 0; i < n; i++) {
+        char ago[12];
+        ui_ago(g_model->feed[i].ts, ago, sizeof(ago));
+        now = dk_hash_str(now, ago);
+    }
+    if (now == sig) return;
+    sig = now;
     bool fresh = g_model->feed_n && strcmp(g_model->feed[0].id, h.last_feed_top) != 0 && h.last_feed_top[0];
     snprintf(h.last_feed_top, sizeof(h.last_feed_top), "%s", g_model->feed_n ? g_model->feed[0].id : "-");
     lv_obj_clean(h.feed_list);
@@ -332,6 +348,17 @@ static void build_feed(void)
 
 static void build_reminders(void)
 {
+    static uint32_t sig;
+    int rn = g_model->reminder_n < 4 ? g_model->reminder_n : 4;
+    uint32_t now = dk_hash(dk_hash(DK_HASH0, &g_model->reminder_n, sizeof(g_model->reminder_n)), g_model->reminders,
+                           g_model->reminder_n * sizeof(g_model->reminders[0]));
+    for (int i = 0; i < rn; i++) {
+        char due[40];
+        ui_due_text(g_model->reminders[i].due, due, sizeof(due));
+        now = dk_hash_str(now, due);
+    }
+    if (now == sig) return;
+    sig = now;
     lv_obj_clean(h.rem_list);
     int left = 0;
     for (int i = 0; i < g_model->reminder_n; i++) left += !g_model->reminders[i].done;
@@ -385,31 +412,37 @@ static void build_companion(dk_cause_t cause)
 {
     const dk_agent_t *a = ui_lead_agent();
     char buf[160];
-    lv_label_set_text(h.headline, ui_headline_for(a, buf, sizeof(buf)));
+    dk_set_text(h.headline, ui_headline_for(a, buf, sizeof(buf)));
 
     if (a && a->task[0]) {
         snprintf(buf, sizeof(buf), "%s · %s", a->task, a->name);
-        lv_label_set_text(h.subline, buf);
+        dk_set_text(h.subline, buf);
     } else {
-        lv_label_set_text(h.subline, g_model->agent_n ? "" : "Start a Claude Code session and I'll keep an eye on it.");
+        dk_set_text(h.subline, g_model->agent_n ? "" : "Start a Claude Code session and I'll keep an eye on it.");
     }
 
     if (a) {
         char since[32];
         ui_since(a->since, since, sizeof(since));
         snprintf(buf, sizeof(buf), "%s · %s", a->host, since);
-        lv_label_set_text(h.meta, buf);
+        dk_set_text(h.meta, buf);
     } else {
-        lv_label_set_text(h.meta, "");
+        dk_set_text(h.meta, "");
     }
     if (a && a->state == DK_WORKING) lv_obj_remove_flag(h.eq, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(h.eq, LV_OBJ_FLAG_HIDDEN);
 
-    // Status pill + dot.
-    lv_obj_clean(h.status_dot_wrap);
+    // Status pill + dot (rebuilt only when its colour or pulse changes, so the pulse keeps going).
     lv_color_t c = a ? dk_state_color(a->state) : DK_MUTED;
-    dk_dot(h.status_dot_wrap, 10, c, a && (a->state == DK_WORKING || a->state == DK_NEEDS_YOU));
-    lv_label_set_text(h.status_label, a ? dk_state_label(a->state) : "Quiet");
+    bool ping = a && (a->state == DK_WORKING || a->state == DK_NEEDS_YOU);
+    static uint32_t dot_sig;
+    uint32_t dsig = dk_hash(dk_hash(DK_HASH0, &c, sizeof(c)), &ping, sizeof(ping));
+    if (dsig != dot_sig || !lv_obj_get_child_count(h.status_dot_wrap)) {
+        dot_sig = dsig;
+        lv_obj_clean(h.status_dot_wrap);
+        dk_dot(h.status_dot_wrap, 10, c, ping);
+    }
+    dk_set_text(h.status_label, a ? dk_state_label(a->state) : "Quiet");
 
     dk_mood_t mood = g_model->pending_n ? DK_MOOD_WORRIED : ui_mood_for(a);
     bool happy_cause = cause == DK_CAUSE_DONE || cause == DK_CAUSE_PING || cause == DK_CAUSE_REMINDER_DONE;
@@ -448,7 +481,7 @@ void scr_home_refresh(dk_cause_t cause, const char *cause_id)
     build_connection();
     bool focus = g_model->focus;
     lv_obj_t *fl = lv_obj_get_child(h.focus_btn, 0);
-    lv_label_set_text(fl, focus ? "Focus is on" : "Focus mode");
+    dk_set_text(fl, focus ? "Focus is on" : "Focus mode");
     lv_obj_set_style_bg_color(h.focus_btn, focus ? DK_PURPLE : DK_INK, 0);
 }
 

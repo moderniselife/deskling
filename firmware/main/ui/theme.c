@@ -1,3 +1,4 @@
+#include <string.h>
 #include "theme.h"
 
 #include "anim.h"
@@ -54,6 +55,25 @@ void dk_col(lv_obj_t *o, int32_t gap)
     lv_obj_set_flex_flow(o, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(o, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_row(o, gap, 0);
+}
+
+void dk_set_text(lv_obj_t *label, const char *text)
+{
+    const char *cur = lv_label_get_text(label);
+    if (cur && text && strcmp(cur, text) == 0) return;
+    lv_label_set_text(label, text);
+}
+
+uint32_t dk_hash(uint32_t h, const void *p, size_t n)
+{
+    const uint8_t *b = p;
+    for (size_t i = 0; i < n; i++) h = (h ^ b[i]) * 16777619u;
+    return h;
+}
+
+uint32_t dk_hash_str(uint32_t h, const char *s)
+{
+    return dk_hash(h, s, strlen(s) + 1);
 }
 
 lv_obj_t *dk_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, const char *text)

@@ -35,6 +35,8 @@ void ui_gestures_init(void);
 void ui_gestures_on_screen(scr_id_t id);
 void ui_gestures_refresh(void);
 bool ui_gestures_panel_open(void);
+/** Slide the notification panel down (as if swiped). */
+void ui_gestures_open_panel(void);
 /** The alert screen finished its "Sent!" moment. */
 void ui_alert_finished(void);
 void ui_banner(const char *title, const char *body, lv_color_t bg);

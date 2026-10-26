@@ -391,6 +391,7 @@ void ui_go(scr_id_t id)
     if (id == SCR_SETTINGS) scr_settings_refresh();
     if (id == SCR_SETUP) scr_setup_refresh();
     if (id == SCR_HOME) scr_home_refresh(DK_CAUSE_HELLO, "");
+    if (id == SCR_CHAT) scr_chat_refresh(DK_CAUSE_HELLO);
     show_screen(s_scr[id], how, ms);
     ui_gestures_on_screen(id);
 }
@@ -439,10 +440,21 @@ static void banner_opa(void *o, int32_t v)
     dk_style(o, LV_STYLE_OPA, (lv_opa_t)v);
 }
 
-void ui_banner(const char *title, const char *body, lv_color_t bg)
+static void banner_tap(lv_event_t *e)
+{
+    lv_obj_t *b = lv_event_get_current_target(e);
+    lv_anim_delete(b, NULL);
+    if (b == s_banner) s_banner = NULL;
+    lv_obj_delete_async(b);
+    ui_gestures_open_panel();
+}
+
+static void banner(const char *title, const char *body, lv_color_t bg, const char *icon_sym)
 {
     if (s_banner) lv_obj_delete(s_banner);
     s_banner = dk_card(lv_layer_top(), bg, 28);
+    lv_obj_add_flag(s_banner, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_banner, banner_tap, LV_EVENT_CLICKED, NULL);
     lv_obj_set_style_pad_hor(s_banner, 26, 0);
     lv_obj_set_style_pad_ver(s_banner, 16, 0);
     lv_obj_set_style_shadow_width(s_banner, 30, 0);
@@ -453,7 +465,7 @@ void ui_banner(const char *title, const char *body, lv_color_t bg)
     lv_obj_t *icon = dk_card(s_banner, DK_INK, LV_RADIUS_CIRCLE);
     lv_obj_set_size(icon, 48, 48);
     lv_obj_set_style_pad_all(icon, 0, 0);
-    lv_obj_t *il = dk_label(icon, &lv_font_montserrat_20, DK_BUTTER, LV_SYMBOL_BELL);
+    lv_obj_t *il = dk_label(icon, &lv_font_montserrat_20, DK_BUTTER, icon_sym);
     lv_obj_center(il);
     dk_anim_wiggle(icon);
     lv_obj_t *txt = dk_box(s_banner);
@@ -476,6 +488,11 @@ void ui_banner(const char *title, const char *body, lv_color_t bg)
     lv_anim_set_user_data(&a, s_banner);
     lv_anim_set_completed_cb(&a, banner_gone);
     lv_anim_start(&a);
+}
+
+void ui_banner(const char *title, const char *body, lv_color_t bg)
+{
+    banner(title, body, bg, LV_SYMBOL_BELL);
 }
 
 // ---------------------------------------------------------- lifecycle
@@ -594,11 +611,13 @@ void ui_apply_model(const dk_model_t *m)
     memcpy(s_model, m, sizeof(*m));
     if (m->now) s_relay_offset = m->now - ui_now_ms();
 
+    // Only the screen on show is brought up to date now; the others catch up when they're
+    // opened (ui_go refreshes them), so a snapshot doesn't rebuild five screens at once.
     bool alert = scr_alert_refresh();
-    scr_home_refresh(m->cause, m->cause_id);
-    scr_sessions_refresh();
-    scr_chat_refresh(m->cause);
-    scr_night_refresh();
+    if (s_cur == SCR_HOME) scr_home_refresh(m->cause, m->cause_id);
+    else if (s_cur == SCR_SESSIONS) scr_sessions_refresh();
+    else if (s_cur == SCR_CHAT) scr_chat_refresh(m->cause);
+    else if (s_cur == SCR_NIGHT) scr_night_refresh();
     ui_gestures_refresh();
 
     if (s_cur == SCR_SETUP) return; // finish setting up first
@@ -638,6 +657,21 @@ void ui_apply_model(const dk_model_t *m)
         set_backlight(100);
         ui_sound(DK_SND_DONE);
         ui_banner("Claude finished!", a ? a->name : "", DK_GOOD_BG);
+        break;
+    }
+    case DK_CAUSE_FEED: {
+        // A new notification: drop a banner in wherever you are (tap it for the full list),
+        // unless something more important has the screen or the list is already open.
+        const dk_feed_t *f = NULL;
+        for (int i = 0; i < m->feed_n && !f; i++)
+            if (!m->cause_id[0] || strcmp(m->feed[i].id, m->cause_id) == 0) f = &m->feed[i];
+        bool busy = s_cur == SCR_ALERT || s_cur == SCR_SETUP || s_cur == SCR_BOOT || s_cur == SCR_CALIB || s_cur == SCR_UPDATE;
+        if (f && !busy && !ui_gestures_panel_open()) {
+            ui_sound(DK_SND_MESSAGE);
+            const char *icon = f->level == DK_FEED_ALERT ? LV_SYMBOL_WARNING : f->level == DK_FEED_GOOD ? LV_SYMBOL_OK : LV_SYMBOL_BELL;
+            lv_color_t bg = f->level == DK_FEED_ALERT ? DK_ALERT_PILL : f->level == DK_FEED_GOOD ? DK_GOOD_BG : DK_LILAC_SOFT;
+            banner(f->title, f->body, bg, icon);
+        }
         break;
     }
     case DK_CAUSE_DONE:

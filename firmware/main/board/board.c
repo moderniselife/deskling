@@ -130,10 +130,10 @@ static esp_err_t panel_init(esp_lcd_panel_io_handle_t *out_io, esp_lcd_panel_han
 // How long each redraw takes on the real hardware, logged every 5 s while things move and
 // shown on the setup page, so slow screens can be measured instead of guessed at.
 static struct {
-    int64_t t0;
+    int64_t t0, flush_t0, wait_t0;
     bool rendered;
     uint32_t frames;
-    uint64_t sum_us;
+    uint64_t sum_us, flush_us, wait_us, px;
     uint32_t worst_us;
     board_display_stats_t last;
 } s_perf;
@@ -147,6 +147,21 @@ static void perf_event(lv_event_t *e)
         break;
     case LV_EVENT_RENDER_START:
         s_perf.rendered = true;
+        break;
+    case LV_EVENT_FLUSH_START: {
+        const lv_area_t *a = lv_event_get_param(e);
+        if (a) s_perf.px += lv_area_get_size(a);
+        s_perf.flush_t0 = esp_timer_get_time();
+        break;
+    }
+    case LV_EVENT_FLUSH_FINISH:
+        s_perf.flush_us += esp_timer_get_time() - s_perf.flush_t0;
+        break;
+    case LV_EVENT_FLUSH_WAIT_START:
+        s_perf.wait_t0 = esp_timer_get_time();
+        break;
+    case LV_EVENT_FLUSH_WAIT_FINISH:
+        s_perf.wait_us += esp_timer_get_time() - s_perf.wait_t0;
         break;
     case LV_EVENT_REFR_READY:
         if (s_perf.rendered) {
@@ -169,10 +184,17 @@ static void perf_report(lv_timer_t *t)
     s_perf.last.avg_ms = (float)s_perf.sum_us / s_perf.frames / 1000.0f;
     s_perf.last.worst_ms = s_perf.worst_us / 1000.0f;
     s_perf.last.busy_pct = (uint8_t)(s_perf.sum_us / 50000); // of 5 s
-    ESP_LOGI(TAG, "display: %u redraws in 5 s, %.1f ms each on average, worst %.1f ms, busy %u%%", (unsigned)s_perf.frames,
-             s_perf.last.avg_ms, s_perf.last.worst_ms, s_perf.last.busy_pct);
+    // Where the time goes: rotating each band and handing it to DMA2D (flush), waiting for the
+    // copy into the framebuffer to finish (wait), and LVGL drawing (the rest).
+    s_perf.last.flush_ms = (float)s_perf.flush_us / s_perf.frames / 1000.0f;
+    s_perf.last.wait_ms = (float)s_perf.wait_us / s_perf.frames / 1000.0f;
+    s_perf.last.draw_ms = s_perf.last.avg_ms - s_perf.last.flush_ms - s_perf.last.wait_ms;
+    s_perf.last.kpx = (uint32_t)(s_perf.px / s_perf.frames / 1000);
+    ESP_LOGI(TAG, "display: %u redraws in 5 s, %.1f ms each (draw %.1f, rotate %.1f, copy wait %.1f) for %uk px, worst %.1f ms, busy %u%%",
+             (unsigned)s_perf.frames, s_perf.last.avg_ms, s_perf.last.draw_ms, s_perf.last.flush_ms, s_perf.last.wait_ms,
+             (unsigned)s_perf.last.kpx, s_perf.last.worst_ms, s_perf.last.busy_pct);
     s_perf.frames = 0;
-    s_perf.sum_us = 0;
+    s_perf.sum_us = s_perf.flush_us = s_perf.wait_us = s_perf.px = 0;
     s_perf.worst_us = 0;
 }
 
@@ -186,6 +208,10 @@ static void perf_init(lv_display_t *disp)
     lv_display_add_event_cb(disp, perf_event, LV_EVENT_REFR_START, NULL);
     lv_display_add_event_cb(disp, perf_event, LV_EVENT_RENDER_START, NULL);
     lv_display_add_event_cb(disp, perf_event, LV_EVENT_REFR_READY, NULL);
+    lv_display_add_event_cb(disp, perf_event, LV_EVENT_FLUSH_START, NULL);
+    lv_display_add_event_cb(disp, perf_event, LV_EVENT_FLUSH_FINISH, NULL);
+    lv_display_add_event_cb(disp, perf_event, LV_EVENT_FLUSH_WAIT_START, NULL);
+    lv_display_add_event_cb(disp, perf_event, LV_EVENT_FLUSH_WAIT_FINISH, NULL);
     lv_timer_create(perf_report, 5000, NULL);
 }
 
@@ -246,6 +272,140 @@ static esp_lcd_touch_handle_t touch_init(void)
     return tp;
 }
 
+
+// ------------------------------------------------------------- display
+// LVGL draws the 1280x800 landscape UI in horizontal bands. Each finished band is handed to the
+// PPA, which rotates it straight into its place in the panel's portrait framebuffer in the
+// background while LVGL draws the next band into the other buffer. No intermediate copy, and
+// the CPU never waits on the rotation unless it gets a whole band ahead.
+#include "driver/ppa.h"
+#include "freertos/semphr.h"
+
+static struct {
+    ppa_client_handle_t srm;
+    SemaphoreHandle_t done;
+    void *fb;
+    size_t fb_size;
+    bool busy;
+} s_disp;
+
+static bool IRAM_ATTR band_done(ppa_client_handle_t client, ppa_event_data_t *ev, void *user)
+{
+    (void)client;
+    (void)ev;
+    (void)user;
+    BaseType_t woken = pdFALSE;
+    xSemaphoreGiveFromISR(s_disp.done, &woken);
+    return woken == pdTRUE;
+}
+
+static void band_flush(lv_display_t *d, const lv_area_t *area, uint8_t *px)
+{
+    const int32_t w = lv_area_get_width(area), h = lv_area_get_height(area);
+    const int32_t hres = lv_display_get_horizontal_resolution(d); // landscape width (1280)
+    const int32_t vres = lv_display_get_vertical_resolution(d);
+    lv_display_rotation_t rot = lv_display_get_rotation(d);
+    ppa_srm_rotation_angle_t angle = PPA_SRM_ROTATION_ANGLE_0;
+    int32_t ox = area->x1, oy = area->y1;
+    // Same mapping as esp_lvgl_port's PPA rotation (landscape band -> portrait framebuffer).
+    if (rot == LV_DISPLAY_ROTATION_90) {
+        angle = PPA_SRM_ROTATION_ANGLE_90;
+        ox = area->y1;
+        oy = hres - area->x2 - 1;
+    } else if (rot == LV_DISPLAY_ROTATION_270) {
+        angle = PPA_SRM_ROTATION_ANGLE_270;
+        ox = vres - area->y2 - 1;
+        oy = area->x1;
+    } else if (rot == LV_DISPLAY_ROTATION_180) {
+        angle = PPA_SRM_ROTATION_ANGLE_180;
+        ox = hres - area->x2 - 1;
+        oy = vres - area->y2 - 1;
+    }
+    ppa_srm_oper_config_t op = {
+        .in = {.buffer = px, .pic_w = w, .pic_h = h, .block_w = w, .block_h = h, .srm_cm = PPA_SRM_COLOR_MODE_RGB565},
+        .out = {.buffer = s_disp.fb, .buffer_size = s_disp.fb_size, .pic_w = BOARD_LCD_H_RES, .pic_h = BOARD_LCD_V_RES,
+                .block_offset_x = ox, .block_offset_y = oy, .srm_cm = PPA_SRM_COLOR_MODE_RGB565},
+        .rotation_angle = angle,
+        .scale_x = 1.0f,
+        .scale_y = 1.0f,
+        .mode = PPA_TRANS_MODE_NON_BLOCKING,
+    };
+    s_disp.busy = true;
+    esp_err_t err = ppa_do_scale_rotate_mirror(s_disp.srm, &op);
+    if (err != ESP_OK) {
+        static bool warned;
+        if (!warned) ESP_LOGE(TAG, "band rotate failed: %s", esp_err_to_name(err));
+        warned = true;
+        s_disp.busy = false;
+        lv_display_flush_ready(d);
+    }
+}
+
+/** LVGL calls this before reusing a buffer: sleep until the PPA has finished with it. */
+static void band_wait(lv_display_t *d)
+{
+    (void)d;
+    if (!s_disp.busy) return;
+    xSemaphoreTake(s_disp.done, portMAX_DELAY);
+    s_disp.busy = false;
+}
+
+static lv_display_t *display_init(esp_lcd_panel_handle_t panel)
+{
+    ESP_ERROR_CHECK(esp_lcd_dpi_panel_get_frame_buffer(panel, 1, &s_disp.fb));
+    s_disp.fb_size = BOARD_LCD_H_RES * BOARD_LCD_V_RES * 2;
+    s_disp.done = xSemaphoreCreateBinary();
+    ppa_client_config_t cc = {.oper_type = PPA_OPERATION_SRM, .max_pending_trans_num = 1};
+    ESP_ERROR_CHECK(ppa_register_client(&cc, &s_disp.srm));
+    ppa_event_callbacks_t cbs = {.on_trans_done = band_done};
+    ESP_ERROR_CHECK(ppa_client_register_event_callbacks(s_disp.srm, &cbs));
+
+    // Bands in internal RAM draw much faster than in PSRAM (which the panel is also reading the
+    // framebuffer out of, 60 times a second). Use it when there's room for both bands and still
+    // plenty left for Wi-Fi and everything else; otherwise fall back to PSRAM.
+    const size_t margin = 160 * 1024;
+    size_t lines = 100, bytes = 0;
+    void *b1 = NULL, *b2 = NULL;
+    bool internal = false;
+    for (size_t l = 48; l >= 16 && !internal; l /= 2) {
+        size_t n = (size_t)BOARD_LCD_V_RES * l * 2; // landscape rows are 1280 px wide
+        if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) < n + 1024 ||
+            heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) < 2 * n + margin)
+            continue;
+        b1 = heap_caps_aligned_alloc(64, n, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+        b2 = heap_caps_aligned_alloc(64, n, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+        if (b1 && b2) {
+            internal = true;
+            lines = l;
+            bytes = n;
+        } else {
+            heap_caps_free(b1);
+            heap_caps_free(b2);
+            b1 = b2 = NULL;
+        }
+    }
+    if (!internal) {
+        bytes = (size_t)BOARD_LCD_V_RES * lines * 2;
+        b1 = heap_caps_aligned_alloc(64, bytes, MALLOC_CAP_SPIRAM);
+        b2 = heap_caps_aligned_alloc(64, bytes, MALLOC_CAP_SPIRAM);
+        assert(b1 && b2);
+    }
+    s_perf.last.internal_bands = internal;
+    s_perf.last.band_lines = lines;
+    ESP_LOGI(TAG, "render bands: %u lines in %s, PPA straight into the framebuffer (internal free %u KB)", (unsigned)lines,
+             internal ? "internal RAM" : "PSRAM", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+
+    lvgl_port_lock(0);
+    lv_display_t *disp = lv_display_create(BOARD_LCD_H_RES, BOARD_LCD_V_RES);
+    lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
+    lv_display_set_buffers(disp, b1, b2, bytes, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(disp, band_flush);
+    lv_display_set_flush_wait_cb(disp, band_wait);
+    lv_display_set_rotation(disp, ROTATE_180 ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_90);
+    lvgl_port_unlock();
+    return disp;
+}
+
 lv_display_t *board_init(void)
 {
     backlight_init();
@@ -262,51 +422,10 @@ lv_display_t *board_init(void)
     port_cfg.timer_period_ms = 5;
     ESP_ERROR_CHECK(lvgl_port_init(&port_cfg));
 
-    // LVGL renders the screen in horizontal bands, the PPA rotates each band into the panel's
-    // portrait framebuffer, and DMA2D copies it in while LVGL renders the next band. Bands in
-    // internal RAM render much faster than in PSRAM (which the panel is also streaming the
-    // framebuffer out of 60 times a second), so use internal RAM when there's room for the two
-    // bands plus the PPA's output band and still plenty left for Wi-Fi and the rest.
-    size_t band_px = BOARD_LCD_H_RES * 160; // PSRAM fallback: 1280 x 100 lines
-    bool internal = false;
-    const size_t margin = 160 * 1024;
-    for (size_t lines = 40; lines >= 20 && !internal; lines /= 2) {
-        size_t px = BOARD_LCD_H_RES * (lines * BOARD_LCD_V_RES / BOARD_LCD_H_RES); // lines of the 1280-wide landscape
-        size_t bytes = px * 2;
-        size_t free_dma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
-        size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
-        if (largest >= bytes + 1024 && free_dma >= 3 * bytes + margin) {
-            band_px = px;
-            internal = true;
-        }
-    }
-    ESP_LOGI(TAG, "render bands: %u px each in %s (internal free %u KB)", (unsigned)band_px, internal ? "internal RAM" : "PSRAM",
-             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
-
-    const lvgl_port_display_cfg_t disp_cfg = {
-        .io_handle = io,
-        .panel_handle = panel,
-        .buffer_size = band_px,
-        .double_buffer = true,
-        .hres = BOARD_LCD_H_RES,
-        .vres = BOARD_LCD_V_RES,
-        .color_format = LV_COLOR_FORMAT_RGB565,
-        .flags =
-            {
-                .buff_dma = internal,
-                .buff_spiram = !internal,
-                .sw_rotate = true, // done by the P4's PPA engine
-            },
-    };
-    const lvgl_port_display_dsi_cfg_t dsi_cfg = {.flags = {.avoid_tearing = false}};
-    lv_display_t *disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
+    lv_display_t *disp = display_init(panel);
     assert(disp);
-    // Copy rotated bands into the framebuffer with DMA2D instead of a CPU memcpy, so the CPU
-    // can get on with the next band.
-    if (esp_lcd_dpi_panel_enable_dma2d(panel) != ESP_OK) ESP_LOGW(TAG, "DMA2D unavailable, copying bands with the CPU");
 
     lvgl_port_lock(0);
-    lv_display_set_rotation(disp, ROTATE_180 ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_90);
     perf_init(disp);
     lvgl_port_unlock();
 

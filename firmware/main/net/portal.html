@@ -164,7 +164,10 @@ async function refresh() {
   const s = await api('/api/status');
   $('ver').textContent = `${s.version} · ${s.ip || 'hotspot'}`;
   $('fwver').textContent = s.version; $('fwvar').textContent = s.variant;
-  if (s.display && s.display.frames) $('perf').textContent = `Screen: ${s.display.avg_ms} ms per redraw on average, worst ${s.display.worst_ms} ms (${s.display.frames} redraws in the last 5 s that had anything to draw).`;
+  if (s.display && s.display.frames) {
+    const d = s.display;
+    $('perf').textContent = `Screen: ${d.avg_ms} ms per redraw (draw ${d.draw_ms}, rotate ${d.rotate_ms}, copy wait ${d.copy_wait_ms}) for ${d.kpx}k pixels, worst ${d.worst_ms} ms, busy ${d.busy_pct}% · ${d.frames} redraws in the last 5 s · ${d.band_lines}-line bands in ${d.bands === 'internal' ? 'internal RAM' : 'PSRAM'}.`;
+  }
   $('relaystate').textContent = s.relay.online ? 'Connected' : s.relay.configured ? 'Not connected' : 'Not set up';
   $('relaystate').className = 'pill ' + (s.relay.online ? 'ok' : 'bad');
   $('relayurl').textContent = s.relay.url + (s.relay.token_end ? ` \u00b7 token \u2026${s.relay.token_end}` : '');

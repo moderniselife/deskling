@@ -121,7 +121,7 @@ void scr_night_refresh(void)
     char buf[160];
     if (working) snprintf(buf, sizeof(buf), "%d agent%s still working", working, working == 1 ? "" : "s");
     else snprintf(buf, sizeof(buf), "All agents quiet");
-    lv_label_set_text(n.status, buf);
+    dk_set_text(n.status, buf);
     lv_obj_set_style_bg_color(n.status_dot, working ? DK_LILAC : DK_NIGHT_GOOD, 0);
 
     const dk_reminder_t *next = NULL;
@@ -133,9 +133,9 @@ void scr_night_refresh(void)
         char due[40];
         ui_due_text(next->due, due, sizeof(due));
         snprintf(buf, sizeof(buf), "%s · %s", next->title, due);
-        lv_label_set_text(n.next, buf);
+        dk_set_text(n.next, buf);
     } else {
-        lv_label_set_text(n.next, "Nothing planned. Sleep well!");
+        dk_set_text(n.next, "Nothing planned. Sleep well!");
     }
 
     if (working) {
@@ -150,7 +150,7 @@ void scr_night_refresh(void)
     } else {
         snprintf(buf, sizeof(buf), "Nothing scheduled");
     }
-    lv_label_set_text(n.overnight, buf);
+    dk_set_text(n.overnight, buf);
 }
 
 void scr_night_tick(void)

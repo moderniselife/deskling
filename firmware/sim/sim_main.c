@@ -806,6 +806,22 @@ int main(int argc, char **argv)
     drag(640, 795, 640, 560, 250, 700);
     run(500);
     expect_screen(SCR_SESSIONS, "sessions (swipe up and hold)");
+
+    // A new notification drops a banner in wherever you are; tapping it opens the list.
+    apply("notify");
+    run(700);
+    lv_obj_t *bl = find_label(lv_layer_top(), "Claude is waiting for you");
+    check(bl != NULL, "new notification shows a banner on the sessions screen");
+    expect_sound("message");
+    shot("19_notification_banner");
+    if (bl) tap_obj(lv_obj_get_parent(lv_obj_get_parent(bl)), "notification banner");
+    run(600);
+    check(ui_gestures_panel_open(), "tapping the banner opens notifications");
+    drag(640, 420, 640, 120, 200, 0);
+    run(400);
+    check(!ui_gestures_panel_open(), "swipe up closes notifications again");
+    apply("busy");
+    run(300);
     tap("web-app");
     run(600);
     expect_screen(SCR_CHAT, "chat");
