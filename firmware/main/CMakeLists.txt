@@ -2,11 +2,11 @@ file(GLOB UI_SRCS "ui/*.c" "ui/fonts/*.c")
 
 idf_component_register(
     SRCS "main.c" "board/board.c" "board/audio.c" "app/sound_synth.c" "board/gsl3680.c"
-         "net/net.c" "net/portal.c" "net/ota.c"
+         "net/net.c" "net/portal.c" "net/ota.c" "net/images.c"
          "app/model.c" "app/settings.c" ${UI_SRCS}
     INCLUDE_DIRS "." "app" "ui" "board" "net"
     EMBED_TXTFILES "net/portal.html"
-    PRIV_REQUIRES esp_lcd esp_driver_ppa esp_driver_gpio esp_driver_ledc esp_driver_i2c esp_driver_i2s esp_hw_support esp_timer
+    PRIV_REQUIRES esp_lcd esp_driver_ppa esp_driver_jpeg esp_driver_gpio esp_driver_ledc esp_driver_i2c esp_driver_i2s esp_hw_support esp_timer
                   nvs_flash esp_wifi esp_netif esp_event mbedtls esp_http_server esp_http_client
                   esp_https_ota app_update esp_app_format
 )

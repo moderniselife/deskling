@@ -112,3 +112,7 @@ lv_obj_t *ui_nav_rail(lv_obj_t *parent, scr_id_t active);
 void ui_nav_rail_update(lv_obj_t *rail);
 lv_obj_t *ui_eq_bars(lv_obj_t *parent, int n, int32_t h, lv_color_t color);
 lv_obj_t *ui_source_badge(lv_obj_t *parent, dk_source_t src);
+
+/* Chat pictures (images.c): returns the picture once it's here, and starts fetching it if not. */
+const lv_image_dsc_t *ui_image_get(const char *id, bool *failed);
+void scr_chat_images_changed(void);

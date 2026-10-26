@@ -11,6 +11,7 @@
 #include "device.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "images.h"
 #include "esp_system.h"
 #include "net.h"
 #include "nvs_flash.h"
@@ -64,6 +65,7 @@ static const ui_platform_t s_platform = {
     .touch_raw = dk_gsl3680_raw,
     .touch_calibrated = touch_calibrated,
     .touch_save_calibration = touch_save_calibration,
+    .fetch_image = images_fetch,
 };
 
 void app_main(void)

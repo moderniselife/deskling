@@ -31,6 +31,8 @@ const DEFAULT_WAIT_S = 30;
 const MAX_WAIT_S = 110;
 const HOLD_S = 85; // one round of a listening Stop hook (the hook asks again until listening ends)
 const LISTEN_MAX_MIN = 120;
+const IMAGES_KEPT = 8; // pictures kept per session
+const IMAGE_MAX_BYTES = 1_800_000;
 const CHANNEL_LIVE_MS = 45 * 1000;
 const SOURCES: Source[] = ["claude-code", "cursor", "codex", "gemini", "custom"];
 
@@ -69,6 +71,8 @@ function readable(s: unknown): string {
   return s
     .replace(/<(system-reminder|agent-message|task-notification|local-command-stdout|local-command-stderr|command-message|command-args)(\s[^>]*)?>[\s\S]*?<\/\1>/g, "")
     .replace(/\[Image #\d+\]/g, "[photo]")
+    .replace(/@"[^"]*excerpt_from_previous_claude_message\.txt"\s*/g, "") // shown as a quote instead
+    .replace(/@"[^"]*[\\/]([^"\\/]+)"/g, "[$1]") // @"path/to/file" -> [file]
     .replace(/<command-name>\s*([\s\S]*?)\s*<\/command-name>/g, "$1")
     .replace(/<\/?[a-z][a-z0-9-]*>/gi, "")
     .replace(/\*\*(.+?)\*\*/g, "$1")
@@ -130,13 +134,13 @@ function chatView(lines: ChatLine[]): ChatLine[] {
   const flush = () => {
     if (run.length > STEPS_SHOWN) {
       const hidden = run.length - STEPS_SHOWN;
-      out.push({ ...run[0], id: run[0].id + "m", text: `${hidden} earlier step${hidden > 1 ? "s" : ""}` });
+      out.push({ ...run[0], from: "tool", id: run[0].id + "m", text: `${hidden} earlier step${hidden > 1 ? "s" : ""}` });
     }
     out.push(...run.slice(-STEPS_SHOWN));
     run = [];
   };
   for (const l of lines) {
-    if (l.from === "tool") run.push(l);
+    if (l.from === "tool" || l.from === "thought") run.push(l);
     else {
       flush();
       out.push({ ...l, text: clip(l.text, CHAT_TEXT_MAX) });
@@ -144,6 +148,15 @@ function chatView(lines: ChatLine[]): ChatLine[] {
   }
   flush();
   return out.slice(-SNAPSHOT_CHAT);
+}
+
+/** Its thinking as short lines for the screen: the first few sentences or lines, clipped. */
+function thoughtLines(t: string): string[] {
+  const lines = readable(t)
+    .split(/\n+/)
+    .map((l) => l.replace(/^[-.\s]+$/, "").trim())
+    .filter((l) => l && l !== "…" && l !== "...");
+  return lines.slice(0, 3).map((l) => oneLine(l, 140));
 }
 
 /** A short "what it's doing" line for the screen, from a tool call. */
@@ -221,7 +234,9 @@ export class Hub extends DurableObject<Record<string, unknown>> {
   private state: State = emptyState();
   private waiters = new Map<string, (r: Resolution) => void>();
   /** Sessions whose Stop hook is holding, waiting for a message from the screen. */
-  private listeners = new Map<string, () => void>();
+  private listeners = new Map<string, (why: "message" | "cancel") => void>();
+  /** Transcript lines already handled, per session (uploads can overlap after a retry). */
+  private seenLines = new Map<string, Set<string>>();
   private channels = new Map<string, Channel>();
   private channelPolls = new Map<string, () => void>();
 
@@ -245,6 +260,30 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         return null;
       }
     };
+
+    if (req.method === "POST" && path === "/transcript") return this.onTranscript(url.searchParams.get("sid") ?? "", await req.text());
+    if (req.method === "POST" && path === "/quote") {
+      const a = this.state.agents[url.searchParams.get("sid") ?? ""];
+      const name = baseName(url.searchParams.get("name") ?? "");
+      const text = oneLine(readable(await req.text()), 400);
+      if (a && name && text) {
+        a.quotes = { ...(a.quotes ?? {}), [name]: text };
+        const keys = Object.keys(a.quotes);
+        for (const k of keys.slice(0, Math.max(0, keys.length - 6))) delete a.quotes[k];
+      }
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path === "/listen/release") {
+      const sid = String(((await readJson()) ?? {}).session_id ?? "");
+      this.listeners.get(sid)?.("cancel");
+      return json({ ok: true });
+    }
+    if (req.method === "GET" && path.startsWith("/img/")) {
+      const id = path.slice(5).replace(/[^a-z0-9]/gi, "");
+      const img = await this.ctx.storage.get<{ type: string; data: Uint8Array }>("img:" + id);
+      if (!img) return new Response("not found\n", { status: 404 });
+      return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "private, max-age=86400" } });
+    }
 
     if (path === "/ws") {
       if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("expected websocket", { status: 426 });
@@ -402,13 +441,14 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         return empty();
 
       case "UserPromptSubmit": {
-        this.listeners.get(sid)?.(); // you typed on the computer: a waiting Stop hook lets go
+        this.listeners.get(sid)?.("cancel"); // you typed on the computer: a waiting Stop hook lets go
         const raw = typeof body.prompt === "string" ? body.prompt : "";
         const handbacks = this.finishHandbacks(agent, raw);
         const prompt = readable(raw);
-        if (prompt) {
+        const quote = this.quoteFor(agent, raw);
+        if (prompt || quote) {
           agent.lastPrompt = clip(prompt, 400);
-          this.pushChat(sid, "you", clip(prompt, CHAT_TEXT_MAX), "typed");
+          this.pushYou(sid, prompt, quote);
         } else if (handbacks) {
           this.pushChat(sid, "tool", handbacks > 1 ? `${handbacks} helpers reported back` : "A helper reported back", "sent");
         }
@@ -462,7 +502,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         agent.lastMessage = full;
         // Skip it if the same words already arrived mid-turn (a message Claude sent while working).
         const chat = this.state.chats[sid] ?? [];
-        if (full && !chat.slice(-3).some((c) => c.from === "agent" && c.text === full)) this.pushChat(sid, "agent", full, "sent");
+        if (full && !chat.slice(-12).some((c) => c.from === "agent" && c.text === full)) this.pushChat(sid, "agent", full, "sent");
         // Anything queued on the screen keeps Claude going instead of stopping.
         const queued = this.channelLive(sid) ? [] : this.takeQueued(sid);
         if (queued.length) {
@@ -514,7 +554,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         if (agent.state !== "working" && !open) this.setAgent(agent, "working", task);
         else if (agent.state === "working") agent.task = task;
         // Helpers get their own "Started a helper" line, and messages to you are messages.
-        if (!["SendUserMessage", "Agent", "Task"].includes(tool)) this.pushChat(sid, "tool", task, "sent");
+        if (!agent.streaming && !["SendUserMessage", "Agent", "Task"].includes(tool)) this.pushChat(sid, "tool", task, "sent");
         await this.commitLive(sid);
         return empty();
       }
@@ -548,7 +588,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       case "PostToolUse": {
         // A message Claude sends you while it works (SendUserMessage in the Claude app and Cowork).
         const input = (body.tool_input ?? {}) as Record<string, unknown>;
-        const text = clip(readable(input.message ?? input.text ?? ""), CHAT_TEXT_MAX);
+        const text = agent.streaming ? "" : clip(readable(input.message ?? input.text ?? ""), CHAT_TEXT_MAX);
         if (agent.state === "needs_you" && !this.state.pending.some((p) => p.agentId === sid)) this.setAgent(agent, "working", "Working");
         if (text) {
           this.pushChat(sid, "agent", text, "sent");
@@ -607,6 +647,131 @@ export class Hub extends DurableObject<Record<string, unknown>> {
   }
 
   /** Put a request on the screen and wait for an answer, a decision, or the timeout. */
+  // ------------------------------------------------------------ transcript
+
+  /**
+   * New lines of a session's transcript (JSONL, tool output already filtered out by the hook).
+   * Claude's words appear as it writes them, with its thoughts, the steps it takes, any
+   * pictures, and the model and context size of its latest reply.
+   */
+  private async onTranscript(sid: string, text: string): Promise<Response> {
+    const agent = this.state.agents[sid];
+    if (!agent) return json({ ok: true, skipped: "unknown session" });
+    const seen = this.seenLines.get(sid) ?? new Set<string>();
+    this.seenLines.set(sid, seen);
+    let changed = false;
+    let message = false;
+    for (const line of text.split("\n")) {
+      if (!line.startsWith("{")) continue;
+      let d: Record<string, unknown>;
+      try {
+        d = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        continue; // a fragment
+      }
+      const uuid = String(d.uuid ?? "");
+      if (uuid) {
+        if (seen.has(uuid)) continue;
+        seen.add(uuid);
+        if (seen.size > 600) seen.delete(seen.values().next().value as string);
+      }
+      if (d.isSidechain === true || d.isMeta === true) continue; // helpers' own transcripts and bookkeeping
+      if (d.type === "queue-operation" && d.operation === "remove" && d.reason === "absorbed_mid_turn" && typeof d.content === "string") {
+        // A message you sent while Claude was working (it reads it at its next step).
+        const raw = d.content;
+        if (/<agent-message\s/.test(raw)) this.finishHandbacks(agent, raw);
+        const t = readable(raw);
+        const quote = this.quoteFor(agent, raw);
+        if (t || quote) {
+          this.pushYou(sid, t, quote);
+          changed = message = true;
+        }
+        continue;
+      }
+      const msg = (d.message ?? {}) as Record<string, unknown>;
+      const content = Array.isArray(msg.content) ? (msg.content as Record<string, unknown>[]) : [];
+      if (d.type === "assistant") {
+        agent.streaming = true;
+        if (typeof msg.model === "string" && !msg.model.startsWith("<")) agent.model = msg.model;
+        const u = (msg.usage ?? {}) as Record<string, number>;
+        const ctx = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+        if (ctx > 0) agent.context = ctx;
+        for (const b of content) {
+          if (b.type === "thinking" && typeof b.thinking === "string" && b.thinking.trim()) {
+            for (const t of thoughtLines(b.thinking)) this.pushChat(sid, "thought", t, "sent");
+            changed = true;
+          } else if (b.type === "text" && typeof b.text === "string") {
+            const t = clip(readable(b.text), CHAT_TEXT_MAX);
+            if (t) {
+              this.pushChat(sid, "agent", t, "sent");
+              agent.lastMessage = t;
+              changed = message = true;
+            }
+          } else if (b.type === "tool_use") {
+            const name = String(b.name ?? "");
+            const input = (b.input ?? {}) as Record<string, unknown>;
+            if (name === "SendUserMessage") {
+              const t = clip(readable(input.message ?? ""), CHAT_TEXT_MAX);
+              if (t) {
+                this.pushChat(sid, "agent", t, "sent");
+                agent.lastMessage = t;
+                changed = message = true;
+              }
+            } else if (name !== "Agent" && name !== "Task") {
+              this.pushChat(sid, "tool", activity(name, input), "sent");
+              changed = true;
+            }
+          }
+        }
+      } else if (d.type === "user") {
+        // Pictures: ones you attached, and ones Claude looked at (screenshots, photos it opened).
+        for (const b of content) {
+          if (b.type === "image") changed = (await this.addImage(sid, "you", b)) || changed;
+          if (b.type === "tool_result" && Array.isArray(b.content)) {
+            const parts = b.content as Record<string, unknown>[];
+            // A message you sent while Claude was working rides along in a tool result.
+            const yours = parts.some((x) => x.type === "text" && typeof x.text === "string" && /user sent a new message/i.test(x.text));
+            for (const x of parts) if (x.type === "image") changed = (await this.addImage(sid, yours ? "you" : "agent", x)) || changed;
+          }
+        }
+      }
+    }
+    if (changed) {
+      agent.updated = Date.now();
+      if (message) await this.commit({ kind: "chat", id: sid });
+      else await this.commitLive(sid);
+    }
+    return json({ ok: true });
+  }
+
+  private async addImage(sid: string, from: "you" | "agent", block: Record<string, unknown>): Promise<boolean> {
+    const src = (block.source ?? {}) as Record<string, unknown>;
+    if (src.type !== "base64" || typeof src.data !== "string") return false;
+    const type = String(src.media_type ?? "image/png");
+    if (!/^image\/(png|jpeg|jpg)$/.test(type)) return false;
+    let bytes: Uint8Array;
+    try {
+      const bin = atob(src.data);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } catch {
+      return false;
+    }
+    if (bytes.length > IMAGE_MAX_BYTES) return false;
+    const id = shortId();
+    await this.ctx.storage.put("img:" + id, { type, data: bytes });
+    const chat = (this.state.chats[sid] ??= []);
+    chat.push({ id: shortId(), from, text: from === "you" ? "" : "Looked at this", status: "sent", ts: Date.now(), image: id });
+    if (chat.length > CHAT_MAX) chat.splice(0, chat.length - CHAT_MAX);
+    // Forget the oldest pictures beyond the last few.
+    const ids = chat.filter((c) => c.image).map((c) => c.image as string);
+    for (const old of ids.slice(0, Math.max(0, ids.length - IMAGES_KEPT))) {
+      await this.ctx.storage.delete("img:" + old);
+      for (const c of chat) if (c.image === old) delete c.image;
+    }
+    return true;
+  }
+
   /**
    * Hold a finished session's Stop hook for one round (HOLD_S), waiting for a message from the
    * screen. A message turns into a new prompt (decision "block"); otherwise the hook is told to
@@ -615,18 +780,21 @@ export class Hub extends DurableObject<Record<string, unknown>> {
   private async listen(agent: Agent, sid: string): Promise<Response> {
     const until = agent.listenUntil ?? 0;
     if (until <= Date.now()) return empty();
-    this.listeners.get(sid)?.(); // only one hold per session
-    const woke = await new Promise<boolean>((resolve) => {
+    this.listeners.get(sid)?.("cancel"); // only one hold per session
+    const why = await new Promise<"message" | "cancel" | "timeout">((resolve) => {
       const timer = setTimeout(() => {
         this.listeners.delete(sid);
-        resolve(false);
+        resolve("timeout");
       }, Math.min(HOLD_S * 1000, Math.max(1000, until - Date.now())));
-      this.listeners.set(sid, () => {
+      this.listeners.set(sid, (w) => {
         clearTimeout(timer);
         this.listeners.delete(sid);
-        resolve(true);
+        resolve(w);
       });
     });
+    // You typed on the computer instead: let go without taking anything from the screen.
+    if (why === "cancel") return empty();
+    const woke = why === "message";
     const queued = this.takeQueued(sid);
     if (queued.length) {
       this.setAgent(agent, "working", oneLine(queued[0]));
@@ -919,7 +1087,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       }
       this.pushChat(agentId, "you", text, "queued");
       await this.commit({ kind: "chat", id: agentId });
-      this.listeners.get(agentId)?.();
+      this.listeners.get(agentId)?.("message");
       for (const ch of this.channels.values()) if (ch.agentId === agentId) this.channelPolls.get(ch.id)?.();
       return;
     }
@@ -929,7 +1097,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       if (!a) return;
       const minutes = Math.max(0, Math.min(LISTEN_MAX_MIN, Number(msg.minutes ?? 30) || 0));
       a.listenUntil = minutes ? Date.now() + minutes * 60 * 1000 : 0;
-      if (!minutes) this.listeners.get(a.id)?.();
+      if (!minutes) this.listeners.get(a.id)?.("cancel");
       await this.commit({ kind: "agent", id: a.id });
       return;
     }
@@ -1045,6 +1213,22 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       n++;
     }
     return n;
+  }
+
+  /** The excerpts a message replies to (the app attaches them as @"…excerpt….txt" files). */
+  private quoteFor(agent: Agent, raw: string): string {
+    const out: string[] = [];
+    for (const m of raw.matchAll(/([^"\\/]+excerpt_from_previous_claude_message\.txt)/g)) {
+      const q = agent.quotes?.[m[1]];
+      if (q) out.push(q);
+    }
+    return out.join("\n");
+  }
+
+  private pushYou(sid: string, text: string, quote: string): void {
+    this.pushChat(sid, "you", clip(text, CHAT_TEXT_MAX), "typed");
+    const line = this.state.chats[sid]?.at(-1);
+    if (line && quote) line.quote = clip(quote, 400);
   }
 
   private upsertAgent(id: string, source: Source, name: string, host: string, os: string): Agent {

@@ -52,6 +52,8 @@ CONFIG_LWIP_SNTP_MAX_SERVERS=2
 CONFIG_LV_COLOR_DEPTH_16=y
 # Screen changes capture the outgoing screen once instead of redrawing it every frame.
 CONFIG_LV_USE_SNAPSHOT=y
+# Chat pictures: PNGs are decoded with LVGL's lodepng (JPEGs use the P4's hardware decoder).
+CONFIG_LV_USE_LODEPNG=y
 CONFIG_LV_OS_FREERTOS=y
 CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_CLIB_STRING=y

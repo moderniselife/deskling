@@ -288,6 +288,26 @@ static void expect_text(const char *text)
 }
 
 // ------------------------------------------------------- fake device
+/* Pictures: a soft lilac gradient, delivered a moment later like a real download. */
+static char s_img_id[24];
+static void img_deliver(lv_timer_t *t)
+{
+    (void)t;
+    static uint16_t px[300 * 200];
+    for (int y = 0; y < 200; y++)
+        for (int x = 0; x < 300; x++) {
+            lv_color_t c = lv_color_mix(lv_color_hex(0xCFC4F2), lv_color_hex(0xF4B393), (uint8_t)(x * 255 / 300));
+            px[y * 300 + x] = lv_color_to_u16(c);
+        }
+    ui_image_ready(s_img_id, px, 300, 200);
+}
+static void fake_fetch_image(const char *id)
+{
+    snprintf(s_img_id, sizeof(s_img_id), "%s", id);
+    lv_timer_t *t = lv_timer_create(img_deliver, 200, NULL);
+    lv_timer_set_repeat_count(t, 1);
+}
+
 static ui_device_info_t s_info;
 static int s_pending_scan, s_pending_connect, s_pending_update;
 
@@ -334,7 +354,7 @@ static void fake_touch_save(const float m[6])
     printf("  -> touch calibration %.3f %.3f %.1f | %.3f %.3f %.1f\n", m[0], m[1], m[2], m[3], m[4], m[5]);
 }
 static const ui_platform_t s_fake = {fake_scan, fake_connect, fake_relay_set, fake_check, fake_start, fake_bright, fake_restart, fake_sound, fake_set_sound,
-                                     fake_touch_raw, fake_touch_calibrated, fake_touch_save};
+                                     fake_touch_raw, fake_touch_calibrated, fake_touch_save, fake_fetch_image};
 
 static void expect_sound(const char *name)
 {
@@ -736,6 +756,7 @@ int main(int argc, char **argv)
         printf("%s  dragging the chat scrolls back through it (%d -> %d)\n", scrolled ? "PASS" : "FAIL", (int)before, (int)lv_obj_get_scroll_y(list));
         if (!scrolled) s_failures++;
         lv_obj_scroll_to_y(list, 0, LV_ANIM_OFF);
+        lv_obj_send_event(list, LV_EVENT_SCROLL_END, NULL);
         run(100);
         apply("chat_live");
         run(600);

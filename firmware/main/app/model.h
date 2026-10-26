@@ -45,7 +45,10 @@ typedef struct {
     char id[16];
     char text[1216];
     bool from_you;
-    bool step; // a tool step it took ("Editing scr_chat.c"), not a message
+    bool step;    // a tool step it took ("Editing scr_chat.c"), not a message
+    bool thought; // a line of its thinking (shown like a step)
+    char image[24]; // a picture in this message, fetched from the relay by id
+    char quote[420]; // the bit of Claude's message you replied to
     dk_chat_status_t status;
     int64_t ts;
 } dk_chat_t;
@@ -78,6 +81,8 @@ typedef struct {
     int helpers_n;
     bool listening;       // "Keep listening" is on: when it finishes it waits for a message from here
     int64_t listen_until; // relay clock, ms
+    char model[40];       // model of its latest reply, e.g. "claude-opus-5-5"
+    int32_t context;      // tokens in its context window
 } dk_agent_t;
 
 typedef struct {

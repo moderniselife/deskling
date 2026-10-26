@@ -115,6 +115,8 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
         a->can_message = get_bool(it, "canMessage");
         a->listening = get_bool(it, "listening");
         a->listen_until = get_i64(it, "listenUntil");
+        copy_str(a->model, sizeof(a->model), it, "model");
+        a->context = (int32_t)get_i64(it, "context");
         const cJSON *c;
         const cJSON *chat = cJSON_GetObjectItemCaseSensitive(it, "chat");
         int skip = cJSON_GetArraySize(chat) - DK_MAX_CHAT; // keep the newest lines
@@ -126,7 +128,10 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
             copy_str(line->id, sizeof(line->id), c, "id");
             copy_str(line->text, sizeof(line->text), c, "text");
             line->from_you = str_is(c, "from", "you");
-            line->step = str_is(c, "from", "tool");
+            line->thought = str_is(c, "from", "thought");
+            line->step = line->thought || str_is(c, "from", "tool");
+            copy_str(line->image, sizeof(line->image), c, "image");
+            copy_str(line->quote, sizeof(line->quote), c, "quote");
             line->status = str_is(c, "status", "queued") ? DK_CHAT_QUEUED : str_is(c, "status", "delivered") ? DK_CHAT_DELIVERED : str_is(c, "status", "typed") ? DK_CHAT_TYPED : DK_CHAT_SENT;
             line->ts = get_i64(c, "ts");
         }

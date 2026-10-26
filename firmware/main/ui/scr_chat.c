@@ -6,8 +6,9 @@
 
 static struct {
     lv_obj_t *scr, *face, *badge_row, *name, *status, *delivery;
-    lv_obj_t *bubbles, *quick, *input_row, *ta, *kb, *helpers, *helper_list, *listen, *listen_label;
+    lv_obj_t *bubbles, *quick, *input_row, *ta, *kb, *helpers, *helper_list, *listen, *listen_label, *usage;
     bool listening;
+    bool follow; // the conversation is pinned to its newest line (you haven't scrolled back)
     char agent_id[72];
     char last_line[16];
 } c;
@@ -25,6 +26,13 @@ static void send_text(const char *text)
     if (!text || !text[0] || !c.agent_id[0]) return;
     dk_send_message(c.agent_id, text);
     deskling_celebrate(c.face, 900);
+}
+
+/* You scrolled: stay where you are unless you came back to the newest line. */
+static void bubbles_scrolled(lv_event_t *e)
+{
+    (void)e;
+    c.follow = lv_obj_get_scroll_bottom(c.bubbles) < 80;
 }
 
 static void listen_cb(lv_event_t *e)
@@ -84,7 +92,11 @@ lv_obj_t *scr_chat_create(void)
     lv_obj_set_size(left, 340, lv_pct(100));
     lv_obj_set_style_pad_hor(left, 26, 0);
     lv_obj_set_style_pad_ver(left, 24, 0);
-    dk_col(left, 14);
+    dk_col(left, 12);
+    // With helpers and listening on, the panel can outgrow the screen: let it scroll.
+    lv_obj_add_flag(left, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLL_ELASTIC);
+    lv_obj_set_scroll_dir(left, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(left, LV_SCROLLBAR_MODE_OFF);
 
     lv_obj_t *back = lv_button_create(left);
     lv_obj_remove_style_all(back);
@@ -100,7 +112,7 @@ lv_obj_t *scr_chat_create(void)
     dk_press_style(back);
 
     lv_obj_t *fw = dk_box(left);
-    lv_obj_set_size(fw, lv_pct(100), 170);
+    lv_obj_set_size(fw, lv_pct(100), 150);
     dk_overflow(fw, 60);
     c.face = deskling_create(fw, 160, DK_FACE);
     lv_obj_align(c.face, LV_ALIGN_CENTER, 0, 0);
@@ -113,6 +125,8 @@ lv_obj_t *scr_chat_create(void)
     c.status = dk_label(left, DK_FONT_M, DK_INK_SOFT, "");
     lv_obj_set_width(c.status, lv_pct(100));
     lv_label_set_long_mode(c.status, LV_LABEL_LONG_MODE_WRAP);
+    c.usage = dk_label(left, DK_FONT_XS, DK_MUTED, "");
+    lv_obj_set_width(c.usage, lv_pct(100));
 
     lv_obj_t *info = dk_card(left, DK_CARD, 22);
     lv_obj_set_width(info, lv_pct(100));
@@ -159,6 +173,7 @@ lv_obj_t *scr_chat_create(void)
     // Bubbles are plain labels, so the list itself has to take the press or a drag can't scroll it.
     lv_obj_add_flag(c.bubbles, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_ELASTIC);
     lv_obj_set_scroll_dir(c.bubbles, LV_DIR_VER);
+    lv_obj_add_event_cb(c.bubbles, bubbles_scrolled, LV_EVENT_SCROLL_END, NULL);
     lv_obj_set_scrollbar_mode(c.bubbles, LV_SCROLLBAR_MODE_OFF);
 
     c.quick = dk_box(right);
@@ -217,7 +232,7 @@ lv_obj_t *scr_chat_create(void)
     return c.scr;
 }
 
-static lv_obj_t *bubble(const char *text, bool mine, const char *meta)
+static lv_obj_t *bubble(const char *text, bool mine, const char *meta, const char *image, const char *quote)
 {
     lv_obj_t *wrap = dk_box(c.bubbles);
     lv_obj_set_width(wrap, lv_pct(100));
@@ -226,15 +241,47 @@ static lv_obj_t *bubble(const char *text, bool mine, const char *meta)
     lv_obj_t *b = dk_card(wrap, mine ? DK_INK : DK_LINE, 24);
     lv_obj_set_style_pad_hor(b, 18, 0);
     lv_obj_set_style_pad_ver(b, 14, 0);
-    lv_obj_t *l = dk_label(b, DK_FONT_M, mine ? DK_GROUND : DK_INK, text);
-    lv_obj_set_style_max_width(l, 680, 0);
-    lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
+    if ((image && image[0]) || (quote && quote[0])) dk_col(b, 10);
+    if (quote && quote[0]) {
+        // What you replied to: a quiet block with a bar down its side, like a reply in the app.
+        lv_obj_t *q = dk_box(b);
+        lv_obj_set_style_border_side(q, LV_BORDER_SIDE_LEFT, 0);
+        lv_obj_set_style_border_width(q, 4, 0);
+        lv_obj_set_style_border_color(q, DK_LILAC, 0);
+        lv_obj_set_style_pad_left(q, 12, 0);
+        lv_obj_t *ql = dk_label(q, DK_FONT_S, mine ? DK_LILAC_SOFT : DK_MUTED, quote);
+        lv_obj_set_width(ql, 600);
+        lv_obj_set_height(ql, LV_SIZE_CONTENT);
+        lv_obj_set_style_max_height(ql, 96, 0);
+        lv_label_set_long_mode(ql, LV_LABEL_LONG_MODE_DOTS);
+    }
+    if (image && image[0]) {
+        bool failed = false;
+        const lv_image_dsc_t *img = ui_image_get(image, &failed);
+        if (img) {
+            lv_obj_t *pic = lv_image_create(b);
+            lv_image_set_src(pic, img);
+            lv_obj_set_style_radius(pic, 14, 0);
+            lv_obj_set_style_clip_corner(pic, true, 0);
+        } else {
+            // Room for the picture while it downloads, so the chat doesn't jump.
+            lv_obj_t *ph = dk_card(b, mine ? DK_INK_SOFT : DK_CARD, 14);
+            lv_obj_set_size(ph, 320, 200);
+            lv_obj_t *pl = dk_label(ph, DK_FONT_S, mine ? DK_GROUND : DK_MUTED, failed ? "Couldn't load this picture" : "Loading the picture...");
+            lv_obj_center(pl);
+        }
+    }
+    if (text && text[0]) {
+        lv_obj_t *l = dk_label(b, DK_FONT_M, mine ? DK_GROUND : DK_INK, text);
+        lv_obj_set_style_max_width(l, 680, 0);
+        lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
+    }
     if (meta) dk_label(wrap, DK_FONT_XS, DK_MUTED, meta);
     return wrap;
 }
 
 /* A step it took: a quiet line with a dot, like the app's list of steps. */
-static lv_obj_t *step_row(const char *text)
+static lv_obj_t *step_row(const char *text, bool thought)
 {
     lv_obj_t *row = dk_box(c.bubbles);
     lv_obj_set_width(row, lv_pct(100));
@@ -245,8 +292,8 @@ static lv_obj_t *step_row(const char *text)
     lv_obj_set_size(dot, 8, 8);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(dot, DK_LILAC, 0);
-    lv_obj_t *l = dk_label(row, DK_FONT_S, DK_MUTED, text);
+    lv_obj_set_style_bg_color(dot, thought ? DK_PEACH : DK_LILAC, 0);
+    lv_obj_t *l = dk_label(row, DK_FONT_S, thought ? DK_INK_SOFT : DK_MUTED, text);
     lv_obj_set_flex_grow(l, 1);
     lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
     return row;
@@ -292,6 +339,8 @@ static void rebuild_head(const dk_agent_t *a)
         sig = dk_hash(sig, a->helpers, sizeof(a->helpers[0]) * a->helpers_n);
         sig = dk_hash(sig, &a->helpers_n, sizeof(a->helpers_n));
         sig = dk_hash(sig, &a->listening, sizeof(a->listening));
+        sig = dk_hash_str(sig, a->model);
+        sig = dk_hash(sig, &a->context, sizeof(a->context));
     }
     if (sig == s_head_sig) return;
     s_head_sig = sig;
@@ -312,6 +361,25 @@ static void rebuild_head(const dk_agent_t *a)
     char st[160];
     snprintf(st, sizeof(st), "%s%s%s", dk_state_label(a->state), a->task[0] ? " · " : "", a->task);
     dk_set_text(c.status, st);
+    char mc[80] = "";
+    if (a->model[0]) {
+        // "claude-opus-5-5" -> "Opus 5.5"
+        const char *m = strncmp(a->model, "claude-", 7) == 0 ? a->model + 7 : a->model;
+        char fam[24] = "";
+        int maj = 0, min = 0;
+        if (sscanf(m, "%23[a-z]-%d-%d", fam, &maj, &min) >= 2) {
+            fam[0] = (char)(fam[0] >= 'a' && fam[0] <= 'z' ? fam[0] - 32 : fam[0]);
+            if (min) snprintf(mc, sizeof(mc), "%s %d.%d", fam, maj, min);
+            else snprintf(mc, sizeof(mc), "%s %d", fam, maj);
+        } else {
+            snprintf(mc, sizeof(mc), "%s", m);
+        }
+    }
+    if (a->context > 0) {
+        size_t n = strlen(mc);
+        snprintf(mc + n, sizeof(mc) - n, "%s%dk tokens in context", mc[0] ? " · " : "", (int)((a->context + 500) / 1000));
+    }
+    dk_set_text(c.usage, mc);
     c.listening = a->listening;
     dk_set_text(c.delivery, a->channel ? "Live channel: messages arrive straight away."
                             : a->listening ? "Listening: when Claude finishes, it waits for your next message from here."
@@ -388,6 +456,7 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     if (a) {
         for (int i = 0; i < a->chat_n; i++) {
             sig = dk_hash_str(sig, a->chat[i].id);
+            sig = dk_hash_str(sig, a->chat[i].image);
             sig = dk_hash(sig, &a->chat[i].status, sizeof(a->chat[i].status));
         }
         if (!a->chat_n) {
@@ -400,7 +469,10 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     s_chat_sig = sig;
 
     bool new_line = tail && strcmp(tail->id, c.last_line) != 0;
-    bool follow = near_bottom() || new_line || !animate_new;
+    // Follow the newest line if you're at the bottom (or just opened the chat); if you've
+    // scrolled back to read, new lines arrive below without moving you.
+    bool opening = c.last_line[0] == '\0';
+    bool follow = c.follow || near_bottom() || opening;
     lv_coord_t keep = lv_obj_get_scroll_y(c.bubbles);
     lv_obj_clean(c.bubbles);
     lv_obj_t *spacer = dk_box(c.bubbles);
@@ -409,8 +481,8 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     if (!a) return;
 
     if (a->chat_n == 0) {
-        if (a->last_prompt[0]) bubble(a->last_prompt, true, "From your computer");
-        if (a->last_message[0]) bubble(a->last_message, false, dk_source_label(a->source));
+        if (a->last_prompt[0]) bubble(a->last_prompt, true, "From your computer", NULL, NULL);
+        if (a->last_message[0]) bubble(a->last_message, false, dk_source_label(a->source), NULL, NULL);
         if (!a->last_prompt[0] && !a->last_message[0]) {
             lv_obj_t *l = dk_label(c.bubbles, DK_FONT_M, DK_MUTED, "Nothing said yet. Send a message or a quick reply.");
             lv_obj_set_width(l, lv_pct(100));
@@ -420,14 +492,18 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     lv_obj_t *last = NULL;
     for (int i = 0; i < a->chat_n; i++) {
         const dk_chat_t *line = &a->chat[i];
-        last = line->step ? step_row(line->text) : bubble(line->text, line->from_you, chat_meta(a, line));
+        last = line->step ? step_row(line->text, line->thought) : bubble(line->text, line->from_you, chat_meta(a, line), line->image, line->quote);
     }
     if (typing_on) typing();
     if (animate_new && last && new_line) dk_anim_pop(lv_obj_get_child(last, 0), 0);
     snprintf(c.last_line, sizeof(c.last_line), "%s", tail ? tail->id : "");
     lv_obj_update_layout(c.bubbles);
-    if (follow) lv_obj_scroll_to_y(c.bubbles, LV_COORD_MAX, animate_new ? LV_ANIM_ON : LV_ANIM_OFF);
-    else lv_obj_scroll_to_y(c.bubbles, keep, LV_ANIM_OFF);
+    if (follow) {
+        lv_obj_scroll_to_y(c.bubbles, LV_COORD_MAX, animate_new ? LV_ANIM_ON : LV_ANIM_OFF);
+        c.follow = true;
+    } else {
+        lv_obj_scroll_to_y(c.bubbles, keep, LV_ANIM_OFF);
+    }
 }
 
 static void rebuild(bool animate_new)
@@ -441,10 +517,22 @@ void scr_chat_show(const char *agent_id)
 {
     snprintf(c.agent_id, sizeof(c.agent_id), "%s", agent_id ? agent_id : "");
     c.last_line[0] = '\0';
+    c.follow = true;
     lv_textarea_set_text(c.ta, "");
     kb_hide();
     s_head_sig = s_chat_sig = 0; // always build afresh when opening a chat
     rebuild(false);
+}
+
+void scr_chat_images_changed(void)
+{
+    if (!c.scr || !c.agent_id[0]) return;
+    // A picture arrived: redraw in place, without moving you if you'd scrolled back.
+    bool at_bottom = c.follow;
+    lv_coord_t y = lv_obj_get_scroll_y(c.bubbles);
+    s_chat_sig = 0;
+    rebuild(false);
+    if (!at_bottom) lv_obj_scroll_to_y(c.bubbles, y, LV_ANIM_OFF);
 }
 
 void scr_chat_refresh(dk_cause_t cause)

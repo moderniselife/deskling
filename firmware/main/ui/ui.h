@@ -77,7 +77,13 @@ typedef struct {
     bool (*touch_raw)(int32_t *a, int32_t *b);
     bool (*touch_calibrated)(void);
     void (*touch_save_calibration)(const float m[6]); // applies it straight away, and saves it
+    // Fetch a chat picture from the relay (GET /img/<id>), shrink it to fit within
+    // UI_IMAGE_MAX_W x UI_IMAGE_MAX_H, and hand it back with ui_image_ready. NULL = no pictures.
+    void (*fetch_image)(const char *id);
 } ui_platform_t;
+
+#define UI_IMAGE_MAX_W 520
+#define UI_IMAGE_MAX_H 360
 
 void ui_set_platform(const ui_platform_t *p);
 void ui_set_device_info(const ui_device_info_t *info);
@@ -86,6 +92,8 @@ void ui_wifi_connect_result(bool ok, const char *message);
 void ui_update_status(ui_update_state_t state, int progress, const char *latest, const char *message);
 /** Show the touch calibration screen (e.g. from the web page when touch is too far off to use). */
 void ui_start_touch_calibration(void);
+/** A chat picture arrived (pixels are copied; NULL = it couldn't be fetched). Call with the LVGL lock held. */
+void ui_image_ready(const char *id, const uint16_t *rgb565, int w, int h);
 /** Play a sound, unless muted or it's quiet hours. */
 void ui_sound(dk_sound_t s);
 

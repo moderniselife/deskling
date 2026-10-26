@@ -155,6 +155,54 @@ await fetch(`${URL_BASE}/api/event`, { method: "POST", headers: auth, body: JSON
 s = await waitFor((m) => m.agents.some((a) => a.id === "nightly"));
 check("custom agent status", s.agents.find((a) => a.id === "nightly").task === "Reading inboxes");
 
+// The transcript: words as they're written, thoughts, steps, pictures, model and context size.
+const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const lines = [
+  { type: "assistant", uuid: "u1", message: { model: "claude-opus-5-5", usage: { input_tokens: 10, cache_read_input_tokens: 41000, output_tokens: 5 }, content: [{ type: "thinking", thinking: "Checking the login form.\nLooking for the reset link." }, { type: "text", text: "Found it: **reset** link is missing." }, { type: "tool_use", name: "Edit", input: { file_path: "/a/Login.tsx" } }] } },
+  { type: "user", uuid: "u2", message: { content: [{ type: "tool_result", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }] }] } },
+  { type: "assistant", uuid: "u3", isSidechain: true, message: { content: [{ type: "text", text: "helper chatter" }] } },
+];
+const tr = await fetch(`${URL_BASE}/transcript?sid=s-smoke`, { method: "POST", headers: { ...auth, "content-type": "application/x-ndjson" }, body: lines.map((l) => JSON.stringify(l)).join("\n") + "\n" });
+check("transcript accepted", tr.ok);
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.image));
+const ag = s.agents.find((a) => a.id === "s-smoke");
+check("Claude's words arrive from the transcript", ag.chat.some((c) => c.from === "agent" && c.text === "Found it: reset link is missing."));
+check("thoughts arrive", ag.chat.filter((c) => c.from === "thought").length === 2);
+check("steps arrive", ag.chat.some((c) => c.from === "tool" && c.text === "Editing Login.tsx"));
+check("helpers' own transcript lines are skipped", !ag.chat.some((c) => c.text === "helper chatter"));
+check("model and context size", ag.model === "claude-opus-5-5" && ag.context === 41010);
+const imgId = ag.chat.find((c) => c.image).image;
+const img = await fetch(`${URL_BASE}/img/${imgId}`, { headers: auth });
+check("picture can be fetched", img.ok && img.headers.get("content-type") === "image/png" && (await img.arrayBuffer()).byteLength === 70);
+await fetch(`${URL_BASE}/transcript?sid=s-smoke`, { method: "POST", headers: auth, body: JSON.stringify(lines[0]) + "\n" });
+await new Promise((r) => setTimeout(r, 400));
+s = snapshots[snapshots.length - 1];
+check("the same line twice is only shown once", s.agents.find((a) => a.id === "s-smoke").chat.filter((c) => c.from === "thought").length === 2);
+
+// Replying to a quote, and a message you sent while Claude was working.
+await fetch(`${URL_BASE}/quote?sid=s-smoke&name=ab12-excerpt_from_previous_claude_message.txt`, { method: "POST", headers: { ...auth, "content-type": "text/plain" }, body: "You can read along and approve things." });
+await hook({ hook_event_name: "UserPromptSubmit", prompt: '<system-reminder id="x">tz</system-reminder>\n@"/mnt/a/ab12-excerpt_from_previous_claude_message.txt" do this too' });
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.text === "do this too"));
+check("a reply shows what it quotes", s.agents.find((a) => a.id === "s-smoke").chat.find((c) => c.text === "do this too").quote === "You can read along and approve things.");
+await fetch(`${URL_BASE}/transcript?sid=s-smoke`, { method: "POST", headers: auth, body: JSON.stringify({ type: "queue-operation", operation: "remove", reason: "absorbed_mid_turn", content: "<system-reminder>t</system-reminder>\nalso check the docs" }) + "\n" });
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.text === "also check the docs" && c.from === "you"));
+check("messages you send mid-turn show up", true);
+
+// Keep listening: a finished session waits for the screen; typing on the computer lets it go.
+ws.send(JSON.stringify({ type: "listen", agentId: "s-smoke", minutes: 5 }));
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.listening);
+let held = hook({ hook_event_name: "Stop", last_assistant_message: "Done." }, "?hold=1&round=0");
+await new Promise((r) => setTimeout(r, 800));
+ws.send(JSON.stringify({ type: "message", agentId: "s-smoke", text: "now add a test" }));
+const lout = await (await held).json();
+check("a screen message wakes a listening session", lout.decision === "block" && lout.reason.includes("now add a test"));
+held = hook({ hook_event_name: "Stop", last_assistant_message: "Test added." }, "?hold=1&round=0");
+await new Promise((r) => setTimeout(r, 800));
+await fetch(`${URL_BASE}/listen/release`, { method: "POST", headers: auth, body: JSON.stringify({ session_id: "s-smoke" }) });
+const rel = await held;
+check("typing on the computer releases it", rel.status === 204 || (await rel.text()) === "");
+ws.send(JSON.stringify({ type: "listen", agentId: "s-smoke", minutes: 0 }));
+
 await hook({ hook_event_name: "SessionEnd", reason: "other" });
 s = await waitFor((m) => !m.agents.some((a) => a.id === "s-smoke"));
 check("session end removes the agent", true);

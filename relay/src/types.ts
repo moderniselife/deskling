@@ -17,6 +17,10 @@ export interface Agent {
   updated: number;
   helpers?: Helper[]; // subagents it has handed work to
   listenUntil?: number; // "Keep listening" from the screen: when it finishes, it waits for you until then
+  streaming?: boolean; // its transcript reaches the relay, so words, thoughts and steps come from there
+  model?: string; // the model of its latest reply, e.g. "claude-opus-5-5"
+  context?: number; // tokens in its context window as of its latest reply
+  quotes?: Record<string, string>; // excerpts you replied to, by their file name
   helperNames?: string[]; // descriptions from Agent tool calls, waiting for their SubagentStart
 }
 
@@ -80,7 +84,9 @@ export interface Pending {
 
 export interface ChatLine {
   id: string;
-  from: "you" | "agent" | "tool"; // "tool" = a step it took (a command, a file it edited...)
+  from: "you" | "agent" | "tool" | "thought"; // "tool" = a step it took, "thought" = a line of its thinking
+  image?: string; // id of a picture in the chat (GET /img/<id>)
+  quote?: string; // the bit of Claude's message you were replying to
   text: string;
   status: "queued" | "delivered" | "sent" | "typed"; // "sent" = an agent reply, "typed" = you, on the computer
   ts: number;
