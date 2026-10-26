@@ -1,0 +1,76 @@
+# The whole test suite (scripts/test-all.sh) and the firmware for every board. Run the same
+# tests locally with scripts/test-all.sh.
+name: CI
+
+# Runs on pull requests and on demand (Actions tab → CI → Run workflow). To run it on every push to
+# main as well, add:   push: { branches: [main] }
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - name: Tools for the simulator
+        run: sudo apt-get update && sudo apt-get install -y cmake valgrind
+      - name: Relay dependencies
+        run: npm ci
+        working-directory: relay
+      - name: Playwright with Chromium
+        run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+        working-directory: tests/web
+      - name: Simulator dependencies (cached)
+        uses: actions/cache@v4
+        with:
+          path: firmware/.sim-deps
+          key: sim-deps-lvgl-v9.6.0
+      - name: Everything
+        run: scripts/test-all.sh
+      - name: Simulator screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screens
+          path: /tmp/tmp.*/sim/*.png
+          if-no-files-found: ignore
+
+  firmware:
+    name: Firmware (${{ matrix.variant }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container: espressif/idf:v6.1
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [p4r1-lcd1, p4r1-lcd2, p4r3-lcd1, p4r3-lcd2]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        shell: bash
+        working-directory: firmware
+        run: |
+          . $IDF_PATH/export.sh
+          v=${{ matrix.variant }}
+          DESKLING_VERSION="ci-${GITHUB_SHA::7}" idf.py -B build-$v -DSDKCONFIG=build-$v/sdkconfig \
+            -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;config/${v%-*}.defaults;config/${v#*-}.defaults" build
+          cd build-$v && python -m esptool --chip esp32p4 merge-bin -o deskling-$v-full.bin @flash_args
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.variant }}
+          path: |
+            firmware/build-${{ matrix.variant }}/deskling.bin
+            firmware/build-${{ matrix.variant }}/deskling-${{ matrix.variant }}-full.bin
+            firmware/build-${{ matrix.variant }}/deskling.elf

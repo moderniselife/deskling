@@ -23,6 +23,9 @@ __pycache__/
 
 # Firmware
 firmware/build-sim/
+firmware/build-sim-asan/
+firmware/sim-out/
+tests/web/node_modules/
 firmware/.sim-deps/
 firmware/sim-out/
 firmware/sdkconfig.defaults.local

@@ -1,0 +1,9 @@
+{
+  "name": "deskling-web-tests",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node site.test.mjs && node portal.test.mjs" },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
