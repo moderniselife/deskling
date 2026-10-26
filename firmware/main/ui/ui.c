@@ -669,7 +669,9 @@ void ui_apply_model(const dk_model_t *m)
         const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
         set_backlight(100);
         ui_sound(DK_SND_DONE);
-        banner("Claude finished!", a ? a->name : "", DK_GOOD_BG, LV_SYMBOL_OK, a ? a->id : NULL);
+        char title[64];
+        snprintf(title, sizeof(title), "%s finished!", a && a->source != DK_SRC_CUSTOM ? (a->source == DK_SRC_CLAUDE ? "Claude" : dk_source_label(a->source)) : "Claude");
+        banner(title, a ? a->name : "", DK_GOOD_BG, LV_SYMBOL_OK, a ? a->id : NULL);
         break;
     }
     case DK_CAUSE_FEED: {
@@ -691,7 +693,11 @@ void ui_apply_model(const dk_model_t *m)
         ui_sound(DK_SND_DONE);
         if (s_cur != SCR_HOME && s_cur != SCR_NIGHT) {
             const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
-            if (a) banner(a->source == DK_SRC_CURSOR ? "Cursor finished" : "Claude finished", a->name, DK_GOOD_BG, LV_SYMBOL_OK, a->id);
+            if (a) {
+                char title[64];
+                snprintf(title, sizeof(title), "%s finished", a->source == DK_SRC_CLAUDE ? "Claude" : a->source == DK_SRC_CUSTOM ? "Your agent" : dk_source_label(a->source));
+                banner(title, a->name, DK_GOOD_BG, LV_SYMBOL_OK, a->id);
+            }
         }
         break;
     default:
