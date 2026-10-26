@@ -268,6 +268,11 @@ await agentPost("/agent/update", { ...base, lines: [{ key: "p1", from: "agent", 
 await agentPost("/agent/update", { ...base, lines: [{ key: "p1", from: "agent", text: "Looking at the failing test now." }, { key: "c1", from: "tool", text: "Reading app.test.ts" }] });
 s = await waitFor((m) => m.agents.find((a) => a.id === "oc-smoke")?.chat.some((c) => c.text === "Looking at the failing test now."));
 oc = s.agents.find((a) => a.id === "oc-smoke");
+const PNG1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+await agentPost("/agent/update", { ...base, lines: [{ key: "img1", from: "agent", image: "data:image/png;base64," + PNG1 }] });
+await agentPost("/agent/update", { ...base, lines: [{ key: "img1", from: "agent", image: "data:image/png;base64," + PNG1 }] });
+s = await waitFor((m) => m.agents.find((a) => a.id === "oc-smoke")?.chat.some((c) => c.image));
+check("a bridge can show a picture, once", s.agents.find((a) => a.id === "oc-smoke").chat.filter((c) => c.image).length === 1);
 check("streamed text grows in place", oc.chat.filter((c) => c.from === "agent").length === 1 && oc.chat.some((c) => c.from === "tool"));
 check("a bridge that isn't polling can't be messaged", oc.canMessage === false);
 const bridgeAsk = agentPost("/agent/ask", { id: "oc-smoke", kind: "permission", tool: "Bash", summary: "rm -rf dist", wait: 10 });

@@ -325,6 +325,9 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
             const role = roles.get(part.messageID);
             if (role === "user") queue(sid, {}, { key: part.id, from: "you", text: part.text });
             else if (role === "assistant") queue(sid, {}, { key: part.id, from: "agent", text: part.text });
+          } else if (part.type === "file" && /^image\/(png|jpeg)$/.test(part.mime || "") && String(part.url || "").startsWith("data:")) {
+            // A picture you attached, or one it produced.
+            queue(sid, {}, { key: part.id, from: roles.get(part.messageID) === "user" ? "you" : "agent", text: "", image: part.url });
           } else if (part.type === "reasoning" && part.text) {
             const text = firstLines(part.text);
             if (text) queue(sid, {}, { key: part.id, from: "thought", text });
@@ -334,6 +337,11 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
               const text = activity(part.tool, st.input, st.title);
               queue(sid, st.status === "running" ? { task: text } : {}, { key: part.id, from: "tool", text: st.status === "error" ? text + " (failed)" : text });
             }
+            // Pictures a tool looked at (screenshots, images it read).
+            if (st.status === "completed" && Array.isArray(st.attachments))
+              st.attachments.forEach((a, i) => {
+                if (/^image\/(png|jpeg)$/.test(a.mime || "") && String(a.url || "").startsWith("data:")) queue(sid, {}, { key: `${part.id}-${i}`, from: "agent", text: "", image: a.url });
+              });
             if (part.tool === "task" && st.metadata?.sessionId) {
               const h = s.helpers.get(st.metadata.sessionId) || { id: st.metadata.sessionId, name: st.input?.description || "Helper", task: "", done: false };
               h.done = st.status === "completed" || st.status === "error";

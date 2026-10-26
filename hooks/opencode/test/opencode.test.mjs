@@ -187,6 +187,13 @@ try {
   await until("the reply to the screen message", () => lines(sid).some((l) => l.from === "agent" && /local model\. say hello/.test(l.text)), 30000);
   check("a message from the screen starts a turn", true);
 
+  // A picture you attach reaches the screen.
+  const PNG1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  await until("idle", async () => (await api("GET", `/session/status?directory=${encodeURIComponent(proj)}`))[sid] === undefined, 30000);
+  await api("POST", `/session/${sid}/prompt_async?directory=${encodeURIComponent(proj)}`, { parts: [{ type: "text", text: "what is in this picture" }, { type: "file", mime: "image/png", filename: "dot.png", url: "data:image/png;base64," + PNG1 }] });
+  await until("the picture", () => lines(sid).some((l) => l.from === "you" && l.image?.startsWith("data:image/png")), 30000).catch(() => {});
+  check("a picture you attach goes to the screen", lines(sid).some((l) => l.from === "you" && l.image?.startsWith("data:image/png")), JSON.stringify(lines(sid).map((l) => [l.from, (l.text || "").slice(0, 30), !!l.image])));
+
   // Denied on the screen: the command doesn't run.
   relay.answer = { decision: "deny" };
   const before = relay.asks.length;

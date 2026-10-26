@@ -308,7 +308,7 @@ Anything that can make HTTP requests can put a full session on Deskling, the sam
 
 | Request | What it does |
 | --- | --- |
-| `POST /agent/update` | Report a session: `{id, source, name, host, os, state, task, model, context, helpers, lines}`. `state` is `idle`, `working`, `waiting`, `needs_you` or `done`. `lines` are chat lines `{key, from, text}` with `from` one of `you`, `agent`, `tool` or `thought`; sending a `key` again updates that line, so streamed text grows in place. `{id, end: true}` removes the session. |
+| `POST /agent/update` | Report a session: `{id, source, name, host, os, state, task, model, context, helpers, lines}`. `state` is `idle`, `working`, `waiting`, `needs_you` or `done`. `lines` are chat lines `{key, from, text}` with `from` one of `you`, `agent`, `tool` or `thought`; sending a `key` again updates that line, so streamed text grows in place. A line can be a picture instead: `{key, from, image: "data:image/png;base64,…"}` (PNG or JPEG). `{id, end: true}` removes the session. |
 | `POST /agent/ask` | Ask on the screen and wait for the answer: `{id, key, kind: "permission" or "question", tool, summary, detail, questions, wait}`. Returns `{decision: "allow" or "deny"}`, `{answers: {question: label}}` or `{timeout: true}`. |
 | `POST /agent/resolve` | `{id, key}`: the request was answered somewhere else, so take it off the screen. |
 | `GET /agent/poll?ids=a,b&wait=25` | Wait for messages typed on the screen for those sessions: `{messages: [{id, text}]}`. While a bridge polls, its sessions accept messages from the screen. |

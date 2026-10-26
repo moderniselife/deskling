@@ -743,6 +743,13 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const chat = (this.state.chats[id] ??= []);
     for (const l of Array.isArray(b.lines) ? (b.lines as Record<string, unknown>[]).slice(0, 40) : []) {
       const from = (["you", "agent", "tool", "thought"].includes(String(l.from)) ? l.from : "agent") as ChatLine["from"];
+      // A picture: { key, from, image: "data:image/png;base64,…" }, shown once per key.
+      if (typeof l.image === "string") {
+        const m = /^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/s.exec(l.image);
+        const k = l.key ? oneLine(l.key, 80) : "";
+        if (m && !(k && chat.some((c) => c.key === k)) && (await this.addImage(id, from === "you" ? "you" : "agent", { source: { type: "base64", media_type: m[1], data: m[2] } }, k))) message = true;
+        continue;
+      }
       const text = from === "thought" ? oneLine(readable(l.text), 140) : clip(readable(l.text), CHAT_TEXT_MAX);
       if (!text) continue;
       const key = l.key ? oneLine(l.key, 80) : "";
@@ -1056,7 +1063,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     return json({ ok: true });
   }
 
-  private async addImage(sid: string, from: "you" | "agent", block: Record<string, unknown>): Promise<boolean> {
+  private async addImage(sid: string, from: "you" | "agent", block: Record<string, unknown>, key = ""): Promise<boolean> {
     const src = (block.source ?? {}) as Record<string, unknown>;
     if (src.type !== "base64" || typeof src.data !== "string") return false;
     const type = String(src.media_type ?? "image/png");
@@ -1073,7 +1080,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const id = shortId();
     await this.ctx.storage.put("img:" + id, { type, data: bytes });
     const chat = (this.state.chats[sid] ??= []);
-    chat.push({ id: shortId(), from, text: from === "you" ? "" : "Looked at this", status: "sent", ts: Date.now(), image: id });
+    chat.push({ id: shortId(), from, text: from === "you" ? "" : "Looked at this", status: "sent", ts: Date.now(), image: id, ...(key ? { key } : {}) });
     if (chat.length > CHAT_MAX) chat.splice(0, chat.length - CHAT_MAX);
     // Forget the oldest pictures beyond the last few.
     const ids = chat.filter((c) => c.image).map((c) => c.image as string);
