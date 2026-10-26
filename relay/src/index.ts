@@ -12,6 +12,9 @@ export interface Env {
 }
 
 const DEFAULT_FIRMWARE_URL = "https://deskling.mojolayers.com/firmware/";
+/** Deskling's face: lilac head with ears, ink eyes, peach cheeks, on cream. */
+const APP_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#FBF6EF"/><circle cx="160" cy="150" r="58" fill="#CFC4F2"/><circle cx="352" cy="150" r="58" fill="#CFC4F2"/><circle cx="160" cy="150" r="30" fill="#BDB1EA"/><circle cx="352" cy="150" r="30" fill="#BDB1EA"/><rect x="76" y="140" width="360" height="290" rx="120" fill="#CFC4F2"/><rect x="118" y="182" width="276" height="206" rx="88" fill="#FFF8EF"/><rect x="186" y="244" width="30" height="48" rx="15" fill="#2A2433"/><rect x="296" y="244" width="30" height="48" rx="15" fill="#2A2433"/><ellipse cx="170" cy="318" rx="26" ry="16" fill="#F4B393"/><ellipse cx="342" cy="318" rx="26" ry="16" fill="#F4B393"/><path d="M232 326q24 22 48 0" fill="none" stroke="#2A2433" stroke-width="12" stroke-linecap="round"/></svg>`;
+
 const html = (body: string) => new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 
 async function tokenMatches(given: string | null, expected: string | undefined): Promise<boolean> {
@@ -43,6 +46,10 @@ export default {
     // /app is Deskling in a browser (/sim is its old address).
     if (req.method === "GET") {
       if (url.pathname === "/app" || url.pathname === "/sim") return html(APP_HTML);
+      // So /app can be added to a phone's home screen.
+      if (url.pathname === "/app.webmanifest")
+        return new Response(JSON.stringify({ name: "Deskling", short_name: "Deskling", start_url: "/app", display: "standalone", background_color: "#FBF6EF", theme_color: "#FBF6EF", icons: [{ src: "/app-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }] }), { headers: { "content-type": "application/manifest+json" } });
+      if (url.pathname === "/app-icon.svg") return new Response(APP_ICON, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
       if (url.pathname === "/setup") return html(SETUP_HTML);
       if (url.pathname === "/flash") {
         let fw = env.FIRMWARE_URL || DEFAULT_FIRMWARE_URL;
