@@ -18,6 +18,7 @@
 #include "freertos/task.h"
 #include "net.h"
 #include "ota.h"
+#include "images.h"
 #include "audio.h"
 #include "board.h"
 #include "esp_lvgl_port.h"
@@ -145,7 +146,13 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddNumberToObject(d, "kpx", ds.kpx);
     cJSON_AddStringToObject(d, "bands", ds.internal_bands ? "internal" : "psram");
     cJSON_AddNumberToObject(d, "band_lines", ds.band_lines);
-    cJSON *r = cJSON_AddObjectToObject(o, "relay");
+    images_stats_t is = images_stats();
+    cJSON *im = cJSON_AddObjectToObject(o, "images");
+    cJSON_AddNumberToObject(im, "requested", is.requested);
+    cJSON_AddNumberToObject(im, "done", is.done);
+    cJSON_AddNumberToObject(im, "failed", is.failed);
+    cJSON_AddStringToObject(im, "last", is.last);
+        cJSON *r = cJSON_AddObjectToObject(o, "relay");
     cJSON_AddStringToObject(r, "url", st->relay_url);
     cJSON_AddBoolToObject(r, "configured", settings_relay_configured());
     cJSON_AddBoolToObject(r, "online", net_relay_online());

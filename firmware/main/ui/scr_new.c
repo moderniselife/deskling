@@ -119,7 +119,28 @@ static void build(void)
         lv_obj_add_flag(n.project_box, LV_OBJ_FLAG_HIDDEN);
     }
     if (!g_model->targets_n) {
-        lv_label_set_text(n.hint, "Nowhere to start one yet. Add a cloud routine on your relay's setup page, or run the Deskling runner on a computer.");
+        // Nothing set up yet: say how, with the setup page one scan away.
+        lv_obj_t *card = dk_card(n.where, DK_BUTTER_BG, 24);
+        lv_obj_set_width(card, lv_pct(100));
+        lv_obj_set_style_pad_all(card, 20, 0);
+        dk_row(card, 20);
+        lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_t *txt = dk_box(card);
+        lv_obj_set_flex_grow(txt, 1);
+        dk_col(txt, 8);
+        dk_label(txt, DK_FONT_L, DK_INK, "Nowhere to start one yet");
+        lv_obj_t *d = dk_label(txt, DK_FONT_S, DK_INK_SOFT,
+                               "On a computer: run the Deskling runner (one line to copy from your relay's setup page). "
+                               "It shows up here with its projects.\n\nIn the cloud: add a routine with an API trigger on the same page.");
+        lv_obj_set_width(d, lv_pct(100));
+        lv_label_set_long_mode(d, LV_LABEL_LONG_MODE_WRAP);
+        if (g_info.relay_url[0]) {
+            char url[180];
+            size_t l = strlen(g_info.relay_url);
+            snprintf(url, sizeof(url), "%.*s/setup", (int)(l && g_info.relay_url[l - 1] == '/' ? l - 1 : l), g_info.relay_url);
+            ui_qr(card, url, 150);
+        }
+        lv_label_set_text(n.hint, "Scan the code to open your relay's setup page.");
         lv_obj_add_state(n.start, LV_STATE_DISABLED);
     } else {
         lv_label_set_text(n.hint, t && t->cloud ? "A new cloud session starts with this as its first message, and listens for you on Deskling."

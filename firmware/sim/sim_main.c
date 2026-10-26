@@ -723,8 +723,19 @@ int main(int argc, char **argv)
     shot("06_sessions");
     expect_text("Sessions");
 
-    tap("+  New session");
-    run(900);
+    {
+        // With nowhere to start a session, the screen says how to set one up.
+        dk_model_t *m = (dk_model_t *)g_model;
+        int keep = m->targets_n;
+        m->targets_n = 0;
+        tap("+  New session");
+        run(900);
+        expect_text("Nowhere to start one yet");
+        shot("06a_new_session_empty");
+        m->targets_n = keep;
+        scr_new_refresh();
+        run(300);
+    }
     tap("MacBook");
     run(300);
     tap("web-app");

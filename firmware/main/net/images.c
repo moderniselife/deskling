@@ -15,6 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include "settings.h"
 #include "ui.h"
 
@@ -31,6 +32,15 @@ typedef struct {
 
 static QueueHandle_t s_jobs;
 static jpeg_decoder_handle_t s_jpeg;
+static images_stats_t s_stats;
+
+static void note(const char *id, const char *what)
+{
+    snprintf(s_stats.last, sizeof(s_stats.last), "%.12s: %s", id, what);
+    ESP_LOGI(TAG, "%s", s_stats.last);
+}
+
+images_stats_t images_stats(void) { return s_stats; }
 
 static void *ps_malloc(size_t n) { return heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); }
 
@@ -66,8 +76,12 @@ static uint8_t *download(const char *id, size_t *len)
                 *len = got;
             }
         } else {
-            ESP_LOGW(TAG, "%s: status %d, %lld bytes", id, status, (long long)n);
+            char why[64];
+            snprintf(why, sizeof(why), "HTTP %d, %lld bytes", status, (long long)n);
+            note(id, why);
         }
+    } else {
+        note(id, "couldn't reach the relay");
     }
     esp_http_client_close(c);
     esp_http_client_cleanup(c);
@@ -192,21 +206,62 @@ static void worker(void *arg)
             else if (data[0] == 0xFF && data[1] == 0xD8) px = decode_jpeg(data, len, &w, &h);
         }
         free(data);
-        if (lvgl_port_lock(2000)) {
-            ui_image_ready(job.id, px, w, h);
-            lvgl_port_unlock();
+        if (px) {
+            s_stats.done++;
+            char ok[48];
+            snprintf(ok, sizeof(ok), "shown at %dx%d (%u bytes)", w, h, (unsigned)len);
+            note(job.id, ok);
+        } else {
+            s_stats.failed++;
+            if (data == NULL && !s_stats.last[0]) note(job.id, "download failed");
+            else if (len > 8) note(job.id, "couldn't decode it");
+        }
+        // Hand it to the UI; keep trying for the lock rather than leaving it "loading" forever.
+        for (int tries = 0; tries < 20; tries++) {
+            if (lvgl_port_lock(1000)) {
+                ui_image_ready(job.id, px, w, h);
+                lvgl_port_unlock();
+                break;
+            }
         }
         free(px);
     }
 }
 
+static void fail_later(lv_timer_t *t)
+{
+    char *id = lv_timer_get_user_data(t);
+    ui_image_ready(id, NULL, 0, 0);
+    free(id);
+}
+
+static bool s_started;
+
+static void start_worker(void)
+{
+    if (s_started) return;
+    s_jobs = xQueueCreate(16, sizeof(job_t));
+    // TLS plus PNG inflate want a roomy stack; internal RAM is tight, so it lives in PSRAM.
+    BaseType_t ok = xTaskCreatePinnedToCoreWithCaps(worker, "images", 24 * 1024, NULL, 3, NULL, tskNO_AFFINITY, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (ok != pdPASS) ok = xTaskCreate(worker, "images", 16 * 1024, NULL, 3, NULL);
+    s_started = ok == pdPASS && s_jobs;
+    if (!s_started) note("worker", "couldn't start (out of memory)");
+}
+
 void images_fetch(const char *id)
 {
-    if (!s_jobs) {
-        s_jobs = xQueueCreate(8, sizeof(job_t));
-        xTaskCreate(worker, "images", 16384, NULL, 3, NULL);
-    }
+    start_worker();
+    s_stats.requested++;
     job_t j = {0};
     snprintf(j.id, sizeof(j.id), "%s", id);
-    if (xQueueSend(s_jobs, &j, 0) != pdTRUE) ESP_LOGW(TAG, "queue full, dropped %s", id);
+    // Called from the UI with the LVGL lock held, so never block here.
+    if (!s_started || xQueueSend(s_jobs, &j, 0) != pdTRUE) {
+        s_stats.failed++;
+        note(id, s_started ? "too many pictures at once" : "picture loader isn't running");
+        // Say so on the next UI tick (we're inside the chat's redraw right now).
+        char *copy = strdup(j.id);
+        lv_timer_t *t = copy ? lv_timer_create(fail_later, 0, copy) : NULL;
+        if (t) lv_timer_set_repeat_count(t, 1);
+        else free(copy);
+    }
 }
