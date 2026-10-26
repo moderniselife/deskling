@@ -104,6 +104,7 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
     <p class="muted">Running <b id="fwver"></b> (<span id="fwvar"></span>). Deskling checks for updates by itself; you can also install a <code>.bin</code> from the <code>firmware-dist</code> branch here.</p>
     <p class="muted" id="perf"></p>
     <p class="muted" id="pics"></p>
+    <p class="msg bad" id="crash" hidden></p>
     <input id="fwfile" type="file" accept=".bin">
     <button id="upload">Install firmware</button>
     <progress id="fwprog" max="100" value="0" hidden></progress>
@@ -179,6 +180,7 @@ async function refresh() {
   if (s.display && s.display.frames) {
     const d = s.display;
     $('perf').textContent = `Screen: ${d.avg_ms} ms per redraw (draw ${d.draw_ms}, rotate ${d.rotate_ms}, copy wait ${d.copy_wait_ms}) for ${d.kpx}k pixels, worst ${d.worst_ms} ms, busy ${d.busy_pct}% · ${d.frames} redraws in the last 5 s · ${d.band_lines}-line bands in ${d.bands === 'internal' ? 'internal RAM' : 'PSRAM'}.`;
+    $('crash').hidden = !s.last_restart; $('crash').textContent = s.last_restart || '';
     const im = s.images || {};
     $('pics').textContent = im.requested ? `Chat pictures: ${im.done} shown, ${im.failed} failed of ${im.requested}. Latest: ${im.last || 'nothing yet'}.` : '';
   }

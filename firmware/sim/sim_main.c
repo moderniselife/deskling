@@ -631,6 +631,42 @@ int main(int argc, char **argv)
     ui_init();
     ui_set_platform(&s_fake);
 
+    // DK_REPLAY=<dir>/<name>.json: apply one real snapshot (say, saved from your relay), open every
+    // session's chat and render it, then stop. For chasing crashes with -fsanitize=address.
+    const char *replay = getenv("DK_REPLAY");
+    if (replay) {
+        snprintf(s_info.code, sizeof(s_info.code), "4821");
+        snprintf(s_info.relay_url, sizeof(s_info.relay_url), "https://relay.example");
+        ui_set_device_info(&s_info);
+        ui_set_connection(DK_CONN_ONLINE, NULL);
+        static char dir[400], name[100];
+        snprintf(dir, sizeof(dir), "%s", replay);
+        char *slash = strrchr(dir, '/');
+        if (slash) *slash = 0;
+        snprintf(name, sizeof(name), "%s", slash ? slash + 1 : replay);
+        char *dot = strrchr(name, '.');
+        if (dot) *dot = 0;
+        s_fixtures = dir;
+        run(3000);
+        apply(name);
+        run(1500);
+        ui_go(SCR_SESSIONS);
+        run(800);
+        shot("replay_sessions");
+        for (int i = 0; i < g_model->agent_n; i++) {
+            ui_open_chat(g_model->agents[i].id);
+            run(1500);
+            char nm[32];
+            snprintf(nm, sizeof(nm), "replay_chat_%d", i);
+            shot(nm);
+        }
+        ui_go(SCR_HOME);
+        run(1000);
+        shot("replay_home");
+        printf("replayed %s: %d sessions\n", replay, g_model->agent_n);
+        return 0;
+    }
+
     // ---- first-run setup
     snprintf(s_info.code, sizeof(s_info.code), "4821");
     snprintf(s_info.ap_ssid, sizeof(s_info.ap_ssid), "Deskling-7F3A");

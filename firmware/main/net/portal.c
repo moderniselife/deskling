@@ -19,6 +19,7 @@
 #include "net.h"
 #include "ota.h"
 #include "images.h"
+#include "crashlog.h"
 #include "audio.h"
 #include "board.h"
 #include "esp_lvgl_port.h"
@@ -154,6 +155,7 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddNumberToObject(d, "kpx", ds.kpx);
     cJSON_AddStringToObject(d, "bands", ds.internal_bands ? "internal" : "psram");
     cJSON_AddNumberToObject(d, "band_lines", ds.band_lines);
+    cJSON_AddStringToObject(o, "last_restart", crashlog_summary());
     images_stats_t is = images_stats();
     cJSON *im = cJSON_AddObjectToObject(o, "images");
     cJSON_AddNumberToObject(im, "requested", is.requested);
