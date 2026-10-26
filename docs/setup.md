@@ -76,6 +76,20 @@ echo '{"relay_url":"https://<your relay>","token":"<your token>"}' | claude plug
 
 `claude plugin configure deskling@deskling` on its own shows which options are still unset.
 
+**No place to enter plugin settings** (some versions of the Claude desktop app)? Put them in a file instead; the plugin reads it whenever its own options are blank. Your relay's `/setup` page has this with a copy button. Restart Claude afterwards.
+
+```bash
+# Mac
+mkdir -p ~/.deskling && printf 'DESKLING_URL="https://<your relay>"\nDESKLING_TOKEN="<your token>"\n' > ~/.deskling/config
+chmod 600 ~/.deskling/config
+```
+
+```powershell
+# Windows (PowerShell)
+New-Item -ItemType Directory -Force "$HOME\.deskling" | Out-Null
+Set-Content "$HOME\.deskling\config" "DESKLING_URL=`"https://<your relay>`"`nDESKLING_TOKEN=`"<your token>`""
+```
+
 **Check it:** start a session in any project. Within a second, it shows up in `/sim` as a session. Ask Claude to do something that needs permission, e.g. "run `ls` in a new terminal". The simulator jumps to the permission screen. Tap **Allow** and Claude carries on.
 
 Now try `remind me in 2 minutes to stretch`. Claude calls the `deskling_remind` tool, and the reminder lands on the screen.

@@ -82,8 +82,8 @@ a{color:var(--purple)}
     </section>
 
     <section>
-      <h2>Cursor, scripts and everything else</h2>
-      <p>Save this as <code>~/.deskling/config</code> (Windows: <code>%USERPROFILE%\\.deskling\\config</code>). The Cursor hooks and the <code>deskling</code> command read it.</p>
+      <h2>The config file: Claude desktop app, Cursor, scripts</h2>
+      <p>Save this as <code>~/.deskling/config</code> (Windows: <code>%USERPROFILE%\\.deskling\\config</code>). Everything reads it: the Claude Code plugin (handy when your Claude app has no place to enter plugin settings), the Cursor hooks and the <code>deskling</code> command. Restart Claude afterwards.</p>
       <div class="copy"><code id="conf"></code><button class="ghost" data-copy="confraw">Copy</button></div>
       <span id="confraw" hidden></span>
       <p class="muted">Cursor: see <a href="https://github.com/moderniselife/deskling/tree/main/hooks#cursor" target="_blank">hooks/README</a>.</p>

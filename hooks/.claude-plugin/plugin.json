@@ -1,18 +1,25 @@
 {
   "name": "deskling",
   "displayName": "Deskling",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Sends Claude Code activity to your Deskling desk screen and lets you approve permission requests from it.",
   "author": {
     "name": "moderniselife"
   },
   "repository": "https://github.com/moderniselife/deskling",
   "license": "MIT",
-  "keywords": ["notifications", "hardware", "esp32", "dashboard"],
+  "keywords": [
+    "notifications",
+    "hardware",
+    "esp32",
+    "dashboard"
+  ],
   "mcpServers": {
     "deskling": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/channel/deskling-channel.mjs"],
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/channel/deskling-channel.mjs"
+      ],
       "env": {
         "DESKLING_URL": "${user_config.relay_url}",
         "DESKLING_TOKEN": "${user_config.token}",
@@ -20,20 +27,25 @@
       }
     }
   },
-  "channels": [{ "server": "deskling", "displayName": "Deskling" }],
+  "channels": [
+    {
+      "server": "deskling",
+      "displayName": "Deskling"
+    }
+  ],
   "userConfig": {
     "relay_url": {
       "type": "string",
       "title": "Relay URL",
-      "description": "Your deployed Deskling relay, e.g. https://deskling-relay.<you>.workers.dev",
-      "required": true
+      "description": "Your Deskling relay, e.g. https://deskling-relay.<you>.workers.dev. Or leave blank and put DESKLING_URL in ~/.deskling/config instead.",
+      "required": false
     },
     "token": {
       "type": "string",
       "title": "Relay token",
-      "description": "The DESKLING_TOKEN secret you set on the relay",
+      "description": "The DESKLING_TOKEN secret you set on the relay. Or leave blank and put DESKLING_TOKEN in ~/.deskling/config instead.",
       "sensitive": true,
-      "required": true
+      "required": false
     },
     "device_name": {
       "type": "string",
