@@ -409,7 +409,8 @@ class AcpSession {
     this.def = def;
     this.cwd = cwd;
     this.id = `${def.id}-${randomBytes(5).toString("hex")}`;
-    this.name = basename(cwd);
+    // Agents without their own badge on the screen carry their name: "Goose · web-app".
+    this.name = def.source === "custom" ? `${def.name} · ${basename(cwd)}`.slice(0, 48) : basename(cwd);
     this.nextId = 1;
     this.calls = new Map();
     this.busy = false;
