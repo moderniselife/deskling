@@ -81,6 +81,12 @@ static lv_obj_t *slider_row(lv_obj_t *parent, const char *label, int32_t lo, int
     return sl;
 }
 
+static void calib_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_start_touch_calibration();
+}
+
 static void restart_cb(lv_event_t *e)
 {
     (void)e;
@@ -192,7 +198,12 @@ lv_obj_t *scr_settings_create(void)
     lv_obj_set_style_bg_color(st.quiet, lv_color_white(), LV_PART_KNOB);
     lv_obj_add_event_cb(st.quiet, sound_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-    lv_obj_t *rs = dk_button(c2, LV_SYMBOL_POWER "  Restart Deskling", false, DK_FONT_M);
+    lv_obj_t *brow = dk_box(c2);
+    lv_obj_set_size(brow, lv_pct(100), LV_SIZE_CONTENT);
+    dk_row(brow, 12);
+    lv_obj_t *tc = dk_button(brow, "Calibrate touch", false, DK_FONT_M);
+    lv_obj_add_event_cb(tc, calib_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *rs = dk_button(brow, LV_SYMBOL_POWER "  Restart", false, DK_FONT_M);
     lv_obj_add_event_cb(rs, restart_cb, LV_EVENT_CLICKED, NULL);
 
     scr_settings_refresh();

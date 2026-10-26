@@ -253,10 +253,19 @@ static void set_backlight(uint8_t pct)
     s_backlight_pct = pct;
 }
 
+// While the boot animation or touch setup is showing, anything else that wants the screen
+// waits its turn: the latest request is remembered and shown afterwards.
+static bool s_holding;
+static scr_id_t s_after_hold = SCR_HOME;
+
 void ui_go(scr_id_t id)
 {
+    if (s_holding && id != SCR_BOOT && id != SCR_CALIB) {
+        s_after_hold = id;
+        return;
+    }
     if (id == s_cur) return;
-    if (id == SCR_ALERT && s_cur != SCR_ALERT) s_before_alert = s_cur;
+    if (id == SCR_ALERT && s_cur != SCR_ALERT) s_before_alert = (s_cur == SCR_BOOT || s_cur == SCR_CALIB) ? SCR_HOME : s_cur;
     lv_screen_load_anim_t how = LV_SCREEN_LOAD_ANIM_FADE_IN;
     uint32_t ms = 250;
     if (id == SCR_ALERT) how = LV_SCREEN_LOAD_ANIM_OVER_TOP, ms = 380;
@@ -381,6 +390,42 @@ static void tick_cb(lv_timer_t *t)
     }
 }
 
+static void release_hold(void)
+{
+    s_holding = false;
+    scr_id_t next = s_after_hold;
+    if (next == SCR_HOME) scr_home_refresh(DK_CAUSE_HELLO, "");
+    ui_go(next);
+}
+
+static void calib_done(void)
+{
+    ui_banner("Touch is all set", "You can redo it any time from Settings.", DK_GOOD_BG);
+    release_hold();
+}
+
+static void boot_done(void)
+{
+    bool need_cal = g_platform && g_platform->touch_raw && g_platform->touch_calibrated && !g_platform->touch_calibrated();
+    if (need_cal) {
+        ui_go(SCR_CALIB);
+        scr_calib_start(calib_done);
+    } else {
+        release_hold();
+    }
+}
+
+void ui_start_touch_calibration(void)
+{
+    if (s_cur == SCR_CALIB || !g_platform || !g_platform->touch_raw) return;
+    if (!s_holding) {
+        s_after_hold = s_cur == SCR_BOOT ? SCR_HOME : s_cur;
+        s_holding = true;
+    }
+    ui_go(SCR_CALIB);
+    scr_calib_start(calib_done);
+}
+
 void ui_init(void)
 {
     s_model = calloc(1, sizeof(dk_model_t));
@@ -393,11 +438,16 @@ void ui_init(void)
     s_scr[SCR_NIGHT] = scr_night_create();
     s_scr[SCR_SETUP] = scr_setup_create();
     s_scr[SCR_SETTINGS] = scr_settings_create();
-    s_cur = SCR_HOME;
-    lv_screen_load(s_scr[SCR_HOME]);
+    s_scr[SCR_BOOT] = scr_boot_create();
+    s_scr[SCR_CALIB] = scr_calib_create();
     lv_timer_create(tick_cb, 1000, NULL);
     ui_gestures_init();
-    ui_gestures_on_screen(SCR_HOME);
+
+    s_cur = SCR_BOOT;
+    s_holding = true;
+    lv_screen_load(s_scr[SCR_BOOT]);
+    ui_gestures_on_screen(SCR_BOOT);
+    scr_boot_play(boot_done);
 }
 
 void ui_set_backlight_cb(ui_backlight_fn fn)

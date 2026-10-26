@@ -43,7 +43,7 @@ static struct {
 static bool allowed(gkind_t k)
 {
     scr_id_t s = ui_current();
-    if (s == SCR_ALERT || s == SCR_SETUP) return false;
+    if (s == SCR_ALERT || s == SCR_SETUP || s == SCR_BOOT || s == SCR_CALIB) return false;
     if (k == G_LEFT) return s == SCR_CHAT || s == SCR_SESSIONS || s == SCR_SETTINGS || s == SCR_NIGHT;
     return true;
 }
@@ -435,7 +435,7 @@ void ui_gestures_init(void)
 void ui_gestures_on_screen(scr_id_t id)
 {
     if (!g.pill) return;
-    bool show = id != SCR_SETUP && id != SCR_ALERT;
+    bool show = id != SCR_SETUP && id != SCR_ALERT && id != SCR_BOOT && id != SCR_CALIB;
     if (show) lv_obj_remove_flag(g.pill, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(g.pill, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_bg_color(g.pill, id == SCR_NIGHT ? DK_NIGHT_TEXT : DK_INK, 0);

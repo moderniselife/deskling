@@ -27,6 +27,9 @@ esp_err_t settings_set_relay(const char *url, const char *token);
 esp_err_t settings_set_tz(const char *tz);
 esp_err_t settings_set_brightness(uint8_t percent);
 esp_err_t settings_set_sound(uint8_t volume, bool quiet_night);
+/** Touch calibration (raw sensor -> landscape affine map). False if never calibrated. */
+bool settings_get_touch_cal(float m[6]);
+esp_err_t settings_set_touch_cal(const float m[6]);
 /** Forget everything set on the device (back to the build-time defaults). */
 esp_err_t settings_reset(void);
 

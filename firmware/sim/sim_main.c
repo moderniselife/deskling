@@ -2,6 +2,7 @@
 // their label, and writes screenshots (and animation frames) as PNGs.
 //   deskling_sim <fixtures dir> <out dir> [--frames]
 #include <dirent.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -218,6 +219,16 @@ static void check(bool ok, const char *what)
     if (!ok) s_failures++;
 }
 
+static void tap_at(int x, int y)
+{
+    s_ptr.x = x;
+    s_ptr.y = y;
+    s_ptr_state = LV_INDEV_STATE_PRESSED;
+    run(120);
+    s_ptr_state = LV_INDEV_STATE_RELEASED;
+    run(200);
+}
+
 static lv_obj_t *find_class(lv_obj_t *o, const lv_obj_class_t *cls)
 {
     if (lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) return NULL;
@@ -292,7 +303,24 @@ static void fake_sound(dk_sound_t snd)
     printf("  -> sound %s\n", s_last_sound);
 }
 static void fake_set_sound(uint8_t vol, bool quiet) { printf("  -> sound settings %u quiet=%d\n", vol, quiet); }
-static const ui_platform_t s_fake = {fake_scan, fake_connect, fake_relay_set, fake_check, fake_start, fake_bright, fake_restart, fake_sound, fake_set_sound};
+// Raw touch = screen position, so a good calibration comes out as the identity map.
+static bool s_calibrated;
+static float s_cal[6];
+static bool fake_touch_raw(int32_t *a, int32_t *b)
+{
+    *a = s_ptr.x;
+    *b = s_ptr.y;
+    return s_ptr_state == LV_INDEV_STATE_PRESSED;
+}
+static bool fake_touch_calibrated(void) { return s_calibrated; }
+static void fake_touch_save(const float m[6])
+{
+    memcpy(s_cal, m, sizeof(s_cal));
+    s_calibrated = true;
+    printf("  -> touch calibration %.3f %.3f %.1f | %.3f %.3f %.1f\n", m[0], m[1], m[2], m[3], m[4], m[5]);
+}
+static const ui_platform_t s_fake = {fake_scan, fake_connect, fake_relay_set, fake_check, fake_start, fake_bright, fake_restart, fake_sound, fake_set_sound,
+                                     fake_touch_raw, fake_touch_calibrated, fake_touch_save};
 
 static void expect_sound(const char *name)
 {
@@ -364,7 +392,29 @@ int main(int argc, char **argv)
     s_info.quiet_night = false;
     ui_set_device_info(&s_info);
     ui_set_connection(DK_CONN_SETUP, NULL);
+
+    // ---- boot animation, then touch setup (first boot: not calibrated yet)
+    if (want_frames) frames("boot", 2800, 40);
+    else {
+        run(1300);
+        shot("00_boot");
+        run(1500);
+    }
+    run(400);
+    expect_screen(SCR_CALIB, "touch setup");
+    expect_text("Let's line up your touch");
+    shot("00_calib");
+    for (int i = 0; i < CALIB_POINTS; i++) tap_at(g_calib_targets[i].x, g_calib_targets[i].y);
+    run(300);
+    check(s_calibrated, "calibration saved after five taps");
+    check(fabsf(s_cal[0] - 1) < 0.01f && fabsf(s_cal[1]) < 0.01f && fabsf(s_cal[2]) < 1 && fabsf(s_cal[3]) < 0.01f && fabsf(s_cal[4] - 1) < 0.01f &&
+              fabsf(s_cal[5]) < 1,
+          "calibration is the identity when raw = screen");
+    expect_text("That feels better!");
+    shot("00_calib_done");
+    tap("Done");
     run(1200);
+    expect_screen(SCR_SETUP, "setup (after touch setup)");
     shot("00a_setup_welcome");
     expect_text("Hi! I'm Deskling.");
     tap("Choose Wi-Fi");

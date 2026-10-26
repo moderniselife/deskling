@@ -11,7 +11,7 @@
 #include "theme.h"
 #include "ui.h"
 
-typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_COUNT } scr_id_t;
+typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_BOOT, SCR_CALIB, SCR_COUNT } scr_id_t;
 
 /** The latest snapshot (never NULL after ui_init). */
 extern const dk_model_t *g_model;
@@ -86,6 +86,16 @@ void scr_setup_scan_done(const ui_wifi_ap_t *aps, int n);
 void scr_setup_connect_result(bool ok, const char *message);
 
 lv_obj_t *scr_settings_create(void);
+
+// Boot animation (scr_boot.c): plays once, then calls done.
+lv_obj_t *scr_boot_create(void);
+void scr_boot_play(void (*done)(void));
+
+// Touch calibration (scr_calib.c): five taps, then a check. Calls done when finished.
+#define CALIB_POINTS 5
+extern const lv_point_t g_calib_targets[CALIB_POINTS];
+lv_obj_t *scr_calib_create(void);
+void scr_calib_start(void (*done)(void));
 void scr_settings_refresh(void);
 
 /** Shared widgets */

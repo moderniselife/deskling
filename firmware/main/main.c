@@ -1,6 +1,13 @@
 // Deskling: a cute animated desk screen for your AI agents.
 #include "audio.h"
 #include "board.h"
+#include "gsl3680.h"
+
+#ifdef CONFIG_DESKLING_ROTATE_180
+#define DK_ROTATION 270
+#else
+#define DK_ROTATION 90
+#endif
 #include "device.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -24,6 +31,18 @@ static void restart(void)
     esp_restart();
 }
 
+static bool touch_calibrated(void)
+{
+    float m[6];
+    return settings_get_touch_cal(m);
+}
+
+static void touch_save_calibration(const float m[6])
+{
+    settings_set_touch_cal(m);
+    dk_gsl3680_set_mapping(m, DK_ROTATION);
+}
+
 void device_set_sound(uint8_t volume, bool quiet_night)
 {
     settings_set_sound(volume, quiet_night);
@@ -42,6 +61,9 @@ static const ui_platform_t s_platform = {
     .restart = restart,
     .play_sound = audio_play,
     .set_sound = device_set_sound,
+    .touch_raw = dk_gsl3680_raw,
+    .touch_calibrated = touch_calibrated,
+    .touch_save_calibration = touch_save_calibration,
 };
 
 void app_main(void)
@@ -56,6 +78,8 @@ void app_main(void)
     ota_init();
 
     board_init();
+    float cal[6];
+    if (settings_get_touch_cal(cal)) dk_gsl3680_set_mapping(cal, DK_ROTATION);
     audio_init(board_i2c_bus());
     audio_set_volume(settings()->volume);
 
@@ -66,7 +90,6 @@ void app_main(void)
     lvgl_port_unlock();
     board_set_backlight(100);
     ESP_LOGI(TAG, "hello from Deskling %s", ota_variant());
-    if (settings()->volume) audio_play(DK_SND_HELLO); // a little hello on power-up
 
     net_start();
 }

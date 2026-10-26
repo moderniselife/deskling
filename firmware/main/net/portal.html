@@ -103,6 +103,7 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
     <button id="upload">Install firmware</button>
     <progress id="fwprog" max="100" value="0" hidden></progress>
     <div id="fwmsg" class="msg"></div>
+    <button class="ghost" id="calib">Calibrate touch on the screen</button>
     <button class="ghost" id="restart">Restart Deskling</button>
   </section>
 </main>
@@ -209,6 +210,7 @@ $('savetz').onclick = async () => {
 $('bright').onchange = () => post('/api/brightness', { value: +$('bright').value }).catch(() => {});
 const saveSound = (play) => post('/api/sound', { volume: +$('vol').value, quiet_night: $('quiet').checked, play }).catch(() => {});
 $('vol').onchange = () => saveSound('done');
+$('calib').onclick = () => post('/api/touch/calibrate', {}).then(() => say('fwmsg', 'Follow the dots on Deskling\u2019s screen.', true)).catch((e) => say('fwmsg', e.message, false));
 $('quiet').onchange = () => saveSound();
 for (const name of ['hello', 'permission', 'question', 'done', 'reminder', 'message', 'cheer', 'allow', 'deny', 'sleepy', 'oops']) {
   const b = document.createElement('button');

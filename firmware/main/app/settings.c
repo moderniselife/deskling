@@ -127,6 +127,27 @@ esp_err_t settings_set_sound(uint8_t volume, bool quiet_night)
     return err;
 }
 
+bool settings_get_touch_cal(float m[6])
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t len = 6 * sizeof(float);
+    esp_err_t err = nvs_get_blob(h, "tcal", m, &len);
+    nvs_close(h);
+    return err == ESP_OK && len == 6 * sizeof(float);
+}
+
+esp_err_t settings_set_touch_cal(const float m[6])
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_blob(h, "tcal", m, 6 * sizeof(float));
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
 esp_err_t settings_reset(void)
 {
     nvs_handle_t h;

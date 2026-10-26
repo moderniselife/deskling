@@ -21,7 +21,6 @@
 #include "driver/gpio.h"
 #include "esp_check.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gsl3680_firmware.h"
@@ -33,13 +32,6 @@ static const char *TAG = "gsl3680";
 #define PACKET_SIZE (4 + 4 * MAX_CONTACTS)
 #define MAX_POINTS (CONFIG_ESP_LCD_TOUCH_MAX_POINTS < MAX_CONTACTS ? CONFIG_ESP_LCD_TOUCH_MAX_POINTS : MAX_CONTACTS)
 
-// Bundled-firmware coordinate space: 26 drive x 14 sense channels, 64 units each, axes reversed.
-#define RAW_X_RANGE (26 * 64)
-#define RAW_Y_RANGE (14 * 64)
-#define RAW_X_GAIN 4113
-#define RAW_Y_GAIN 4119
-#define RAW_Y_OFFSET 2
-#define GAIN_DIV 4096
 
 static esp_err_t wr(esp_lcd_touch_handle_t tp, uint8_t reg, const uint8_t *buf, size_t len)
 {
@@ -129,71 +121,84 @@ static esp_err_t init_with_retry(esp_lcd_touch_handle_t tp)
     return err;
 }
 
-static uint16_t scale(int32_t raw, uint16_t gain, uint16_t range, uint16_t extent)
+// ---------------------------------------------------------------- mapping
+//
+// The controller reports two raw 12-bit axes in its own sensor units. A calibration maps them
+// to the landscape screen the UI sees (an affine fit from five taps, so it covers any rotation,
+// flip, scale and offset), and the result is turned back into panel coordinates, because LVGL
+// applies the display rotation to touch points itself.
+
+static portMUX_TYPE s_map_lock = portMUX_INITIALIZER_UNLOCKED;
+// landscape_x = m[0]*a + m[1]*b + m[2]; landscape_y = m[3]*a + m[4]*b + m[5]
+// The default is a rough guess from the bundled controller firmware; calibration replaces it.
+static float s_map[6] = {0.0f, -0.769f, 1279.0f, 0.893f, 0.0f, 0.0f};
+static int s_rotation = 90; // the LVGL display rotation: 90 or 270
+static volatile int32_t s_raw_a, s_raw_b;
+static volatile bool s_raw_down;
+
+void dk_gsl3680_set_mapping(const float m[6], int rotation)
 {
-    if (raw < 0) raw = 0;
-    uint32_t corrected = ((uint32_t)raw * gain + GAIN_DIV / 2) / GAIN_DIV;
-    uint32_t px = corrected * extent / range;
-    if (px == 0) px = 1;
-    if (px >= extent) px = extent - 1;
-    return (uint16_t)px;
+    portENTER_CRITICAL(&s_map_lock);
+    if (m) memcpy(s_map, m, sizeof(s_map));
+    s_rotation = rotation;
+    portEXIT_CRITICAL(&s_map_lock);
 }
 
-// Touch diagnostics: a summary every 3 s, plus the raw packet whenever the chip reports anything.
-static int s_diag_int_gpio = -1;
-static void diag(esp_err_t err, const uint8_t *pkt)
+bool dk_gsl3680_raw(int32_t *a, int32_t *b)
 {
-    static uint32_t reads, errors, nonzero, int_low, int_high;
-    static int64_t last;
-    reads++;
-    if (err != ESP_OK) errors++;
-    if (s_diag_int_gpio >= 0) {
-        if (gpio_get_level(s_diag_int_gpio)) int_high++;
-        else int_low++;
-    }
-    bool any = false;
-    for (int i = 0; i < 12; i++) any |= pkt[i] != 0;
-    if (err == ESP_OK && any) {
-        if (nonzero++ < 40) {
-            ESP_LOGI(TAG, "raw %02x %02x %02x %02x | %02x %02x %02x %02x | %02x %02x %02x %02x", pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5],
-                     pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]);
-        }
-    }
-    int64_t now = esp_timer_get_time();
-    if (now - last > 3000000) {
-        last = now;
-        ESP_LOGI(TAG, "diag: %lu reads, %lu errors (%s), %lu non-zero, INT pin low %lu / high %lu", (unsigned long)reads, (unsigned long)errors,
-                 esp_err_to_name(err), (unsigned long)nonzero, (unsigned long)int_low, (unsigned long)int_high);
-    }
+    *a = s_raw_a;
+    *b = s_raw_b;
+    return s_raw_down;
 }
 
-void dk_gsl3680_diag_int_pin(int gpio)
+static void to_panel(esp_lcd_touch_handle_t tp, int32_t a, int32_t b, uint16_t *px, uint16_t *py)
 {
-    s_diag_int_gpio = gpio;
+    float m[6];
+    int rot;
+    portENTER_CRITICAL(&s_map_lock);
+    memcpy(m, s_map, sizeof(m));
+    rot = s_rotation;
+    portEXIT_CRITICAL(&s_map_lock);
+    const int32_t lw = tp->config.y_max, lh = tp->config.x_max; // landscape is the panel turned sideways
+    int32_t lx = (int32_t)(m[0] * a + m[1] * b + m[2] + 0.5f);
+    int32_t ly = (int32_t)(m[3] * a + m[4] * b + m[5] + 0.5f);
+    lx = lx < 0 ? 0 : lx >= lw ? lw - 1 : lx;
+    ly = ly < 0 ? 0 : ly >= lh ? lh - 1 : ly;
+    // Inverse of lv_display_rotate_point(): 90 maps panel (x,y) to (H-1-y, x).
+    if (rot == 270) {
+        *px = (uint16_t)(lh - 1 - ly);
+        *py = (uint16_t)lx;
+    } else {
+        *px = (uint16_t)ly;
+        *py = (uint16_t)(lw - 1 - lx);
+    }
 }
 
 static esp_err_t read_data(esp_lcd_touch_handle_t tp)
 {
     uint8_t pkt[PACKET_SIZE] = {0};
     esp_err_t err = esp_lcd_panel_io_rx_param(tp->io, DATA_REG, pkt, sizeof(pkt));
-    diag(err, pkt);
     uint8_t n = 0;
     esp_lcd_touch_point_data_t pts[MAX_POINTS] = {0};
     if (err == ESP_OK && pkt[0] <= MAX_CONTACTS) {
         for (uint8_t i = 0; i < pkt[0] && n < MAX_POINTS; i++) {
             const uint8_t *p = pkt + 4 + 4 * i;
-            if (p[1] & 0xf0) continue; // key/flag data, not a coordinate
-            uint16_t raw_y = p[0] | ((uint16_t)(p[1] & 0x0f) << 8);
-            uint16_t raw_x = p[2] | ((uint16_t)(p[3] & 0x0f) << 8);
-            pts[n].x = scale((int32_t)raw_y - RAW_Y_OFFSET, RAW_Y_GAIN, RAW_Y_RANGE, tp->config.x_max);
-            pts[n].y = scale(raw_x, RAW_X_GAIN, RAW_X_RANGE, tp->config.y_max);
+            // The high nibbles carry a finger id on some frames; the coordinates are the low 12 bits.
+            int32_t a = p[0] | ((p[1] & 0x0f) << 8);
+            int32_t b = p[2] | ((p[3] & 0x0f) << 8);
+            if (n == 0) {
+                s_raw_a = a;
+                s_raw_b = b;
+            }
+            to_panel(tp, a, b, &pts[n].x, &pts[n].y);
             pts[n].track_id = i + 1;
             n++;
         }
     }
-    // Log where each new press lands (helps check the touch orientation from the boot log).
+    s_raw_down = n > 0;
+    // Log where each new press lands (useful when checking a calibration from the boot log).
     static bool was_down;
-    if (n && !was_down) ESP_LOGI(TAG, "press at %u,%u (panel coordinates)", pts[0].x, pts[0].y);
+    if (n && !was_down) ESP_LOGI(TAG, "press raw %ld,%ld -> panel %u,%u", (long)s_raw_a, (long)s_raw_b, pts[0].x, pts[0].y);
     was_down = n > 0;
 
     portENTER_CRITICAL(&tp->data.lock);

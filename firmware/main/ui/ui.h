@@ -73,6 +73,10 @@ typedef struct {
     void (*restart)(void);
     void (*play_sound)(dk_sound_t s);
     void (*set_sound)(uint8_t volume, bool quiet_night); // also saves it
+    // Touch calibration. touch_raw returns true while a finger is down; NULL = no calibration support.
+    bool (*touch_raw)(int32_t *a, int32_t *b);
+    bool (*touch_calibrated)(void);
+    void (*touch_save_calibration)(const float m[6]); // applies it straight away, and saves it
 } ui_platform_t;
 
 void ui_set_platform(const ui_platform_t *p);
@@ -80,6 +84,8 @@ void ui_set_device_info(const ui_device_info_t *info);
 void ui_wifi_scan_done(const ui_wifi_ap_t *aps, int n);
 void ui_wifi_connect_result(bool ok, const char *message);
 void ui_update_status(ui_update_state_t state, int progress, const char *latest, const char *message);
+/** Show the touch calibration screen (e.g. from the web page when touch is too far off to use). */
+void ui_start_touch_calibration(void);
 /** Play a sound, unless muted or it's quiet hours. */
 void ui_sound(dk_sound_t s);
 

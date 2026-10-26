@@ -17,6 +17,8 @@
 #include "net.h"
 #include "ota.h"
 #include "audio.h"
+#include "esp_lvgl_port.h"
+#include "ui.h"
 #include "settings.h"
 #include "sound.h"
 
@@ -207,6 +209,16 @@ static esp_err_t set_brightness(httpd_req_t *req)
     return ok(req);
 }
 
+static esp_err_t touch_calibrate(httpd_req_t *req)
+{
+    if (!authorised(req)) return ESP_OK;
+    if (lvgl_port_lock(1000)) {
+        ui_start_touch_calibration();
+        lvgl_port_unlock();
+    }
+    return ok(req);
+}
+
 /** {"volume":0..100, "quiet_night":bool, "play":"<sound name>"}: any subset. */
 static esp_err_t set_sound(httpd_req_t *req)
 {
@@ -308,6 +320,7 @@ void portal_start(void)
         {.uri = "/api/tz", .method = HTTP_POST, .handler = set_tz},
         {.uri = "/api/brightness", .method = HTTP_POST, .handler = set_brightness},
         {.uri = "/api/sound", .method = HTTP_POST, .handler = set_sound},
+        {.uri = "/api/touch/calibrate", .method = HTTP_POST, .handler = touch_calibrate},
         {.uri = "/api/restart", .method = HTTP_POST, .handler = restart},
         {.uri = "/api/update", .method = HTTP_POST, .handler = update},
     };
