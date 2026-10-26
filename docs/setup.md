@@ -42,7 +42,7 @@ npx wrangler deploy                       # prints your relay URL
 
 ## 2. Try it in the browser before the screen exists (2 min)
 
-Open `https://<relay>/app` in another tab and paste the same token. That's a working Deskling in your browser (on your phone too), talking to your relay with the same protocol as the real screen.
+Open `https://<relay>/app` in another tab and paste the same token. That's a working Deskling in your browser (on your phone too), talking to your relay with the same protocol as the real screen. On a phone, add it to your home screen and tap **Notify me here**: permission requests, questions and finished sessions then reach your phone even when the page is closed (Android, and iPhone from iOS 16.4 when it's on the home screen).
 
 Back on the **/setup** tab, press the buttons under **Try it**:
 

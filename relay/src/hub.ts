@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { makeZip, type ZipEntry } from "./zip";
+import { makeVapid, sendPush, validEndpoint, type Vapid } from "./push";
 import type {
   Helper,
   Machine,
@@ -293,6 +294,26 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         return null;
       }
     };
+
+    // ---- notifications for Deskling in a browser (/app), even when it's closed
+    if (req.method === "GET" && path === "/api/push/key") return json({ key: (await this.getVapid()).publicKey });
+    if (req.method === "POST" && path === "/api/push/subscribe") {
+      const b = (await readJson()) ?? {};
+      const keys = (b.keys ?? {}) as Record<string, unknown>;
+      const endpoint = validEndpoint(b.endpoint);
+      if (!endpoint || typeof keys.p256dh !== "string" || typeof keys.auth !== "string") return json({ error: "not a push subscription" }, 400);
+      const subs = (this.state.push ?? []).filter((x) => x.endpoint !== endpoint);
+      subs.push({ endpoint, p256dh: keys.p256dh.slice(0, 200), auth: keys.auth.slice(0, 100), created: Date.now() });
+      this.state.push = subs.slice(-10);
+      await this.save();
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path === "/api/push/unsubscribe") {
+      const b = (await readJson()) ?? {};
+      this.state.push = (this.state.push ?? []).filter((x) => x.endpoint !== validEndpoint(b.endpoint));
+      await this.save();
+      return json({ ok: true });
+    }
 
     if (req.method === "POST" && path === "/transcript") return this.onTranscript(url.searchParams.get("sid") ?? "", await req.text());
     // ---- bridges: other agents (OpenCode, …) reporting through a small adapter on your computer
@@ -1632,7 +1653,40 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const item: FeedItem = { id: shortId(), level, title, body, agentId, ts: Date.now() };
     this.state.feed.unshift(item);
     if (this.state.feed.length > FEED_MAX) this.state.feed.length = FEED_MAX;
+    if (level !== "info" && this.state.push?.length) this.ctx.waitUntil(this.pushAll(item));
     return item;
+  }
+
+  private vapid: Vapid | null = null;
+  /** This relay's own key for signing pushes, made the first time it's needed. */
+  private async getVapid(): Promise<Vapid> {
+    if (this.vapid) return this.vapid;
+    let v = await this.ctx.storage.get<Vapid>("vapid");
+    if (!v) {
+      v = await makeVapid();
+      await this.ctx.storage.put("vapid", v);
+    }
+    return (this.vapid = v);
+  }
+
+  /** A notification to every browser that asked; ones that have gone away are forgotten. */
+  private async pushAll(item: FeedItem): Promise<void> {
+    const vapid = await this.getVapid();
+    const gone: string[] = [];
+    await Promise.all(
+      (this.state.push ?? []).map(async (sub) => {
+        try {
+          const status = await sendPush(sub, vapid, { title: item.title, body: item.body, agentId: item.agentId, tag: item.id });
+          if (status === 404 || status === 410) gone.push(sub.endpoint);
+        } catch {
+          /* the push service is unreachable: try again with the next one */
+        }
+      }),
+    );
+    if (gone.length) {
+      this.state.push = (this.state.push ?? []).filter((x) => !gone.includes(x.endpoint));
+      await this.save();
+    }
   }
 
   private pushChat(agentId: string, from: ChatLine["from"], text: string, status: ChatLine["status"]): void {

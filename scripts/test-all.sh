@@ -46,6 +46,7 @@ relay() {
   local rc=$?
   # Deskling in a browser (/app), against the same relay.
   [ $rc = 0 ] && { DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node "$ROOT/tests/web/app.test.mjs"; rc=$?; }
+  [ $rc = 0 ] && { DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node test/push.test.mjs; rc=$?; }
   # Odd and broken requests: no server errors, nothing hangs, the snapshot stays sound.
   [ $rc = 0 ] && { DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node test/fuzz.mjs 300; rc=$?; }
   kill "$pid" 2>/dev/null

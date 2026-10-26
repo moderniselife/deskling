@@ -142,6 +142,7 @@ export interface State {
   chats: Record<string, ChatLine[]>; // per agent id
   focus: boolean;
   pingWhenDone: boolean;
+  push?: import("./push").PushSub[]; // browsers that asked for notifications (/app)
 }
 
 export type Decision = "allow" | "deny" | "computer";

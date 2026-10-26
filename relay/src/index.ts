@@ -15,6 +15,24 @@ const DEFAULT_FIRMWARE_URL = "https://deskling.mojolayers.com/firmware/";
 /** Deskling's face: lilac head with ears, ink eyes, peach cheeks, on cream. */
 const APP_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#FBF6EF"/><circle cx="160" cy="150" r="58" fill="#CFC4F2"/><circle cx="352" cy="150" r="58" fill="#CFC4F2"/><circle cx="160" cy="150" r="30" fill="#BDB1EA"/><circle cx="352" cy="150" r="30" fill="#BDB1EA"/><rect x="76" y="140" width="360" height="290" rx="120" fill="#CFC4F2"/><rect x="118" y="182" width="276" height="206" rx="88" fill="#FFF8EF"/><rect x="186" y="244" width="30" height="48" rx="15" fill="#2A2433"/><rect x="296" y="244" width="30" height="48" rx="15" fill="#2A2433"/><ellipse cx="170" cy="318" rx="26" ry="16" fill="#F4B393"/><ellipse cx="342" cy="318" rx="26" ry="16" fill="#F4B393"/><path d="M232 326q24 22 48 0" fill="none" stroke="#2A2433" stroke-width="12" stroke-linecap="round"/></svg>`;
 
+/** /app's service worker: shows pushed notifications, and opens that session's chat on a tap. */
+const APP_SW = `self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("push", (e) => {
+  let m = {};
+  try { m = e.data ? e.data.json() : {}; } catch (x) {}
+  e.waitUntil(self.registration.showNotification(m.title || "Deskling", { body: m.body || "", icon: "/app-icon.svg", badge: "/app-icon.svg", tag: m.tag || undefined, data: { agentId: m.agentId || "" } }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const id = (e.notification.data && e.notification.data.agentId) || "";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    for (const c of list) if (new URL(c.url).pathname === "/app") { c.postMessage({ open: id }); return c.focus(); }
+    return self.clients.openWindow("/app" + (id ? "#" + encodeURIComponent(id) : ""));
+  }));
+});
+`;
+
 const html = (body: string) => new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 
 async function tokenMatches(given: string | null, expected: string | undefined): Promise<boolean> {
@@ -49,6 +67,7 @@ export default {
       // So /app can be added to a phone's home screen.
       if (url.pathname === "/app.webmanifest")
         return new Response(JSON.stringify({ name: "Deskling", short_name: "Deskling", start_url: "/app", display: "standalone", background_color: "#FBF6EF", theme_color: "#FBF6EF", icons: [{ src: "/app-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }] }), { headers: { "content-type": "application/manifest+json" } });
+      if (url.pathname === "/app-sw.js") return new Response(APP_SW, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } });
       if (url.pathname === "/app-icon.svg") return new Response(APP_ICON, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
       if (url.pathname === "/setup") return html(SETUP_HTML);
       if (url.pathname === "/flash") {

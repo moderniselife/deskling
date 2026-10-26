@@ -95,6 +95,29 @@ if (SHOTS) await phone.screenshot({ path: `${SHOTS}/app-phone.png` });
 await phone.getByRole("button", { name: "Sessions" }).click();
 check("on a phone, Sessions goes back to the list", await phone.getByText("MacBook · Running the tests").isVisible());
 
+// Notifications: the page asks, registers its service worker, and a link to a chat opens it.
+const ctx = await browser.newContext();
+await ctx.grantPermissions(["notifications"], { origin: URL_BASE });
+const np = await ctx.newPage();
+await np.addInitScript((t) => localStorage.setItem("deskling-token", t), TOKEN);
+// Headless Chromium always says "denied": stand in for a browser where you said yes.
+await np.addInitScript(() => {
+  let perm = "default";
+  window.Notification = class {
+    static get permission() { return perm; }
+    static requestPermission() { perm = "granted"; return Promise.resolve(perm); }
+  };
+});
+await np.goto(URL_BASE + "/app#oc-app");
+await np.getByText("I'll allow 5 attempts").waitFor({ timeout: 8000 }).catch(() => {});
+check("a link to a session opens its chat (how a tapped notification lands)", await np.getByText("I'll allow 5 attempts").isVisible());
+await np.getByRole("button", { name: "Notify me here" }).click();
+await np.getByRole("button", { name: "Notifying you here" }).waitFor({ timeout: 5000 }).catch(() => {});
+check("notifications can be turned on", await np.getByRole("button", { name: "Notifying you here" }).isVisible());
+await np.waitForTimeout(1500);
+check("its service worker is registered", await np.evaluate(() => navigator.serviceWorker.getRegistration("/app-sw.js").then((r) => !!r)));
+await ctx.close();
+
 // A wrong token asks again.
 const wrong = await browser.newPage();
 await wrong.addInitScript(() => localStorage.setItem("deskling-token", "nope"));

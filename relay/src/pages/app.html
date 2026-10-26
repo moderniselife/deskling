@@ -419,9 +419,13 @@ $("newform").addEventListener("submit", function (e) {
   $("n-prompt").value = "";
 });
 
-// ---- notifications in this browser (while it's open in a tab or on the home screen)
+// ---- notifications: pushed by the relay when this browser supports it (they arrive even when
+// the page is closed, e.g. added to a phone's home screen), otherwise shown while it's open.
 var seenFeed = null;
-function notifyOn() { try { return localStorage.getItem("deskling-notify") === "1" && Notification.permission === "granted"; } catch (e) { return false; } }
+var canPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+function pref() { try { return localStorage.getItem("deskling-notify") || ""; } catch (e) { return ""; } }
+function setPref(v) { try { localStorage.setItem("deskling-notify", v); } catch (e) {} }
+function notifyOn() { return "Notification" in window && Notification.permission === "granted" && (pref() === "1" || pref() === "push"); }
 function notifyButton() {
   var b = $("notifybtn");
   if (!("Notification" in window)) return;
@@ -429,14 +433,41 @@ function notifyButton() {
   b.className = notifyOn() ? "on" : "";
   b.textContent = notifyOn() ? "Notifying you here" : "Notify me here";
 }
+function api(path, body) {
+  return fetch(path, { method: body ? "POST" : "GET", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined }).then(function (r) { return r.json(); });
+}
+function keyBytes(k) { var s = atob(k.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((k.length + 3) % 4)); var a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+function startPush() {
+  return navigator.serviceWorker.register("/app-sw.js").then(function (reg) {
+    return api("/api/push/key").then(function (r) {
+      return reg.pushManager.getSubscription().then(function (old) {
+        return old || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(r.key) });
+      });
+    }).then(function (sub) { return api("/api/push/subscribe", sub.toJSON()); });
+  });
+}
+function stopPush() {
+  return navigator.serviceWorker.getRegistration("/app-sw.js").then(function (reg) {
+    return reg && reg.pushManager.getSubscription().then(function (sub) {
+      if (!sub) return;
+      return api("/api/push/unsubscribe", { endpoint: sub.endpoint }).then(function () { return sub.unsubscribe(); });
+    });
+  }).catch(function () {});
+}
 $("notifybtn").onclick = function () {
-  if (notifyOn()) { try { localStorage.setItem("deskling-notify", "0"); } catch (e) {} notifyButton(); return; }
-  Notification.requestPermission().then(function (p) { try { localStorage.setItem("deskling-notify", p === "granted" ? "1" : "0"); } catch (e) {} notifyButton(); });
+  if (notifyOn()) { var was = pref(); setPref("0"); if (was === "push") stopPush(); notifyButton(); return; }
+  Notification.requestPermission().then(function (p) {
+    if (p !== "granted") { setPref("0"); notifyButton(); return; }
+    setPref("1");
+    notifyButton();
+    if (canPush) startPush().then(function () { setPref("push"); notifyButton(); }).catch(function () { /* in-page notifications still work */ });
+  });
 };
 function notifyNew() {
   if (!S) return;
   var ids = S.feed.map(function (f) { return f.id; });
-  if (seenFeed && notifyOn() && document.hidden) {
+  // Pushed notifications cover this already.
+  if (seenFeed && notifyOn() && pref() !== "push" && document.hidden) {
     S.feed.filter(function (f) { return seenFeed.indexOf(f.id) < 0 && f.level !== "info"; }).slice(0, 3).forEach(function (f) {
       var n = new Notification(f.title, { body: f.body || "", icon: "/app-icon.svg", tag: f.id });
       n.onclick = function () { window.focus(); if (f.agentId) openChat(f.agentId); n.close(); };
@@ -444,8 +475,14 @@ function notifyNew() {
   }
   seenFeed = ids;
 }
+// A tapped notification opens that session's chat.
+if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", function (e) { if (e.data && e.data.open) openChat(e.data.open); });
+var wantOpen = decodeURIComponent((location.hash || "").slice(1));
 var renderInner = render;
-render = function (force) { renderInner(force); notifyNew(); notifyButton(); };
+render = function (force) {
+  if (wantOpen && S && S.agents.some(function (a) { return a.id === wantOpen; })) { var w = wantOpen; wantOpen = ""; history.replaceState(null, "", "/app"); openChat(w); return; }
+  renderInner(force); notifyNew(); notifyButton();
+};
 
 setInterval(function () { if (S) render(); }, 30000); // keeps the "how long ago" fresh
 if (token) { $("shell").classList.remove("hide"); connect(); } else showGate("");
