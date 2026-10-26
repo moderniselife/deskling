@@ -158,6 +158,15 @@ const line = (o) => JSON.stringify(o) + "\n";
   check("the relay is told to let go", requests.some((x) => x.url === "/listen/release" && x.body.includes('"s7"')));
 }
 
+// 8. Started by the Deskling runner (over ACP): the runner shows the session, so the hook stays quiet.
+{
+  const h = home();
+  requests = [];
+  reply = () => ({ body: '{"hookSpecificOutput":{}}' });
+  const r = await run(["wait"], JSON.stringify({ session_id: "s8", hook_event_name: "PermissionRequest", tool_name: "Bash" }), { HOME: h, DESKLING_BRIDGED: "1" });
+  check("sessions the runner drives don't report twice", r.code === 0 && r.out === "" && requests.length === 0);
+}
+
 server.close();
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);

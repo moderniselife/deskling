@@ -133,6 +133,14 @@ The screen says **All set!** and jumps to the home screen. The `/setup` page now
 - **From your computer:** the `deskling.local` page has a firmware upload box for a `.bin` you built yourself.
 - **Changing Wi-Fi, relay, brightness, volume or time zone:** use Settings on the screen, or the `deskling.local` page. "Quiet at night" (on by default) keeps it silent from 10pm to 7am, except for reminders.
 
+## 7. More agents, and starting sessions from the screen (optional)
+
+- **OpenCode, with any model (local ones too):** copy the Deskling plugin for OpenCode into `~/.config/opencode/plugins/` (the command is on your relay's `/setup` page). Its sessions show up like Claude Code ones.
+- **Start sessions from Deskling:** run the Deskling runner on each computer (one line from the `/setup` page). It offers the projects on that computer and starts Claude Code there, OpenCode with the model you pick, and Gemini CLI, Cursor, Codex, Copilot, Goose, Qwen Code, Kimi or Kiro if they're installed. Tap **New session** on the screen, or in `/app`.
+- **In the cloud:** add a routine with an API trigger on the `/setup` page, and **Cloud** appears under New session.
+
+Everything else (Cursor's editor hooks, the `deskling` command for scripts, and the API for adding other agents) is in [hooks/README.md](../hooks/README.md).
+
 ## Troubleshooting
 
 | Problem | What to do |
