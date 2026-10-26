@@ -18,9 +18,15 @@ void net_request_relay(const char *url, const char *token);
 
 bool net_wifi_connected(void);
 bool net_relay_online(void);
+/** Why the relay connection last failed, in plain words; "" when connected or not tried. */
+const char *net_relay_error(void);
 const char *net_ip(void);
 const char *net_code(void);
 const char *net_ap_ssid(void);
+/** Ask the network who's around over mDNS (runs in the background). */
+void net_check_local_name(void);
+/** Devices heard by the last check: -1 not run yet, -2 running. *example gets one name. */
+int net_local_name_heard(const char **example);
 /** The last Wi-Fi scan, strongest first. */
 int net_scan_results(ui_wifi_ap_t *out, int max);
 /** Rebuild the device info card on screen (call after any settings change). */

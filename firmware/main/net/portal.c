@@ -125,10 +125,27 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddBoolToObject(w, "connected", net_wifi_connected());
     cJSON_AddStringToObject(w, "ip", net_ip());
     cJSON_AddStringToObject(w, "hotspot", net_ap_ssid());
+    const char *ex = "";
+    cJSON *m = cJSON_AddObjectToObject(w, "local_name");
+    cJSON_AddStringToObject(m, "name", "deskling.local");
+    cJSON_AddNumberToObject(m, "heard", net_local_name_heard(&ex));
+    cJSON_AddStringToObject(m, "example", ex);
     cJSON *r = cJSON_AddObjectToObject(o, "relay");
     cJSON_AddStringToObject(r, "url", st->relay_url);
     cJSON_AddBoolToObject(r, "configured", settings_relay_configured());
     cJSON_AddBoolToObject(r, "online", net_relay_online());
+    cJSON_AddStringToObject(r, "error", net_relay_error());
+    size_t tl = strlen(st->token);
+    cJSON_AddStringToObject(r, "token_end", tl >= 8 ? st->token + tl - 4 : "");
+    return send_json(req, o);
+}
+
+static esp_err_t netcheck(httpd_req_t *req)
+{
+    if (!authorised(req)) return ESP_OK;
+    net_check_local_name();
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddBoolToObject(o, "ok", true);
     return send_json(req, o);
 }
 
@@ -313,6 +330,7 @@ void portal_start(void)
     const httpd_uri_t routes[] = {
         {.uri = "/", .method = HTTP_GET, .handler = page},
         {.uri = "/api/status", .method = HTTP_GET, .handler = status},
+        {.uri = "/api/netcheck", .method = HTTP_POST, .handler = netcheck},
         {.uri = "/api/relay", .method = HTTP_POST, .handler = set_relay},
         {.uri = "/api/wifi", .method = HTTP_POST, .handler = set_wifi},
         {.uri = "/api/scan", .method = HTTP_POST, .handler = start_scan},

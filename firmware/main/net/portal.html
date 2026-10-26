@@ -54,6 +54,7 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
   <section>
     <h2>Relay</h2>
     <div class="row"><span id="relaystate" class="pill">…</span><span class="muted" id="relayurl"></span></div>
+    <p class="msg bad" id="relayerr" hidden></p>
     <label for="url">Relay URL</label>
     <input id="url" placeholder="https://deskling-relay.you.workers.dev" autocomplete="off">
     <label for="token">Relay token</label>
@@ -66,6 +67,7 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
   <section>
     <h2>Wi-Fi</h2>
     <div class="row"><span id="wifistate" class="pill">…</span><span class="muted" id="wifiinfo"></span></div>
+    <p class="muted" id="localname" hidden></p>
     <button class="ghost" id="scan">Find networks</button>
     <div class="nets" id="nets"></div>
     <label for="ssid">Network name</label>
@@ -163,11 +165,20 @@ async function refresh() {
   $('fwver').textContent = s.version; $('fwvar').textContent = s.variant;
   $('relaystate').textContent = s.relay.online ? 'Connected' : s.relay.configured ? 'Not connected' : 'Not set up';
   $('relaystate').className = 'pill ' + (s.relay.online ? 'ok' : 'bad');
-  $('relayurl').textContent = s.relay.url;
+  $('relayurl').textContent = s.relay.url + (s.relay.token_end ? ` \u00b7 token \u2026${s.relay.token_end}` : '');
+  $('relayerr').hidden = !(s.relay.error && !s.relay.online);
+  $('relayerr').textContent = s.relay.error || '';
   if (!$('url').value && s.relay.url) $('url').value = s.relay.url;
   $('wifistate').textContent = s.wifi.connected ? 'Connected' : 'Not connected';
   $('wifistate').className = 'pill ' + (s.wifi.connected ? 'ok' : 'bad');
   $('wifiinfo').textContent = s.wifi.ssid ? `${s.wifi.ssid}${s.wifi.ip ? ' · ' + s.wifi.ip : ''}` : '';
+  const ln = s.wifi.local_name;
+  if (ln && s.wifi.connected) {
+    const el = $('localname'); el.hidden = false;
+    el.textContent = ln.heard === -2 || ln.heard === -1 ? `Checking whether ${ln.name} works on this network\u2026`
+      : ln.heard > 0 ? `${ln.name} should work here (heard ${ln.heard} other device${ln.heard === 1 ? '' : 's'}${ln.example ? ', like \u201c' + ln.example + '\u201d' : ''}).`
+      : `This network isn\u2019t passing local-name traffic to Deskling, so ${ln.name} won\u2019t work yet. Use http://${s.wifi.ip} instead.`;
+  }
   if (document.activeElement !== $('bright')) $('bright').value = s.brightness;
   if (document.activeElement !== $('vol')) $('vol').value = s.volume;
   if (document.activeElement !== $('quiet')) $('quiet').checked = s.quiet_night;

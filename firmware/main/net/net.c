@@ -15,6 +15,7 @@
 #include "esp_netif_sntp.h"
 #include "esp_random.h"
 #include "esp_timer.h"
+#include "esp_tls_errors.h"
 #include "esp_websocket_client.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -23,6 +24,7 @@
 #include "lwip/apps/netbiosns.h"
 #include "lwip/tcpip.h"
 #include "mdns.h"
+#include <strings.h>
 #include "model.h"
 #include "ota.h"
 #include "portal.h"
@@ -78,9 +80,98 @@ static dk_model_t *s_model;
 
 bool net_wifi_connected(void) { return s_wifi_up; }
 bool net_relay_online(void) { return s_ws_up; }
+
+// Why the relay connection last failed, in words a person can act on ("" while connected).
+static char s_relay_err[160];
+const char *net_relay_error(void) { return s_ws_up ? "" : s_relay_err; }
+
+static void relay_failed(const esp_websocket_error_codes_t *e)
+{
+    char why[160];
+    if (e->error_type == WEBSOCKET_ERROR_TYPE_HANDSHAKE || e->esp_ws_handshake_status_code) {
+        int code = e->esp_ws_handshake_status_code;
+        if (code == 401 || code == 403)
+            snprintf(why, sizeof(why), "The relay didn't accept the token. Copy it again from the relay's /setup page.");
+        else if (code == 404)
+            snprintf(why, sizeof(why), "That URL isn't a Deskling relay (it answered 404). Check the relay URL.");
+        else
+            snprintf(why, sizeof(why), "The relay answered %d instead of letting Deskling in.", code);
+    } else if (e->error_type == WEBSOCKET_ERROR_TYPE_TCP_TRANSPORT) {
+        esp_err_t t = e->esp_tls_last_esp_err;
+        if (t == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME)
+            snprintf(why, sizeof(why), "Couldn't look up the relay's address. Check the relay URL, or the network's DNS.");
+        else if (t == ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST || t == ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT)
+            snprintf(why, sizeof(why), "Couldn't reach the relay (%s, errno %d).", esp_err_to_name(t), e->esp_transport_sock_errno);
+        else if (t)
+            snprintf(why, sizeof(why), "The secure connection to the relay failed (%s, tls 0x%x).", esp_err_to_name(t), e->esp_tls_stack_err);
+        else
+            snprintf(why, sizeof(why), "Lost the connection to the relay (errno %d).", e->esp_transport_sock_errno);
+    } else if (e->error_type == WEBSOCKET_ERROR_TYPE_PONG_TIMEOUT) {
+        snprintf(why, sizeof(why), "The relay stopped answering.");
+    } else if (e->error_type == WEBSOCKET_ERROR_TYPE_SERVER_CLOSE) {
+        snprintf(why, sizeof(why), "The relay closed the connection.");
+    } else {
+        return;
+    }
+    if (strcmp(why, s_relay_err)) ESP_LOGW(TAG, "relay: %s", why);
+    snprintf(s_relay_err, sizeof(s_relay_err), "%s", why);
+}
 const char *net_ip(void) { return s_ip; }
 const char *net_code(void) { return s_code; }
 const char *net_ap_ssid(void) { return s_ap_on ? s_ap_ssid : ""; }
+
+// Local-name check: ask the network what's around (Chromecasts, AirPlay speakers, printers,
+// Macs...). Their replies come back as multicast, the same way deskling.local lookups arrive,
+// so hearing nobody at all means multicast isn't reaching us (router or Wi-Fi chip), and
+// hearing others means deskling.local itself should work.
+static volatile int s_heard = -1;  // -1: not checked yet
+static char s_heard_name[48];
+static volatile bool s_checking;
+
+static void netcheck_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(4000));
+    static const char *types[][2] = {
+        {"_googlecast", "_tcp"}, {"_airplay", "_tcp"}, {"_raop", "_tcp"}, {"_companion-link", "_tcp"},
+        {"_ipp", "_tcp"}, {"_printer", "_tcp"}, {"_spotify-connect", "_tcp"}, {"_hap", "_tcp"},
+        {"_sonos", "_tcp"}, {"_http", "_tcp"}, {"_smb", "_tcp"}, {"_device-info", "_tcp"},
+        {"_matter", "_tcp"}, {"_meshcop", "_udp"}, {"_amzn-wplay", "_tcp"}, {"_workstation", "_tcp"},
+    };
+    int heard = 0;
+    char name[48] = "";
+    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+        mdns_result_t *res = NULL;
+        if (mdns_query_ptr(types[i][0], types[i][1], 1200, 8, &res) != ESP_OK) continue;
+        for (mdns_result_t *r = res; r; r = r->next) {
+            const char *h = r->hostname ? r->hostname : "";
+            if (!strcasecmp(h, "deskling")) continue;
+            heard++;
+            if (!name[0]) snprintf(name, sizeof(name), "%s", r->instance_name ? r->instance_name : h);
+        }
+        mdns_query_results_free(res);
+    }
+    snprintf(s_heard_name, sizeof(s_heard_name), "%s", name);
+    s_heard = heard;
+    ESP_LOGI(TAG, "Local-name check: heard %d device(s) on the network%s%s", heard, name[0] ? ", e.g. " : "", name);
+    if (!heard) ESP_LOGW(TAG, "No multicast replies at all: deskling.local won't resolve from this network");
+    s_checking = false;
+    vTaskDelete(NULL);
+}
+
+void net_check_local_name(void)
+{
+    if (s_checking || !s_wifi_up) return;
+    s_checking = true;
+    if (xTaskCreate(netcheck_task, "netcheck", 4096, NULL, 2, NULL) != pdPASS) s_checking = false;
+}
+
+int net_local_name_heard(const char **example)
+{
+    if (example) *example = s_heard_name;
+    return s_checking ? -2 : s_heard;
+}
+
 
 int net_scan_results(ui_wifi_ap_t *out, int max)
 {
@@ -143,11 +234,13 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     case WEBSOCKET_EVENT_CONNECTED:
         ESP_LOGI(TAG, "relay connected");
         s_ws_up = true;
+        s_relay_err[0] = '\0';
         set_conn(DK_CONN_ONLINE, NULL);
         ota_mark_healthy();
         break;
     case WEBSOCKET_EVENT_DISCONNECTED:
     case WEBSOCKET_EVENT_ERROR:
+        if (ev) relay_failed(&ev->error_handle);
         if (s_ws_up) ESP_LOGW(TAG, "relay connection lost, reconnecting");
         s_ws_up = false;
         set_conn(DK_CONN_RELAY, "Reconnecting to relay…");
@@ -378,6 +471,7 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         // announced even if its handler raced ours.
         mdns_netif_action(s_sta, MDNS_EVENT_ENABLE_IP4 | MDNS_EVENT_ANNOUNCE_IP4);
         if (s_announce && !esp_timer_is_active(s_announce)) esp_timer_start_periodic(s_announce, 60 * 1000000ULL);
+        net_check_local_name();
         if (s_trial.active) trial_finish(true, NULL);
         if (!settings_relay_configured()) ota_mark_healthy(); // nothing more to prove yet
         if (!s_services) {
