@@ -1,0 +1,15 @@
+name = "deskling-relay"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hub"]
+
+# The shared secret lives outside this file:
+#   npx wrangler secret put DESKLING_TOKEN
+# For local dev, put DESKLING_TOKEN=... in relay/.dev.vars

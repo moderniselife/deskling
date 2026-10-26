@@ -1,0 +1,40 @@
+{
+  "name": "deskling",
+  "displayName": "Deskling",
+  "version": "0.1.0",
+  "description": "Sends Claude Code activity to your Deskling desk screen and lets you approve permission requests from it.",
+  "author": {
+    "name": "moderniselife"
+  },
+  "repository": "https://github.com/moderniselife/deskling",
+  "license": "MIT",
+  "keywords": ["notifications", "hardware", "esp32", "dashboard"],
+  "userConfig": {
+    "relay_url": {
+      "type": "string",
+      "title": "Relay URL",
+      "description": "Your deployed Deskling relay, e.g. https://deskling-relay.<you>.workers.dev",
+      "required": true
+    },
+    "token": {
+      "type": "string",
+      "title": "Relay token",
+      "description": "The DESKLING_TOKEN secret you set on the relay",
+      "sensitive": true,
+      "required": true
+    },
+    "device_name": {
+      "type": "string",
+      "title": "This computer's name",
+      "description": "Shown on the screen next to each session. Leave blank to use the hostname.",
+      "required": false
+    },
+    "approval_wait": {
+      "type": "number",
+      "title": "Seconds to wait for an answer on the screen",
+      "description": "How long a permission request waits for Allow/Deny on Deskling before your terminal asks instead. 0 turns screen approvals off.",
+      "default": 30,
+      "required": false
+    }
+  }
+}

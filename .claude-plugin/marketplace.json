@@ -1,0 +1,14 @@
+{
+  "name": "deskling",
+  "description": "Deskling: a cute animated desk screen for your Claude Code sessions and agents.",
+  "owner": {
+    "name": "moderniselife"
+  },
+  "plugins": [
+    {
+      "name": "deskling",
+      "source": "./hooks",
+      "description": "Sends Claude Code activity to your Deskling desk screen and lets you approve permission requests from it."
+    }
+  ]
+}

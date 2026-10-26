@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# deskling: push things to your Deskling screen from any script, cron job or agent.
+#
+#   deskling notify "Title" ["body"] [--level info|good|alert]
+#   deskling remind "Take a break" [--at 15:00 | --at 2026-10-27T09:00:00+11:00 | --in 20m] [--from "nightly job"]
+#   deskling status <id> <idle|working|waiting|needs_you|done> ["task"] [--name label] [--host label]
+#   deskling done-status <id>      remove a custom agent from the screen
+#   deskling state                 dump the relay's current state as JSON
+#
+# Uses DESKLING_URL and DESKLING_TOKEN, from the environment or ~/.deskling/config.
+
+set -euo pipefail
+CONF="${HOME}/.deskling/config"
+# shellcheck disable=SC1090
+[ -f "$CONF" ] && . "$CONF"
+URL="${DESKLING_URL:-}"
+TOKEN="${DESKLING_TOKEN:-}"
+if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
+  echo "deskling: set DESKLING_URL and DESKLING_TOKEN (or create ~/.deskling/config)" >&2
+  exit 1
+fi
+URL="${URL%/}"
+
+json_str() { # minimal JSON string escaping, no jq needed
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/}
+  s=${s//$'\t'/ }
+  printf '"%s"' "$s"
+}
+
+post() {
+  curl -sSf -X POST "${URL}/api/event" -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" --data-binary "$1"
+  echo
+}
+
+to_iso() { # --at HH:MM (today, or tomorrow if passed) | ISO string | --in 20m/2h
+  local v=$1
+  case "$v" in
+    *m | *h)
+      local n=${v%?} unit=${v: -1} secs
+      [ "$unit" = h ] && secs=$((n * 3600)) || secs=$((n * 60))
+      echo $(($(date +%s) + secs))
+      ;;
+    [0-9]:[0-9][0-9] | [0-9][0-9]:[0-9][0-9])
+      local today target
+      today=$(date +%Y-%m-%d)
+      if target=$(date -d "$today $v" +%s 2>/dev/null); then :; else target=$(date -j -f "%Y-%m-%d %H:%M" "$today $v" +%s); fi
+      [ "$target" -le "$(date +%s)" ] && target=$((target + 86400))
+      echo "$target"
+      ;;
+    *) json_str "$v" ;;
+  esac
+}
+
+cmd=${1:-help}
+shift || true
+case "$cmd" in
+  notify)
+    title=${1:?title required}; body=${2:-}; level=info
+    shift; [ $# -gt 0 ] && shift
+    while [ $# -gt 0 ]; do case "$1" in --level) level=$2; shift 2 ;; *) shift ;; esac; done
+    post "{\"kind\":\"notify\",\"title\":$(json_str "$title"),\"body\":$(json_str "$body"),\"level\":$(json_str "$level")}"
+    ;;
+  remind)
+    title=${1:?title required}; shift; at=null; from="you"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --at | --in) at=$(to_iso "$2"); shift 2 ;;
+        --from) from=$2; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    post "{\"kind\":\"reminder\",\"title\":$(json_str "$title"),\"at\":${at},\"from\":$(json_str "$from")}"
+    ;;
+  status)
+    id=${1:?id required}; state=${2:?state required}; task=${3:-}; name=$id; host=cloud
+    shift 2; [ $# -gt 0 ] && shift
+    while [ $# -gt 0 ]; do case "$1" in --name) name=$2; shift 2 ;; --host) host=$2; shift 2 ;; *) shift ;; esac; done
+    post "{\"kind\":\"status\",\"id\":$(json_str "$id"),\"state\":$(json_str "$state"),\"task\":$(json_str "$task"),\"name\":$(json_str "$name"),\"host\":$(json_str "$host")}"
+    ;;
+  done-status)
+    post "{\"kind\":\"status\",\"id\":$(json_str "${1:?id required}"),\"state\":\"done\",\"remove\":true}"
+    ;;
+  state)
+    curl -sSf "${URL}/api/state" -H "Authorization: Bearer ${TOKEN}"
+    echo
+    ;;
+  *)
+    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+esac
