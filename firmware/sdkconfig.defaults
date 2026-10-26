@@ -75,3 +75,8 @@ CONFIG_LVGL_PORT_ENABLE_PPA=y
 
 # ---- Touch
 CONFIG_ESP_LCD_TOUCH_MAX_POINTS=5
+
+# Sockets: the board's web page (keep-alive connections from every open browser tab), the relay,
+# picture downloads and update checks all share these. With only 10, the web server could run
+# out and stop answering while everything else kept working.
+CONFIG_LWIP_MAX_SOCKETS=24

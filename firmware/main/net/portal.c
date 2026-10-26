@@ -389,7 +389,8 @@ void portal_start(void)
     cfg.stack_size = 8192;
     cfg.max_uri_handlers = 16;
     cfg.recv_wait_timeout = 15;
-    cfg.lru_purge_enable = true;
+    cfg.lru_purge_enable = true; // a new visitor closes the least recently used connection
+    cfg.max_open_sockets = 10;     // of CONFIG_LWIP_MAX_SOCKETS (24); the rest are for the relay, pictures and updates
     if (httpd_start(&server, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "couldn't start the settings page");
         return;
