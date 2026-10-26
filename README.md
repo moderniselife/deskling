@@ -4,14 +4,17 @@ A cute, animated desk companion for your AI agents. **[deskling.mojolayers.com](
 
 ![Deskling home screen](docs/media/home.gif)
 
-Deskling is a 10.1" touchscreen that sits on your desk in landscape and keeps an eye on every agent you have running: Claude Code sessions on your Mac or Windows machine (terminal or desktop app), Cursor chats, scheduled tasks in the cloud, and anything else that can send an HTTP request. Its little character reacts to what's going on. It bobs while Claude works, panics when something needs your permission, tilts its head at a question, cheers when you tick off a reminder, and dozes off at night.
+Deskling is a 10.1" touchscreen that sits on your desk in landscape and keeps an eye on every agent you have running: Claude Code sessions on your Mac or Windows machine (terminal, desktop app or cloud), OpenCode with any model (local ones too), Gemini CLI, Cursor, Codex and other agents, scheduled tasks in the cloud, and anything else that can send an HTTP request. Its little character reacts to what's going on. It bobs while Claude works, panics when something needs your permission, tilts its head at a question, cheers when you tick off a reminder, and dozes off at night.
 
 From across the room you can:
-- **approve or deny** a permission request (Claude Code and Cursor)
-- **answer Claude's questions** by tapping an option
-- **message any Claude Code session** with quick replies or the on-screen keyboard
+- **follow whole conversations**: replies as they're written, thinking, every step, helpers and pictures
+- **approve or deny** a permission request
+- **answer questions** by tapping an option
+- **message any session** with quick replies or the on-screen keyboard
+- **start a new session** on one of your computers or in the cloud, with the agent and model you pick
 - **tick off reminders** that you or Claude set ("remind me at 3pm to…")
 - see every session on every machine at a glance, with the ones that need you first
+- use it **in your browser** too, on your phone or another computer (`/app` on your relay)
 - **hear it**: little synthesized chirps for "needs you", questions, finished tasks and reminders, with quiet hours at night ([try them on the website](https://deskling.mojolayers.com))
 
 | | |
@@ -23,19 +26,22 @@ From across the room you can:
 ## How it fits together
 
 ```
- Claude Code (Mac / Windows / desktop app)    Cursor        cron, CI, cloud tasks, other agents
-   └─ plugin: hooks + MCP tools + channel      └─ hooks       └─ `deskling` CLI / HTTP
-                    \                              |                 /
-                     ▼                             ▼                ▼
+ Claude Code             OpenCode, any model    Gemini CLI, Cursor,      cron, CI, cloud
+ Mac, Windows, cloud     (local ones too)       Codex, Goose…            tasks, anything
+ └─ plugin               └─ plugin              └─ the runner (ACP)      └─ `deskling` CLI
+          \                     |                       |                    /
+           ▼                    ▼                       ▼                   ▼
             ┌───────────────────────────────────────────────────────────┐
             │  relay/  Cloudflare Worker + Durable Object                │
-            │  sessions · feed · reminders (alarms) · pending approvals  │
+            │  sessions · chats · feed · reminders · approvals           │
             └───────────────────────────────────────────────────────────┘
                                   │  WebSocket (wss)
-                                  ▼
-            ┌───────────────────────────────────────────────────────────┐
-            │  firmware/  ESP32-P4 + LVGL 9: animated UI, touch, Wi-Fi   │
-            └───────────────────────────────────────────────────────────┘
+                     ┌────────────┴─────────────┐
+                     ▼                          ▼
+   ┌───────────────────────────────────┐  ┌──────────────────────────┐
+   │ firmware/  ESP32-P4 + LVGL 9:     │  │ /app: Deskling in your   │
+   │ animated UI, touch, Wi-Fi         │  │ browser (phone too)      │
+   └───────────────────────────────────┘  └──────────────────────────┘
 ```
 
 ## Repo layout
@@ -43,7 +49,7 @@ From across the room you can:
 | Folder | What lives there |
 | --- | --- |
 | [`relay/`](relay/README.md) | Cloudflare Worker that agents talk to and the screen listens to, plus Deskling in your browser at `/app` |
-| [`hooks/`](hooks/README.md) | The Claude Code plugin (hooks, MCP tools, channel), Cursor hooks, and the `deskling` CLI |
+| [`hooks/`](hooks/README.md) | The Claude Code plugin (hooks, MCP tools, channel), the OpenCode plugin and agents, the runner that starts sessions from the screen, Cursor hooks, and the `deskling` CLI |
 | [`firmware/`](firmware/README.md) | ESP-IDF 6.1 project for the screen, plus a host simulator that renders every screen to PNG |
 | [`case/`](case/README.md) | Parametric 3D-printable case: lilac Deskling bezel with ears and cheeks, back cover, 18° stand |
 | [`site/`](site/) | deskling.mojolayers.com: landing page, browser installer, and the firmware update server (`/firmware/`). A Worker with static assets, auto-deployed by Cloudflare from this repo |
@@ -58,7 +64,7 @@ From across the room you can:
    [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/moderniselife/deskling/tree/main/relay)
 
    Then open `https://<relay>/setup`. It has your copy-paste details and test buttons, and `/app` is a working Deskling in your browser, on your phone too.
-2. **Claude Code.** Run `/plugin marketplace add moderniselife/deskling`, then `/plugin install deskling@deskling`, then `/plugin configure deskling@deskling` and paste the relay URL and token. [Cursor and the CLI](hooks/README.md) are set up the same way.
+2. **Claude Code.** Run `/plugin marketplace add moderniselife/deskling`, then `/plugin install deskling@deskling`, then `/plugin configure deskling@deskling` and paste the relay URL and token. [OpenCode, the runner, Cursor and the CLI](hooks/README.md) take a minute each.
 3. **Screen.** Open [deskling.mojolayers.com/install](https://deskling.mojolayers.com/install) (or `https://<relay>/flash`) in Chrome or Edge and install over USB (once). Pick your Wi-Fi on the screen, then open `deskling.local` and paste the relay details. Updates arrive over the air after that.
 4. **Case.** Print the fit template first, then the parts for your printer ([details](case/README.md)).
 
