@@ -6,24 +6,30 @@
 #   . $IDF_PATH/export.sh            # ESP-IDF 6.x in your shell
 #   firmware/tools/release.sh v0.2.0 # build, pack, push
 #   firmware/tools/release.sh v0.2.0 --no-push   # build and pack only (see firmware/dist/)
+#   firmware/tools/release.sh v0.2.0 --publish-only   # push what's already in firmware/dist/
 #
 # Variants: chip revision (p4r1 = silicon v1.x, p4r3 = v3.x) × LCD panel (lcd1 / lcd2).
 set -euo pipefail
 
 VERSION="${1:-}"
 PUSH=1
-[[ "${2:-}" == "--no-push" ]] && PUSH=0
+BUILD=1
+case "${2:-}" in
+  --no-push) PUSH=0 ;;
+  --publish-only) BUILD=0 ;;
+esac
 if [[ -z "$VERSION" ]]; then
-  echo "usage: $0 <version, e.g. v0.2.0> [--no-push]" >&2
+  echo "usage: $0 <version, e.g. v0.2.0> [--no-push | --publish-only]" >&2
   exit 1
 fi
-command -v idf.py >/dev/null || { echo "ESP-IDF isn't in this shell. Run: . \$IDF_PATH/export.sh" >&2; exit 1; }
 
 FW="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="$(cd "$FW/.." && pwd)"
 DIST="$FW/dist"
 VARIANTS=(p4r1-lcd1 p4r1-lcd2 p4r3-lcd1 p4r3-lcd2)
 
+if [[ $BUILD == 1 ]]; then
+command -v idf.py >/dev/null || { echo "ESP-IDF isn't in this shell. Run: . \$IDF_PATH/export.sh" >&2; exit 1; }
 rm -rf "$DIST"
 mkdir -p "$DIST"
 cd "$FW"
@@ -62,7 +68,7 @@ EOF
 cat >"$DIST/README.md" <<EOF
 # Deskling firmware $VERSION
 
-Built builds for the Deskling screen. Don't edit this branch by hand: \`firmware/tools/release.sh\` replaces it.
+Prebuilt firmware for the Deskling screen. Don't edit this branch by hand: \`firmware/tools/release.sh\` replaces it.
 
 - Install from the browser: open \`/flash\` on your relay.
 - \`deskling-<variant>.bin\` is the app image (for over-the-air updates and the screen's settings page).
@@ -70,6 +76,12 @@ Built builds for the Deskling screen. Don't edit this branch by hand: \`firmware
 EOF
 
 echo "==> packed $VERSION in firmware/dist"
+fi
+
+if [[ $BUILD == 0 ]]; then
+  grep -q "\"version\": \"$VERSION\"" "$DIST/manifest.json" 2>/dev/null \
+    || { echo "firmware/dist doesn't hold $VERSION. Build it first." >&2; exit 1; }
+fi
 [[ $PUSH == 1 ]] || exit 0
 
 # Publish: the branch only ever holds the latest release, as a single orphan commit.
