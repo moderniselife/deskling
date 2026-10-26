@@ -218,7 +218,7 @@ async function ocFetch(path, init = {}) {
  */
 const OC_FILES = [
   { from: "deskling.js", to: "plugins/deskling.js", update: true, check: "DesklingPlugin" },
-  ...["deskling", "deskling-planner", "deskling-tester", "deskling-reviewer"].map((n) => ({ from: `agents/${n}.md`, to: `agents/${n}.md`, update: false, check: "description:" })),
+  ...["deskling", "deskling-planner", "deskling-tester", "deskling-reviewer", "deskling-browser"].map((n) => ({ from: `agents/${n}.md`, to: `agents/${n}.md`, update: false, check: "description:" })),
 ];
 async function installPlugin() {
   const cfg = join(process.env.XDG_CONFIG_HOME || join(HOME, ".config"), "opencode");

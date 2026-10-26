@@ -311,6 +311,11 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
           const sid = part.sessionID;
           const s = session(sid);
           if (s.parentID) {
+            // A helper's screenshots show in the main chat.
+            if (part.type === "tool" && part.state?.status === "completed" && Array.isArray(part.state.attachments))
+              part.state.attachments.forEach((a, i) => {
+                if (/^image\/(png|jpeg)$/.test(a.mime || "") && String(a.url || "").startsWith("data:")) queue(root(sid), {}, { key: `${part.id}-${i}`, from: "agent", text: "", image: a.url });
+              });
             if (part.type === "tool" && part.state?.status === "running") {
               const h = session(s.parentID).helpers.get(sid);
               if (h) {

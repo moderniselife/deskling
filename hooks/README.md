@@ -286,6 +286,12 @@ The [runner](#starting-sessions-from-deskling) installs the plugin for you when 
 - **deskling-tester**: finds and runs the tests, type checks and linters, and fixes what the change broke. Can't push.
 - **deskling-reviewer**: reviews the change for bugs, missed cases and security. Can't change files.
 
+- **deskling-browser**: checks web pages in a real browser, like a person would, and sends its screenshots to the screen. It needs the [Playwright MCP server](https://github.com/microsoft/playwright-mcp) in your OpenCode config:
+
+  ```json
+  { "mcp": { "playwright": { "type": "local", "command": ["npx", "@playwright/mcp@latest"] } } }
+  ```
+
 They work with any model; with a small local model, give the helpers a bigger one with `model:` in their files if you have one. The plugin gives every OpenCode agent the screen tools: `deskling_notify`, `deskling_remind` and `deskling_ask`.
 
 A permission prompt waits on Deskling for up to `DESKLING_WAIT` seconds (default 110) while OpenCode shows its own prompt too. Answer either one: answering on the computer takes it off the screen.
