@@ -27,6 +27,8 @@
 //   DESKLING_CLAUDE                the claude command (default: claude)
 //   DESKLING_OPENCODE              the opencode command (default: opencode; "off" to not offer it)
 //   DESKLING_OPENCODE_PORT         the port for its OpenCode server (default: 4097)
+//   DESKLING_OPENCODE_AGENT        the OpenCode agent for sessions from the screen (default: deskling;
+//                                  "default" for OpenCode's own default)
 
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -58,7 +60,7 @@ const NAME = (get("DESKLING_NAME") || hostname()).split(".")[0];
 const CLAUDE = get("DESKLING_CLAUDE", "claude");
 const OPENCODE = get("DESKLING_OPENCODE", "opencode");
 const OC_PORT = Number(get("DESKLING_OPENCODE_PORT", "4097")) || 4097;
-const PLUGIN_URL = "https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/opencode/deskling.js";
+const OC_BASE = "https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/opencode";
 const OS = { darwin: "mac", win32: "windows", linux: "linux" }[platform()] ?? platform();
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
@@ -166,34 +168,49 @@ async function ocFetch(path, init = {}) {
   return t ? JSON.parse(t) : null;
 }
 
-/** The plugin that shows OpenCode sessions on Deskling, in OpenCode's global plugins folder. */
+/**
+ * The plugin that shows OpenCode sessions on Deskling, and the Deskling agents, in OpenCode's
+ * global config folder. The plugin is kept up to date; agents are only added when missing, so
+ * your edits to them stay.
+ */
+const OC_FILES = [
+  { from: "deskling.js", to: "plugins/deskling.js", update: true, check: "DesklingPlugin" },
+  ...["deskling", "deskling-planner", "deskling-tester", "deskling-reviewer"].map((n) => ({ from: `agents/${n}.md`, to: `agents/${n}.md`, update: false, check: "description:" })),
+];
 async function installPlugin() {
-  const dir = join(process.env.XDG_CONFIG_HOME || join(HOME, ".config"), "opencode", "plugins");
-  const dest = join(dir, "deskling.js");
-  const local = join(dirname(fileURLToPath(import.meta.url)), "..", "opencode", "deskling.js");
-  let code = "";
-  if (existsSync(local)) code = readFileSync(local, "utf8");
-  else {
+  const cfg = join(process.env.XDG_CONFIG_HOME || join(HOME, ".config"), "opencode");
+  const here = join(dirname(fileURLToPath(import.meta.url)), "..", "opencode");
+  let ok = true;
+  for (const f of OC_FILES) {
+    const dest = join(cfg, f.to);
+    if (!f.update && existsSync(dest)) continue;
+    let code = "";
+    if (existsSync(join(here, f.from))) code = readFileSync(join(here, f.from), "utf8");
+    else {
+      try {
+        const res = await fetch(`${OC_BASE}/${f.from}`, { signal: AbortSignal.timeout(15_000) });
+        if (res.ok) code = await res.text();
+      } catch {
+        /* offline */
+      }
+    }
+    if (!code.includes(f.check)) {
+      ok &&= existsSync(dest);
+      continue;
+    }
+    let old = "";
     try {
-      const res = await fetch(PLUGIN_URL, { signal: AbortSignal.timeout(15_000) });
-      if (res.ok) code = await res.text();
+      old = readFileSync(dest, "utf8");
     } catch {
-      /* offline */
+      /* new */
+    }
+    if (old !== code) {
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, code);
+      log(`installed ${dest}`);
     }
   }
-  if (!code.includes("DesklingPlugin")) return existsSync(dest);
-  mkdirSync(dir, { recursive: true });
-  let old = "";
-  try {
-    old = readFileSync(dest, "utf8");
-  } catch {
-    /* new */
-  }
-  if (old !== code) {
-    writeFileSync(dest, code);
-    log(`installed the Deskling plugin for OpenCode: ${dest}`);
-  }
-  return true;
+  return ok;
 }
 
 async function ensureOpenCode() {
@@ -283,6 +300,9 @@ async function startOpenCode(job) {
     const q = `?directory=${encodeURIComponent(job.project)}`;
     const session = await ocFetch(`/session${q}`, { method: "POST", body: "{}" });
     const body = { parts: [{ type: "text", text: job.prompt }] };
+    // Sessions from the screen use the Deskling agent (it keeps you posted there) unless you pick another.
+    const agent = get("DESKLING_OPENCODE_AGENT", "deskling");
+    if (agent !== "default" && (agent !== "deskling" || existsSync(join(process.env.XDG_CONFIG_HOME || join(HOME, ".config"), "opencode", "agents", "deskling.md")))) body.agent = agent;
     if (job.model?.includes("/")) {
       const i = job.model.indexOf("/");
       body.model = { providerID: job.model.slice(0, i), modelID: job.model.slice(i + 1) };

@@ -27,7 +27,7 @@ try {
 }
 
 // ---- a fake relay that records what the plugin sends
-const relay = { updates: [], asks: [], outbox: [], resolved: [], answer: { decision: "allow" }, registered: null, job: null, done: null };
+const relay = { updates: [], asks: [], outbox: [], resolved: [], events: [], answer: { decision: "allow" }, registered: null, job: null, done: null };
 const relayServer = createServer((req, res) => {
   let body = "";
   req.on("data", (d) => (body += d));
@@ -45,6 +45,10 @@ const relayServer = createServer((req, res) => {
     if (req.url === "/agent/ask") {
       relay.asks.push(JSON.parse(body));
       return send(relay.answer);
+    }
+    if (req.url === "/api/event") {
+      relay.events.push(JSON.parse(body));
+      return send({ ok: true });
     }
     if (req.url === "/runner/register") {
       relay.registered = JSON.parse(body);
@@ -81,6 +85,8 @@ const T = mkdtempSync(join(tmpdir(), "deskling-oc-"));
 const cfg = join(T, "config", "opencode");
 mkdirSync(join(cfg, "plugins"), { recursive: true });
 copyFileSync(join(here, "..", "deskling.js"), join(cfg, "plugins", "deskling.js"));
+mkdirSync(join(cfg, "agents"), { recursive: true });
+for (const f of ["deskling.md", "deskling-planner.md", "deskling-tester.md", "deskling-reviewer.md"]) copyFileSync(join(here, "..", "agents", f), join(cfg, "agents", f));
 writeFileSync(
   join(cfg, "opencode.json"),
   JSON.stringify({
@@ -200,6 +206,32 @@ try {
   check("answering on the computer takes it off the screen", true);
   await until("the turn to end", () => lines(sid).filter((l) => l.from === "agent" && /printed hi/.test(l.text)).length >= 2, 30000);
 
+  // The Deskling agent and its tools: a notification, a question on the screen, and a helper.
+  const idle = () => until("the turn to end", async () => (await api("GET", `/session/status?directory=${encodeURIComponent(proj)}`))[sid] === undefined, 30000);
+  const say = (text) => api("POST", `/session/${sid}/prompt_async?directory=${encodeURIComponent(proj)}`, { agent: "deskling", parts: [{ type: "text", text }] });
+  await idle();
+  await say("notify me when done");
+  await until("the notification", () => relay.events.some((e) => e.kind === "notify"), 30000);
+  check("an agent can notify you on the screen", relay.events.find((e) => e.kind === "notify").title === "Tests pass");
+  await idle();
+  relay.answer = { answers: { "Which database?": "SQLite" } };
+  const asksBefore = relay.asks.length;
+  await say("ask me which database");
+  await until("the question", () => relay.asks.length > asksBefore, 30000);
+  const q = relay.asks[relay.asks.length - 1];
+  check("an agent can ask you on the screen", q.kind === "question" && q.questions[0].options.map((o) => o.label).join() === "Postgres,SQLite", JSON.stringify(q));
+  await until("its reply with your answer", () => lines(sid).some((l) => l.from === "agent" && /SQLite/.test(l.text)), 30000);
+  check("your answer reaches the agent", true);
+  await idle();
+  await say("make a plan for dark mode");
+  await until("a helper", () => relay.updates.some((u) => u.id === `oc-${sid}` && u.helpers?.length), 30000);
+  check("its helper shows up", true);
+  await until("the helper to finish", () => relay.updates.some((u) => u.id === `oc-${sid}` && u.helpers?.some((h) => h.done)), 30000);
+  const h = [...relay.updates].reverse().find((u) => u.id === `oc-${sid}` && u.helpers?.length).helpers[0];
+  check("the helper is named and finishes", /plan/i.test(h.name) && h.done, JSON.stringify(h));
+  check("the helper's own words stay out of the main chat", !lines(sid).some((l) => l.from === "agent" && /^planned: 1/.test(l.text)));
+  await idle();
+
   await api("DELETE", `/session/${sid}?directory=${encodeURIComponent(proj)}`);
   await until("the end", () => relay.updates.some((u) => u.id === `oc-${sid}` && u.end), 10000);
   check("deleting the session removes it from the screen", true);
@@ -207,6 +239,7 @@ try {
   // The runner: offers OpenCode with its models, installs the plugin, starts a session from the screen.
   stop(oc);
   rmSync(join(cfg, "plugins", "deskling.js"));
+  rmSync(join(cfg, "agents"), { recursive: true });
   relay.updates.length = 0;
   const runnerPort = 30000 + Math.floor(Math.random() * 20000);
   runner = spawn(process.execPath, [join(here, "..", "..", "runner", "deskling-runner.mjs")], {
@@ -219,7 +252,7 @@ try {
   const eng = relay.registered.engines?.find((e) => e.id === "opencode");
   check("the runner offers OpenCode", !!eng, JSON.stringify(relay.registered.engines));
   check("with the models you set up, your default first", eng?.models?.[0]?.id === "mock/mock-coder" && eng.models[0].name === "Mock coder", JSON.stringify(eng?.models));
-  check("it installs the Deskling plugin for OpenCode", existsSync(join(cfg, "plugins", "deskling.js")));
+  check("it installs the Deskling plugin and agents for OpenCode", existsSync(join(cfg, "plugins", "deskling.js")) && existsSync(join(cfg, "agents", "deskling-reviewer.md")));
   relay.job = { id: "j2", machine: relay.registered.machine, project: proj, prompt: "say hello to the screen", engine: "opencode", model: "mock/mock-coder" };
   await until("the job to start", () => relay.done, 30000);
   check("it starts an OpenCode session for the screen", relay.done.ok === true && relay.done.id === "j2", JSON.stringify(relay.done));

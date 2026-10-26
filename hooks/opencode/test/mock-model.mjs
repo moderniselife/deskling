@@ -34,7 +34,23 @@ export function startMockModel(port = 0) {
       const words = (s) => s.split(/(?<= )/).map((w) => chunk({ content: w }));
       // No tools: OpenCode asking for a title or a summary.
       if (!b.tools?.length) return sse(res, [chunk({ role: "assistant", content: "Mock session" }), chunk({}, "stop"), usage]);
-      if (last?.role === "tool") return sse(res, [chunk({ role: "assistant" }), ...words("The command printed hi, so the shell works."), chunk({}, "stop"), usage]);
+      if (last?.role === "tool" && !/They answered|Shown on Deskling|planned|No answer/i.test(textOf(last)))
+        return sse(res, [chunk({ role: "assistant" }), ...words("The command printed hi, so the shell works."), chunk({}, "stop"), usage]);
+      const call = (name, args, say) =>
+        sse(res, [
+          chunk({ role: "assistant", content: say }),
+          chunk({ tool_calls: [{ index: 0, id: "call_" + name + "_" + requests.length, type: "function", function: { name, arguments: JSON.stringify(args) } }] }),
+          chunk({}, "tool_calls"),
+          usage,
+        ]);
+      const has = (name) => (b.tools || []).some((t) => t.function?.name === name);
+      if (last?.role === "tool" && /They answered|Shown on Deskling|planned|No answer/i.test(textOf(last)))
+        return sse(res, [chunk({ role: "assistant" }), ...words("Okay. " + textOf(last).slice(0, 60)), chunk({}, "stop"), usage]);
+      if (/notify me/i.test(textOf(lastUser)) && has("deskling_notify")) return call("deskling_notify", { title: "Tests pass", body: "All 12 green" }, "Letting you know.");
+      if (/ask me/i.test(textOf(lastUser)) && has("deskling_ask")) return call("deskling_ask", { question: "Which database?", options: ["Postgres", "SQLite"] }, "");
+      if (/make a plan/i.test(textOf(lastUser)) && has("task"))
+        return call("task", { description: "Plan the change", prompt: "Plan adding a dark mode. Reply with: planned.", subagent_type: "deskling-planner" }, "Asking the planner.");
+      if (/Reply with: planned/.test(textOf(lastUser))) return sse(res, [chunk({ role: "assistant" }), ...words("planned: 1. add a toggle 2. add styles"), chunk({}, "stop"), usage]);
       if (/run/i.test(textOf(lastUser))) {
         return sse(res, [
           chunk({ role: "assistant", reasoning_content: "The user wants a command run.\nI'll use bash." }),

@@ -248,6 +248,17 @@ The Deskling plugin for [OpenCode](https://opencode.ai) puts your OpenCode sessi
 
 The [runner](#starting-sessions-from-deskling) installs the plugin for you when it finds OpenCode. For just one project, put the file in that project's `.opencode/plugins/` instead.
 
+### The Deskling agents
+
+[`opencode/agents`](opencode/agents) is a small team of OpenCode agents made for working while you're away from the keyboard. Copy them to `~/.config/opencode/agents/` (the runner does this for you, and leaves them alone once you've edited them).
+
+- **deskling** (pick it with Tab in OpenCode): plans first, hands pieces to its helpers, checks its own work, and uses the screen: it notifies you when something you'd want to know happens, asks you there when it needs a decision, and can set reminders. Sessions you start from Deskling use it.
+- **deskling-planner**: reads the code and writes a short, concrete plan. Can't change files.
+- **deskling-tester**: finds and runs the tests, type checks and linters, and fixes what the change broke. Can't push.
+- **deskling-reviewer**: reviews the change for bugs, missed cases and security. Can't change files.
+
+They work with any model; with a small local model, give the helpers a bigger one with `model:` in their files if you have one. The plugin gives every OpenCode agent the screen tools: `deskling_notify`, `deskling_remind` and `deskling_ask`.
+
 A permission prompt waits on Deskling for up to `DESKLING_WAIT` seconds (default 110) while OpenCode shows its own prompt too. Answer either one: answering on the computer takes it off the screen.
 
 Tested with OpenCode 1.19 (`opencode-ai` on npm). Its test (`node hooks/opencode/test/opencode.test.mjs`) runs a real OpenCode against a stand-in model, so it needs no API key.

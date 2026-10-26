@@ -7,6 +7,10 @@
 // From the screen: allow or deny its permission prompts, answer its questions, and send messages
 // (they start it straight away, even when it's idle).
 //
+// It also gives OpenCode's agents three tools for the screen: deskling_notify (a notification),
+// deskling_remind (a reminder at a time) and deskling_ask (a question with options, answered on the
+// screen). The Deskling agents in hooks/opencode/agents use them.
+//
 // Works with OpenCode 1.x (the opencode-ai package): in the TUI and in `opencode serve`.
 import { readFileSync } from "node:fs";
 import { homedir, hostname, platform } from "node:os";
@@ -201,7 +205,47 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
 
   pollLoop();
 
+  // ---- tools for the agents: the screen as an output (and a way to ask you)
+  const str = (description) => ({ type: "string", description });
+  const tool = {
+    deskling_notify: {
+      description:
+        "Show a short notification on the person's Deskling desk screen. Use it for things they'd want to know even when they're away from the computer: a long job finished, something failed, or you're blocked.",
+      args: { title: str("A few words, like 'Tests pass' or 'Deploy failed'"), body: str("One short sentence with the detail, or an empty string") },
+      async execute(args) {
+        const r = await fetch(`${URL_BASE}/api/event`, { method: "POST", headers: auth, body: JSON.stringify({ kind: "notify", title: String(args.title).slice(0, 80), body: String(args.body || "").slice(0, 200), level: "info" }) }).catch(() => null);
+        return r?.ok ? "Shown on Deskling." : "Deskling didn't answer; carry on without it.";
+      },
+    },
+    deskling_remind: {
+      description: "Set a reminder on the person's Deskling screen that goes off later, for example to check a deploy or review a pull request.",
+      args: { title: str("What to remember, like 'Check the preview deploy'"), in_minutes: { type: "number", description: "Minutes from now" } },
+      async execute(args) {
+        const at = Math.round(Date.now() / 1000 + Math.max(1, Number(args.in_minutes) || 30) * 60);
+        const r = await fetch(`${URL_BASE}/api/event`, { method: "POST", headers: auth, body: JSON.stringify({ kind: "reminder", title: String(args.title).slice(0, 80), at, from: "OpenCode" }) }).catch(() => null);
+        return r?.ok ? `Reminder set for ${new Date(at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.` : "Deskling didn't answer; the reminder wasn't set.";
+      },
+    },
+    deskling_ask: {
+      description:
+        "Ask the person a question on their Deskling desk screen and wait for the answer (up to about two minutes). Give 2 to 4 short options. Use it for a decision only they can make; if there's no answer, pick the safest option and say so.",
+      args: { question: str("The question, one sentence"), options: { type: "array", items: { type: "string" }, description: "2 to 4 short answers to choose from" } },
+      async execute(args, ctx) {
+        const options = (Array.isArray(args.options) ? args.options : []).map(String).filter(Boolean).slice(0, 4);
+        const question = String(args.question).slice(0, 200);
+        session(ctx.sessionID);
+        queue(root(ctx.sessionID)); // make sure the screen knows the session before asking
+        await flush();
+        const r = await ask(ctx.sessionID, { kind: "question", tool: "Question", summary: question, detail: "", wait: 110, questions: [{ question, header: "", multiSelect: false, options: options.map((label) => ({ label, description: "" })) }] });
+        const a = r.answers?.[question];
+        if (a) return `They answered: ${Array.isArray(a) ? a.join(", ") : a}`;
+        return r.timeout ? "No answer from Deskling in time." : "Deskling didn't answer.";
+      },
+    },
+  };
+
   return {
+    tool,
     event: async ({ event }) => {
       const t = event?.type;
       const p = event?.properties || {};
