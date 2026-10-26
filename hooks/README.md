@@ -76,7 +76,7 @@ The hooks are bash scripts. Claude Code runs them through Git Bash, which comes 
 }
 ```
 
-That assumes you copied the script to `%USERPROFILE%\deskling\`. If settings `env` doesn't reach hooks on your setup, put the URL and token in `%USERPROFILE%\.deskling\config` instead (see below).
+That assumes you copied [`scripts/deskling-hook.ps1`](scripts/deskling-hook.ps1) and [`scripts/deskling-stream.ps1`](scripts/deskling-stream.ps1) (it streams the conversation) to `%USERPROFILE%\deskling\`. If settings `env` doesn't reach hooks on your setup, put the URL and token in `%USERPROFILE%\.deskling\config` instead (see below).
 
 ## Cowork and cloud sessions (the Claude app, Claude Code on the web)
 
