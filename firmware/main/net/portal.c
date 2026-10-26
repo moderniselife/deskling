@@ -33,6 +33,7 @@ extern const char portal_html_end[] asm("_binary_portal_html_end");
 
 static int s_bad_tries;
 static int64_t s_locked_until;
+static char s_last_bad[8]; // the same wrong code again (a page still polling with an old one) isn't a new guess
 
 // -------------------------------------------------------------- helpers
 
@@ -62,22 +63,29 @@ static esp_err_t ok(httpd_req_t *req)
     return send_json(req, o);
 }
 
-/** The code on the screen proves you're in the room. Five wrong tries locks for a minute. */
+/** The code on the screen proves you're in the room. Five different wrong codes lock for a minute;
+    the right code always works once the minute is up, and repeating one wrong code (a browser tab
+    still polling with the code from before a restart) counts once. */
 static bool authorised(httpd_req_t *req)
 {
     int64_t now = esp_timer_get_time();
+    char code[8] = "";
+    bool given = httpd_req_get_hdr_value_str(req, "X-Deskling-Code", code, sizeof(code)) == ESP_OK && code[0];
+    if (given && strcmp(code, net_code()) == 0 && now >= s_locked_until) {
+        s_bad_tries = 0;
+        s_last_bad[0] = '\0';
+        return true;
+    }
     if (now < s_locked_until) {
         send_error(req, "429 Too Many Requests", "Too many wrong codes. Wait a minute.");
         return false;
     }
-    char code[8] = "";
-    if (httpd_req_get_hdr_value_str(req, "X-Deskling-Code", code, sizeof(code)) == ESP_OK && strcmp(code, net_code()) == 0) {
-        s_bad_tries = 0;
-        return true;
-    }
-    if (++s_bad_tries >= 5) {
-        s_locked_until = now + 60LL * 1000000;
-        s_bad_tries = 0;
+    if (given && strcmp(code, s_last_bad) != 0) {
+        snprintf(s_last_bad, sizeof(s_last_bad), "%s", code);
+        if (++s_bad_tries >= 5) {
+            s_locked_until = now + 60LL * 1000000;
+            s_bad_tries = 0;
+        }
     }
     send_error(req, "401 Unauthorized", "That code doesn't match the screen.");
     return false;

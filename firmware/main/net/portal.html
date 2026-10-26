@@ -133,8 +133,14 @@ const ZONES = {
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { 'X-Deskling-Code': code, ...(opts.headers || {}) } });
-  if (res.status === 401) { showGate('That code doesn’t match the screen.'); throw new Error('code'); }
-  if (res.status === 429) { showGate('Too many tries. Wait a minute.'); throw new Error('locked'); }
+  if (res.status === 401) {
+    // The code changes when Deskling restarts (after an update, say): stop asking with the old one.
+    stopPolling();
+    try { sessionStorage.removeItem('dk-code'); } catch {}
+    showGate(unlocked ? 'Deskling restarted, so it has a new code. Type the one on its screen.' : 'That code doesn’t match the screen.');
+    throw new Error('code');
+  }
+  if (res.status === 429) { stopPolling(); showGate('Too many wrong codes. Wait a minute, then try again.'); throw new Error('locked'); }
   const text = await res.text();
   let body = {};
   try { body = JSON.parse(text); } catch { body = { message: text }; }
@@ -144,7 +150,11 @@ async function api(path, opts = {}) {
 const post = (path, data) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 function say(id, text, ok) { const el = $(id); el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'bad'); }
 
-function showGate(msg) { $('app').hidden = true; $('gate').hidden = false; $('gatemsg').textContent = msg || ''; }
+let pollTimer = null;
+let unlocked = false;
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+function startPolling() { stopPolling(); pollTimer = setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, 4000); }
+function showGate(msg) { $('app').hidden = true; $('gate').hidden = false; $('gatemsg').textContent = msg || ''; $('code').value = ''; $('code').focus(); }
 async function unlock() {
   code = $('code').value.trim();
   if (!/^\d{4}$/.test(code.replace(/\s/g, ''))) return showGate('Type the 4 digits from the screen.');
@@ -155,8 +165,9 @@ async function unlock() {
     return;
   }
   try { sessionStorage.setItem('dk-code', code); } catch {}
+  unlocked = true;
   $('gate').hidden = true; $('app').hidden = false;
-  refresh(); setInterval(refresh, 4000);
+  refresh().catch(() => {}); startPolling();
 }
 $('go').onclick = unlock;
 $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
@@ -253,7 +264,7 @@ $('upload').onclick = () => {
 };
 $('restart').onclick = () => post('/api/restart', {}).then(() => say('fwmsg', 'Restarting…', true)).catch(() => {});
 
-if (code) { $('code').value = code; unlock(); }
+if (code) { unlocked = true; $('code').value = code; unlock(); }
 </script>
 </body>
 </html>
