@@ -24,8 +24,8 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # ---- Updates: two app slots, roll back if a new version can't get online
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_ESP_HTTPS_OTA_DECRYPT_CB=n
-CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
-CONFIG_HTTPD_MAX_URI_LEN=256
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=4096
+CONFIG_HTTPD_MAX_URI_LEN=512
 
 # ---- Wi-Fi through the ESP32-C6 (ESP-Hosted over SDIO)
 # The board copies Espressif's P4 Function-EV wiring: SDIO slot 1, CLK 18, CMD 19,

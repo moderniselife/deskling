@@ -55,6 +55,10 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
       <label class="choice"><input type="radio" name="lcd" value="lcd2"> <b>2624 or higher</b><br><span class="muted">Newer panel</span></label>
     </div>
     <label class="check"><input type="checkbox" id="erase" checked> Erase everything first (recommended the first time)</label>
+    <details style="margin-top:12px"><summary class="muted">Install a file instead</summary>
+      <p class="muted">For test builds: pick a <code>-full.bin</code> (the whole flash image). Leave this empty to install the latest release.</p>
+      <input type="file" id="file" accept=".bin">
+    </details>
   </section>
 
   <section>
@@ -144,7 +148,8 @@ $('mon').onclick = async () => {
 $('moncopy').onclick = async () => { await navigator.clipboard.writeText($('monlog').textContent); $('moncopy').textContent = 'Copied!'; setTimeout(() => $('moncopy').textContent = 'Copy log', 1200); };
 
 $('go').onclick = async () => {
-  if (!manifest) return status('No firmware to install yet.', 'bad');
+  const localFile = $('file').files[0];
+  if (!manifest && !localFile) return status('No firmware to install yet.', 'bad');
   const lcd = document.querySelector('input[name=lcd]:checked').value;
   $('go').disabled = true;
   let transport, timer = null, port = null, flashed = false;
@@ -162,14 +167,22 @@ $('go').onclick = async () => {
     if (!/ESP32-P4/.test(chip)) throw new Error('That\u2019s an ' + chip + ', not Deskling\u2019s ESP32-P4. Try the other USB-C port.');
     const major = await loader.chip.getMajorChipVersion(loader);
     const variant = (major >= 3 ? 'p4r3' : 'p4r1') + '-' + lcd;
-    const build = manifest.builds[variant];
-    if (!build) throw new Error('No build published for ' + variant + ' yet.');
+    const build = localFile ? null : manifest.builds[variant];
+    if (!localFile && !build) throw new Error('No build published for ' + variant + ' yet.');
     log('Chip revision v' + major + '.x \u2192 build ' + variant);
 
-    status('Downloading ' + manifest.version + '\u2026');
-    const res = await fetch(FIRMWARE + build.full);
-    if (!res.ok) throw new Error('Download failed (' + res.status + ')');
-    const data = new Uint8Array(await res.arrayBuffer());
+    status(localFile ? 'Reading your file\u2026' : 'Downloading ' + manifest.version + '\u2026');
+    let data;
+    if (localFile) {
+      data = new Uint8Array(await localFile.arrayBuffer());
+      log('Using ' + localFile.name);
+      if (data[0] !== 0xff && data[0] !== 0xe9) throw new Error('That doesn\u2019t look like a Deskling flash image.');
+      if (data.length < 0x30000) throw new Error('That\u2019s too small for a full image. Pick the -full.bin file.');
+    } else {
+      const res = await fetch(FIRMWARE + build.full);
+      if (!res.ok) throw new Error('Download failed (' + res.status + ')');
+      data = new Uint8Array(await res.arrayBuffer());
+    }
     log('Image: ' + (data.length / 1048576).toFixed(1) + ' MB');
 
     $('prog').hidden = false;
