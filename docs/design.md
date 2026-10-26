@@ -23,7 +23,12 @@ Canvas resolution is **1280×800 landscape**. The panel is natively 800×1280 po
 
 1. **Home.** Deskling card with the main agent's status, agent list, live clock and date, reminders (tap to tick off), live feed, and quick actions (focus mode, snooze all, ping me when done).
 2. **Needs you.** Full screen when an agent needs permission: the agent, machine, exact command, and Allow once / Deny / Later. Answering swaps to a confirmation state.
-3. **Night clock.** Big clock, sleeping Deskling, next reminder and overnight jobs.
+3. **Night clock.** Big clock, sleeping Deskling, next reminder and overnight jobs. Comes on by itself after 22:00 when nothing needs you and the screen hasn't been touched for 5 minutes. The backlight drops to 25%. Tap to wake.
+4. **Sessions.** A nav rail (Home / Sessions / Night) and filter tabs (All, Needs you, Working, Done). A 3-column grid of session cards, each with a source badge (Claude Code, Cursor, Agent), name, machine, current task, state pill and time since the last update. Cards that need you are tinted and wiggle.
+5. **Session chat.** Who it is on the left, with the delivery mode: live channel, next step, or can't message. Chat bubbles on the right (queued, delivered, Claude's replies, with a typing indicator), quick replies ("Yes please", "Continue", "Run the tests", "Wrap up and summarise"), and a message box with an on-screen keyboard.
+6. **Question.** Butter-yellow takeover: a curious Deskling with a "?" bubble, the question, and 2–4 big answer buttons with descriptions. Multi-select and multi-question flows step through with Next/Send. "Answer on my computer instead" hands it back to the terminal.
+
+Banners drop in from the top for due reminders and finished tasks.
 
 ## Deskling (the character)
 
@@ -35,6 +40,7 @@ A rounded blob with eyes, blush cheeks and a mouth. Built from primitive shapes 
 | cheer | a reminder is ticked off, a task finishes | arc eyes, open smile, squash-and-stretch jumps, sparkles |
 | worried | an agent needs you | trembles, brows bounce, eyes dart, a sweat drop falls on loop, two rings pulse out behind it |
 | sleepy | idle / night | breathes (slow squash), drifts, "z"s float up and fade |
+| curious | a question, or "your turn" | head tilts side to side, a "?" bubble bobs |
 
 ## UI motion
 
