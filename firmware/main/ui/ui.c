@@ -4,6 +4,7 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include "inbox.h"
 #include "ui_internal.h"
 
 #define NIGHT_AFTER_IDLE_MS (5 * 60 * 1000)
@@ -490,7 +491,7 @@ static void banner(const char *title, const char *body, lv_color_t bg, const cha
     dk_label(txt, DK_FONT_XL, DK_INK, title);
     if (body && body[0]) {
         lv_obj_t *b = dk_label(txt, DK_FONT_M, DK_INK_SOFT, body);
-        lv_label_set_long_mode(b, LV_LABEL_LONG_MODE_DOTS);
+        dk_one_line(b);
         lv_obj_set_style_max_width(b, 760, 0);
     }
     dk_anim_drop_in(s_banner, -60, 0);
@@ -580,6 +581,7 @@ void ui_start_touch_calibration(void)
 
 void ui_init(void)
 {
+    inbox_init();
     s_model = calloc(1, sizeof(dk_model_t));
     g_model = s_model;
     dk_theme_init();
@@ -624,17 +626,16 @@ static const dk_reminder_t *find_reminder(const char *id)
     return NULL;
 }
 
-void ui_apply_model(const dk_model_t *m)
+static void model_changed(void)
 {
-    memcpy(s_model, m, sizeof(*m));
-    if (m->now) s_relay_offset = m->now - ui_now_ms();
+    if (s_model->now) s_relay_offset = s_model->now - ui_now_ms();
 
     // Only the screen on show is brought up to date now; the others catch up when they're
     // opened (ui_go refreshes them), so a snapshot doesn't rebuild five screens at once.
     bool alert = scr_alert_refresh();
-    if (s_cur == SCR_HOME) scr_home_refresh(m->cause, m->cause_id);
+    if (s_cur == SCR_HOME) scr_home_refresh(s_model->cause, s_model->cause_id);
     else if (s_cur == SCR_SESSIONS) scr_sessions_refresh();
-    else if (s_cur == SCR_CHAT) scr_chat_refresh(m->cause);
+    else if (s_cur == SCR_CHAT) scr_chat_refresh(s_model->cause);
     else if (s_cur == SCR_NEW) scr_new_refresh();
     else if (s_cur == SCR_NIGHT) scr_night_refresh();
     ui_gestures_refresh();
@@ -647,7 +648,7 @@ void ui_apply_model(const dk_model_t *m)
         ui_go(s_before_alert == SCR_NIGHT ? SCR_HOME : s_before_alert);
     }
 
-    switch (m->cause) {
+    switch (s_model->cause) {
     case DK_CAUSE_PERMISSION:
         ui_sound(DK_SND_PERMISSION);
         break;
@@ -659,7 +660,7 @@ void ui_apply_model(const dk_model_t *m)
         break;
     case DK_CAUSE_CHAT: {
         // Only a reply from the agent, not the echo of what you just sent.
-        const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
+        const dk_agent_t *a = dk_model_find_agent(s_model, s_model->cause_id);
         // At most one chirp every 8 s: a chatty session shouldn't chirp on every line.
         static uint32_t last_chirp;
         bool reply = a && a->chat_n > 0 && !a->chat[a->chat_n - 1].from_you && !a->chat[a->chat_n - 1].step;
@@ -670,7 +671,7 @@ void ui_apply_model(const dk_model_t *m)
         break;
     }
     case DK_CAUSE_REMINDER_DUE: {
-        const dk_reminder_t *r = find_reminder(m->cause_id);
+        const dk_reminder_t *r = find_reminder(s_model->cause_id);
         if (s_cur == SCR_NIGHT) ui_go(SCR_HOME);
         set_backlight(100);
         ui_sound(DK_SND_REMINDER);
@@ -678,7 +679,7 @@ void ui_apply_model(const dk_model_t *m)
         break;
     }
     case DK_CAUSE_PING: {
-        const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
+        const dk_agent_t *a = dk_model_find_agent(s_model, s_model->cause_id);
         set_backlight(100);
         ui_sound(DK_SND_DONE);
         char title[64];
@@ -690,8 +691,8 @@ void ui_apply_model(const dk_model_t *m)
         // A new notification: drop a banner in wherever you are (tap it for the full list),
         // unless something more important has the screen or the list is already open.
         const dk_feed_t *f = NULL;
-        for (int i = 0; i < m->feed_n && !f; i++)
-            if (!m->cause_id[0] || strcmp(m->feed[i].id, m->cause_id) == 0) f = &m->feed[i];
+        for (int i = 0; i < s_model->feed_n && !f; i++)
+            if (!s_model->cause_id[0] || strcmp(s_model->feed[i].id, s_model->cause_id) == 0) f = &s_model->feed[i];
         bool busy = s_cur == SCR_ALERT || s_cur == SCR_SETUP || s_cur == SCR_BOOT || s_cur == SCR_CALIB || s_cur == SCR_UPDATE;
         if (f && !busy && !ui_gestures_panel_open()) {
             ui_sound(DK_SND_MESSAGE);
@@ -704,7 +705,7 @@ void ui_apply_model(const dk_model_t *m)
     case DK_CAUSE_DONE:
         ui_sound(DK_SND_DONE);
         if (s_cur != SCR_HOME && s_cur != SCR_NIGHT) {
-            const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
+            const dk_agent_t *a = dk_model_find_agent(s_model, s_model->cause_id);
             if (a) {
                 char title[64];
                 snprintf(title, sizeof(title), "%s finished", a->source == DK_SRC_CLAUDE ? "Claude" : a->source == DK_SRC_CUSTOM ? "Your agent" : dk_source_label(a->source));
@@ -715,6 +716,22 @@ void ui_apply_model(const dk_model_t *m)
     default:
         break;
     }
+}
+
+void ui_apply_model(const dk_model_t *m)
+{
+    memcpy(s_model, m, sizeof(*m));
+    model_changed();
+}
+
+void ui_take_model(dk_model_t **m)
+{
+    // Swap rather than copy: the model is about 700 KB.
+    dk_model_t *old = s_model;
+    s_model = *m;
+    g_model = s_model;
+    *m = old;
+    model_changed();
 }
 
 // ------------------------------------------------------------- sound

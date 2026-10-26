@@ -1,4 +1,6 @@
 #include "portal.h"
+#include "esp_heap_caps.h"
+#include "inbox.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -157,6 +159,20 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddStringToObject(d, "bands", ds.internal_bands ? "internal" : "psram");
     cJSON_AddNumberToObject(d, "band_lines", ds.band_lines);
     cJSON_AddStringToObject(o, "last_restart", crashlog_summary());
+    inbox_stats_t ib = inbox_stats();
+    cJSON *sn = cJSON_AddObjectToObject(o, "snapshots");
+    cJSON_AddNumberToObject(sn, "received", ib.received);
+    cJSON_AddNumberToObject(sn, "drawn", ib.drawn);
+    cJSON_AddNumberToObject(sn, "draw_ms_avg", ib.apply_ms_avg);
+    cJSON_AddNumberToObject(sn, "draw_ms_max", ib.apply_ms_max);
+    cJSON_AddNumberToObject(sn, "held_ms_max", ib.waiting_ms_max);
+    cJSON_AddNumberToObject(sn, "details", ib.details);
+    cJSON *hp = cJSON_AddObjectToObject(o, "memory");
+    cJSON_AddNumberToObject(hp, "internal_free_kb", heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    cJSON_AddNumberToObject(hp, "internal_min_kb", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    cJSON_AddNumberToObject(hp, "internal_largest_kb", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024);
+    cJSON_AddNumberToObject(hp, "psram_free_kb", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+    cJSON_AddNumberToObject(hp, "uptime_s", (double)(esp_timer_get_time() / 1000000));
     images_stats_t is = images_stats();
     cJSON *im = cJSON_AddObjectToObject(o, "images");
     cJSON_AddNumberToObject(im, "requested", is.requested);
@@ -167,6 +183,7 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddStringToObject(r, "url", st->relay_url);
     cJSON_AddBoolToObject(r, "configured", settings_relay_configured());
     cJSON_AddBoolToObject(r, "online", net_relay_online());
+    cJSON_AddNumberToObject(r, "restarts", net_relay_restarts());
     cJSON_AddStringToObject(r, "error", net_relay_error());
     size_t tl = strlen(st->token);
     cJSON_AddStringToObject(r, "token_end", tl >= 8 ? st->token + tl - 4 : "");

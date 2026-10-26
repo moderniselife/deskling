@@ -121,6 +121,8 @@ lv_obj_t *ui_source_badge(lv_obj_t *parent, dk_source_t src);
 /* Chat pictures (images.c): returns the picture once it's here, and starts fetching it if not. */
 const lv_image_dsc_t *ui_image_get(const char *id, bool *failed);
 void scr_chat_images_changed(void);
+/* 0 = not here yet (or never asked for), 1 = ready to draw, 2 = couldn't load. Never fetches. */
+int ui_image_state(const char *id);
 
 /* New session (scr_new.c) */
 lv_obj_t *scr_new_create(void);

@@ -27,6 +27,11 @@ Being tested as the `v0.3.2-testN` builds. Install the newest one over the air o
 
 ### The board
 
+- Smoother chats: only lines that changed are redrawn, updates arriving faster than the screen can draw are merged (the newest wins), and nothing redraws under your finger while you scroll.
+- The relay connection no longer stalls while the screen is busy: "Show all", earlier steps and pictures arrive straight away, and a connection that gets stuck reconnecting, or goes quiet, is started again by itself.
+- Notifications and other one-line text are cut with "…" instead of spilling over the next row.
+- The board's page shows memory, how long updates take to draw, and how often the relay connection was restarted.
+
 - The board's page (deskling.local) keeps answering: more connections for the web server, IPv4-only answers for deskling.local (Chrome on a Mac timed out), and a page that stops retrying with an old code after a restart.
 - The board remembers its last crash and shows it, with the reason it last restarted, on its page.
 - Pictures in chats no longer crash the board.

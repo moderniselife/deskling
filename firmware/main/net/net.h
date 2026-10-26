@@ -18,6 +18,8 @@ void net_request_relay(const char *url, const char *token);
 
 bool net_wifi_connected(void);
 bool net_relay_online(void);
+/** Times the relay connection was started again after getting stuck or going quiet. */
+uint32_t net_relay_restarts(void);
 /** Why the relay connection last failed, in plain words; "" when connected or not tried. */
 const char *net_relay_error(void);
 const char *net_ip(void);

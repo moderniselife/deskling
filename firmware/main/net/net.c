@@ -1,4 +1,5 @@
 #include "net.h"
+#include "inbox.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +34,7 @@
 
 static const char *TAG = "net";
 
-typedef enum { CMD_SCAN, CMD_CONNECT, CMD_RELAY, CMD_STA_ONLY } cmd_kind_t;
+typedef enum { CMD_SCAN, CMD_CONNECT, CMD_RELAY, CMD_STA_ONLY, CMD_RELAY_CHECK } cmd_kind_t;
 typedef struct {
     cmd_kind_t kind;
     char a[128];
@@ -62,6 +63,9 @@ static esp_websocket_client_handle_t s_ws;
 static esp_timer_handle_t s_wifi_retry;
 static uint32_t s_backoff_ms = 1000;
 static bool s_wifi_up, s_ws_up, s_services, s_ap_on;
+static int64_t s_ws_since;   // when the relay client was (re)started or last connected, µs
+static int64_t s_ws_last_rx; // anything heard from the relay (a pong counts), µs
+static uint32_t s_ws_restarts;
 static char s_ip[16], s_code[8], s_ap_ssid[33];
 static ui_wifi_ap_t s_scan[16];
 static int s_scan_n;
@@ -76,7 +80,6 @@ static struct {
 
 static char *s_rx;
 static size_t s_rx_cap;
-static dk_model_t *s_model;
 
 bool net_wifi_connected(void) { return s_wifi_up; }
 bool net_relay_online(void) { return s_ws_up; }
@@ -217,22 +220,8 @@ void net_push_info(void)
 
 static void deliver_snapshot(const char *json, size_t len)
 {
-    if (len > 16 && strncmp(json, "{\"type\":\"detail\"", 16) == 0) {
-        // "Show all" or opened steps: only this screen asked, so it isn't part of the model.
-        dk_detail_t d;
-        if (!dk_detail_parse(json, len, &d)) return;
-        if (lvgl_port_lock(2000)) {
-            ui_chat_detail(&d);
-            lvgl_port_unlock();
-        }
-        dk_detail_free(&d);
-        return;
-    }
-    if (!dk_model_parse(json, len, s_model)) return;
-    if (lvgl_port_lock(2000)) {
-        ui_apply_model(s_model);
-        lvgl_port_unlock();
-    }
+    // Never wait for the screen here: the screen picks it up on its own task (ui/inbox.c).
+    inbox_push(json, len);
 }
 
 // ----------------------------------------------------------- WebSocket
@@ -246,6 +235,7 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     case WEBSOCKET_EVENT_CONNECTED:
         ESP_LOGI(TAG, "relay connected");
         s_ws_up = true;
+        s_ws_since = s_ws_last_rx = esp_timer_get_time();
         s_relay_err[0] = '\0';
         set_conn(DK_CONN_ONLINE, NULL);
         dk_resend_view(); // the relay starts every connection with full chats until told otherwise
@@ -259,6 +249,7 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         set_conn(DK_CONN_RELAY, "Reconnecting to relay…");
         break;
     case WEBSOCKET_EVENT_DATA: {
+        s_ws_last_rx = esp_timer_get_time();
         if (ev->op_code != 0x1 && ev->op_code != 0x0) break;
         size_t total = ev->payload_len ? (size_t)ev->payload_len : (size_t)ev->data_len;
         if (total + 1 > s_rx_cap) {
@@ -317,6 +308,7 @@ static void ws_start(void)
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
     ESP_LOGI(TAG, "connecting to %s", url);
+    s_ws_since = s_ws_last_rx = esp_timer_get_time();
     set_conn(DK_CONN_RELAY, NULL);
     s_ws = esp_websocket_client_init(&cfg);
     esp_websocket_register_events(s_ws, WEBSOCKET_EVENT_ANY, ws_event, NULL);
@@ -536,6 +528,21 @@ static void net_task(void *arg)
             ws_start();
             net_push_info();
             break;
+        case CMD_RELAY_CHECK: {
+            // The client reconnects by itself, but it can wedge: stuck "reconnecting" for good, or
+            // connected to a link that has gone quiet. Start it again from scratch.
+            if (!s_wifi_up || !s_ws || !settings_relay_configured()) break;
+            int64_t now = esp_timer_get_time();
+            bool stuck = !s_ws_up && now - s_ws_since > 45LL * 1000000;
+            bool silent = s_ws_up && now - s_ws_last_rx > 75LL * 1000000; // pings go every 20 s
+            if (stuck || silent) {
+                ESP_LOGW(TAG, "relay connection %s: starting it again", stuck ? "stuck" : "silent");
+                s_ws_restarts++;
+                ws_stop();
+                ws_start();
+            }
+            break;
+        }
         case CMD_STA_ONLY:
             vTaskDelay(pdMS_TO_TICKS(8000)); // let the web page show "done" before the hotspot goes
             if (s_wifi_up) stop_hotspot();
@@ -545,9 +552,19 @@ static void net_task(void *arg)
     }
 }
 
+static void relay_watch(void *arg)
+{
+    (void)arg;
+    post(CMD_RELAY_CHECK, NULL, NULL);
+}
+
+uint32_t net_relay_restarts(void) { return s_ws_restarts; }
+
 void net_start(void)
 {
-    s_model = heap_caps_calloc(1, sizeof(dk_model_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    static esp_timer_handle_t watch;
+    const esp_timer_create_args_t wa = {.callback = relay_watch, .name = "relay_watch"};
+    if (!watch && esp_timer_create(&wa, &watch) == ESP_OK) esp_timer_start_periodic(watch, 10LL * 1000000);
     s_outbox = xQueueCreate(16, sizeof(char *));
     s_cmds = xQueueCreate(8, sizeof(cmd_t));
     xTaskCreate(sender_task, "dk_send", 4096, NULL, 5, NULL);

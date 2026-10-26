@@ -136,12 +136,12 @@ static void card(const dk_agent_t *a, int index, bool animate)
     dk_col(names, 0);
     lv_obj_t *n = dk_label(names, DK_FONT_XL, DK_INK, a->name);
     lv_obj_set_width(n, lv_pct(100));
-    lv_label_set_long_mode(n, LV_LABEL_LONG_MODE_DOTS);
+    dk_one_line(n);
     dk_label(names, DK_FONT_S, DK_INK_SOFT, a->host);
 
     lv_obj_t *task = dk_label(c, DK_FONT_M, DK_INK, a->task[0] ? a->task : a->last_message);
     lv_obj_set_width(task, lv_pct(100));
-    lv_obj_set_flex_grow(task, 1);
+    lv_obj_set_flex_grow(task, 1); // fills the card's spare height, cut with "…" there
     lv_label_set_long_mode(task, LV_LABEL_LONG_MODE_DOTS);
 
     lv_obj_t *bottom = dk_box(c);

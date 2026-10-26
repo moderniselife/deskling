@@ -260,7 +260,7 @@ static void build_question(void)
         dk_col(btn, 4);
         lv_obj_t *l = dk_label(btn, DK_FONT_XL, on ? DK_GROUND : DK_INK, q->options[o].label);
         lv_obj_set_width(l, lv_pct(100));
-        lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
+        dk_one_line(l);
         if (q->options[o].description[0]) {
             lv_obj_t *d = dk_label(btn, DK_FONT_S, on ? DK_GROUND : DK_INK_SOFT, q->options[o].description);
             lv_obj_set_width(d, lv_pct(100));

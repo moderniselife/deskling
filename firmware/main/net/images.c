@@ -1,6 +1,7 @@
 // Chat pictures: fetched from the relay (GET /img/<id>), decoded (JPEG in hardware, PNG with
 // LVGL's lodepng), shrunk once to fit the chat, and handed to the UI.
 #include "images.h"
+#include "inbox.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -216,15 +217,8 @@ static void worker(void *arg)
             if (data == NULL && !s_stats.last[0]) note(job.id, "download failed");
             else if (len > 8) note(job.id, "couldn't decode it");
         }
-        // Hand it to the UI; keep trying for the lock rather than leaving it "loading" forever.
-        for (int tries = 0; tries < 20; tries++) {
-            if (lvgl_port_lock(1000)) {
-                ui_image_ready(job.id, px, w, h);
-                lvgl_port_unlock();
-                break;
-            }
-        }
-        free(px);
+        // The screen takes it on its own task; this never waits for a busy screen.
+        inbox_image(job.id, px, w, h);
     }
 }
 

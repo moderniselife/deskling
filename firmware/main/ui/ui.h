@@ -23,6 +23,8 @@ typedef void (*ui_backlight_fn)(uint8_t percent);
 void ui_init(void);
 /** Hand the UI a freshly parsed snapshot (copied). */
 void ui_apply_model(const dk_model_t *m);
+/* The same, but takes *m and hands back the previous model in its place (no 700 KB copy). */
+void ui_take_model(dk_model_t **m);
 void ui_set_connection(dk_conn_t c, const char *detail);
 void ui_set_backlight_cb(ui_backlight_fn fn);
 

@@ -169,7 +169,7 @@ lv_obj_t *scr_settings_create(void)
     lv_obj_set_flex_grow(r, 1);
     st.relay_url = dk_label(r, DK_FONT_M, DK_INK, "");
     lv_obj_set_width(st.relay_url, lv_pct(100));
-    lv_label_set_long_mode(st.relay_url, LV_LABEL_LONG_MODE_DOTS);
+    dk_one_line(st.relay_url);
     st.relay_state = dk_label(r, DK_FONT_S, DK_MUTED, "");
     lv_obj_t *pr = dk_box(r);
     lv_obj_set_width(pr, lv_pct(100));

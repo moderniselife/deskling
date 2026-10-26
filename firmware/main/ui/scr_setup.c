@@ -379,7 +379,7 @@ static void ap_row(int i)
     }
     lv_obj_t *n = dk_label(row, DK_FONT_L, DK_INK, ap->ssid);
     lv_obj_set_flex_grow(n, 1);
-    lv_label_set_long_mode(n, LV_LABEL_LONG_MODE_DOTS);
+    dk_one_line(n);
     if (ap->secure) {
         // A little padlock: shackle arc + body.
         lv_obj_t *lock = dk_box(row);

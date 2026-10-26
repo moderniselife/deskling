@@ -60,6 +60,12 @@ const lv_image_dsc_t *ui_image_get(const char *id, bool *failed)
     return NULL;
 }
 
+int ui_image_state(const char *id)
+{
+    slot_t *s = id && id[0] ? find(id) : NULL;
+    return !s ? 0 : s->px ? 1 : s->failed ? 2 : 0;
+}
+
 void ui_image_ready(const char *id, const uint16_t *rgb565, int w, int h)
 {
     slot_t *s = find(id);

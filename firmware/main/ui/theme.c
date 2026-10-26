@@ -163,3 +163,11 @@ lv_color_t dk_state_pill(int state)
     default: return DK_LINE;
     }
 }
+
+void dk_one_line(lv_obj_t *label)
+{
+    // DOTS only cuts text that doesn't fit the label's size: with an automatic height it wraps
+    // instead, and a long notification spills over the next row. One line high, it cuts.
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_height(label, lv_font_get_line_height(lv_obj_get_style_text_font(label, LV_PART_MAIN)));
+}

@@ -3,6 +3,7 @@
 //   deskling_sim <fixtures dir> <out dir> [--frames]
 #include <dirent.h>
 #include <math.h>
+#include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +14,7 @@
 #include "lvgl.h"
 #include "model.h"
 #include "ui.h"
+#include "inbox.h"
 #include "ui_internal.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -280,6 +282,31 @@ static void expect_sent(const char *needle)
     s_last_sent[0] = 0;
 }
 
+/* Every label meant to be one line ("…" at the end) really is one line: none spill over the next row. */
+static int one_line_bad(lv_obj_t *o)
+{
+    if (lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) return 0;
+    int bad = 0;
+    if (lv_obj_check_type(o, &lv_label_class) && lv_label_get_long_mode(o) == LV_LABEL_LONG_MODE_DOTS &&
+        lv_obj_get_style_flex_grow(o, LV_PART_MAIN) == 0 && lv_obj_get_style_max_height(o, LV_PART_MAIN) == LV_COORD_MAX) {
+        int32_t lh = lv_font_get_line_height(lv_obj_get_style_text_font(o, LV_PART_MAIN));
+        if (lv_obj_get_height(o) > lh + 2) {
+            printf("  wraps: \"%.40s\" (%d px high, one line is %d)\n", lv_label_get_text(o), (int)lv_obj_get_height(o), (int)lh);
+            bad++;
+        }
+    }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(o); i++) bad += one_line_bad(lv_obj_get_child(o, i));
+    return bad;
+}
+
+static void expect_one_line(const char *where)
+{
+    lv_obj_update_layout(lv_screen_active());
+    int bad = one_line_bad(lv_screen_active()) + one_line_bad(lv_layer_top());
+    printf("%s  one-line labels stay on one line (%s)\n", bad ? "FAIL" : "PASS", where);
+    if (bad) s_failures++;
+}
+
 static void expect_text(const char *text)
 {
     bool ok = find_label(lv_screen_active(), text) || find_label(lv_layer_top(), text);
@@ -525,6 +552,70 @@ static void scene_tag(const char *name)
     s_scene_tag[j] = 0;
 }
 
+/* A busy session streaming into an open chat: n snapshots, each adding a step or growing the reply. */
+static double s_stream_parse, s_stream_apply;
+static int s_chat_full;
+static double now_ms(void);
+static void stream_chat(int n)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/chat_markdown.json", s_fixtures);
+    FILE *f = fopen(path, "rb");
+    if (!f) return;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc(len + 1);
+    fread(buf, 1, len, f);
+    buf[len] = 0;
+    fclose(f);
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    relativise(root, (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000);
+    cJSON *agents = cJSON_GetObjectItem(root, "agents");
+    cJSON *a = NULL;
+    cJSON_ArrayForEach(a, agents) if (!strcmp(cJSON_GetObjectItem(a, "id")->valuestring, "s-web")) break;
+    cJSON_ReplaceItemInObject(a, "state", cJSON_CreateString("working"));
+    cJSON *chat = cJSON_GetObjectItem(a, "chat");
+    static dk_model_t m;
+    char id[16], text[200];
+    for (int i = 0; i < n; i++) {
+        if (i % 3 == 2) {
+            // the reply streams: its text grows in place
+            cJSON *last = cJSON_GetArrayItem(chat, cJSON_GetArraySize(chat) - 1);
+            const char *old = cJSON_GetObjectItem(last, "text")->valuestring;
+            char *grown = malloc(strlen(old) + 64);
+            sprintf(grown, "%s\n- and point %d", old, i);
+            cJSON_ReplaceItemInObject(last, "text", cJSON_CreateString(grown));
+            free(grown);
+        } else {
+            cJSON *l = cJSON_CreateObject();
+            snprintf(id, sizeof(id), "st%d", i);
+            snprintf(text, sizeof(text), "Reading src/file%d.ts", i);
+            cJSON_AddStringToObject(l, "id", id);
+            cJSON_AddStringToObject(l, "from", "tool");
+            cJSON_AddStringToObject(l, "text", text);
+            cJSON_AddStringToObject(l, "status", "sent");
+            cJSON_InsertItemInArray(chat, cJSON_GetArraySize(chat) - 1, l);
+            if (cJSON_GetArraySize(chat) > 30) cJSON_DeleteItemFromArray(chat, 0);
+        }
+        char *json = cJSON_PrintUnformatted(root);
+        double t0 = now_ms();
+        if (dk_model_parse(json, strlen(json), &m)) {
+            double t1 = now_ms();
+            ui_apply_model(&m);
+            s_stream_parse += t1 - t0;
+            s_stream_apply += now_ms() - t1;
+        }
+        free(json);
+        run(100);
+    }
+    cJSON_Delete(root);
+    printf("  parsing %.1f ms, applying %.1f ms over %d snapshots\n", s_stream_parse, s_stream_apply, n);
+}
+
 static int bench(void)
 {
     s_frames_dir = getenv("DK_FRAMES");
@@ -560,6 +651,17 @@ static int bench(void)
     SCENE("home -> sessions (fade)", 600, (ui_go(SCR_SESSIONS), run(600)));
     SCENE("sessions, idle 2 s", 2000, run(2000));
     SCENE("sessions -> chat (slide)", 700, (ui_go(SCR_CHAT), run(700)));
+    {
+        struct mallinfo2 mi0 = mallinfo2();
+        SCENE("open a long Markdown chat", 900, (apply("chat_markdown"), ui_open_chat("s-web"), run(900)));
+        struct mallinfo2 mi1 = mallinfo2();
+        printf("  heap used by the open chat: %+ld KB\n", ((long)mi1.uordblks - (long)mi0.uordblks) / 1024);
+        SCENE("chat streaming, 30 snapshots", 3000, stream_chat(30));
+        SCENE("chat idle 2 s", 2000, run(2000));
+        SCENE("open a heavy chat (long replies, pictures)", 1500, (apply("chat_heavy"), ui_open_chat("s-web"), run(1500)));
+        SCENE("scroll the heavy chat", 1600, (drag(800, 150, 800, 560, 500, 0), run(300), drag(800, 560, 800, 150, 500, 0), run(300)));
+        SCENE("scroll the chat up and down", 1600, (drag(800, 150, 800, 560, 500, 0), run(300), drag(800, 560, 800, 150, 500, 0), run(300)));
+    }
     SCENE("chat -> sessions (slide)", 700, (ui_go(SCR_SESSIONS), run(700)));
     SCENE("sessions -> home (fade)", 600, (ui_go(SCR_HOME), run(600)));
     SCENE("pull down notifications", 900, (drag(640, 4, 640, 620, 300, 200), run(500)));
@@ -818,7 +920,13 @@ static void chaos(int rounds)
         char *json = cJSON_PrintUnformatted(root);
         cJSON_Delete(root);
         static dk_model_t m;
-        if (dk_model_parse(json, strlen(json), &m)) ui_apply_model(&m);
+        if (rnd(2)) {
+            inbox_push(json, strlen(json)); // the board's way: drawn on the screen's own turn
+            if (rnd(2)) inbox_push(json, strlen(json));
+            inbox_pump();
+        } else if (dk_model_parse(json, strlen(json), &m)) {
+            ui_apply_model(&m);
+        }
         free(json);
         run(rnd(250));
 
@@ -845,9 +953,13 @@ static void chaos(int rounds)
             }
             char *dj = cJSON_PrintUnformatted(d);
             cJSON_Delete(d);
-            dk_detail_t det;
-            if (dk_detail_parse(dj, strlen(dj), &det)) ui_chat_detail(&det);
-            dk_detail_free(&det);
+            if (rnd(2)) {
+                inbox_push(dj, strlen(dj));
+            } else {
+                dk_detail_t det;
+                if (dk_detail_parse(dj, strlen(dj), &det)) ui_chat_detail(&det);
+                dk_detail_free(&det);
+            }
             free(dj);
             run(rnd(120));
         }
@@ -1017,6 +1129,12 @@ int main(int argc, char **argv)
     run(1500);
     shot("03_home_busy");
     expect_text("Claude needs you");
+    apply("busy_long");
+    run(1200);
+    shot("03b_home_long_feed");
+    expect_one_line("home, long notifications");
+    apply("busy");
+    run(600);
     if (want_frames) frames("home", 3000, 100);
 
     apply("done");
@@ -1039,6 +1157,7 @@ int main(int argc, char **argv)
     run(900);
     shot("06_sessions");
     expect_text("Sessions");
+    expect_one_line("sessions");
 
     {
         // With nowhere to start a session, the screen says how to set one up.
@@ -1189,6 +1308,41 @@ int main(int argc, char **argv)
     check(ui_back() && ui_current() == SCR_CHAT, "back closes the reader first");
     run(300);
     check(!find_label(lv_screen_active(), "Back to the chat"), "the reader is closed");
+
+    /* Snapshots arriving faster than they can be drawn: only the newest is drawn, and an answer
+       you asked for gets through first. */
+    {
+        inbox_stats_t before = inbox_stats();
+        static const char *fx[] = {"chat_long", "chat_markdown", "chat_waiting"};
+        for (int i = 0; i < 3; i++) {
+            char path[512];
+            snprintf(path, sizeof(path), "%s/%s.json", s_fixtures, fx[i]);
+            FILE *f = fopen(path, "rb");
+            fseek(f, 0, SEEK_END);
+            long n = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            char *buf = malloc(n + 1);
+            fread(buf, 1, n, f);
+            buf[n] = 0;
+            fclose(f);
+            cJSON *root = cJSON_Parse(buf);
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            relativise(root, (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000);
+            char *json = cJSON_PrintUnformatted(root);
+            inbox_push(json, strlen(json));
+            free(json);
+            cJSON_Delete(root);
+            free(buf);
+        }
+        const char *dj = "{\"type\":\"detail\",\"agentId\":\"s-web\",\"lineId\":\"nope\",\"text\":\"x\"}";
+        inbox_push(dj, strlen(dj));
+        run(400); // the inbox's own timer hands them over
+        inbox_stats_t after = inbox_stats();
+        check(after.received - before.received == 3 && after.drawn - before.drawn == 1, "three snapshots at once: only the newest is drawn");
+        check(after.details - before.details == 1, "an answer gets through alongside");
+        expect_text("Claude is waiting for your reply"); // chat_waiting was the newest
+    }
 
     /* Wait for my reply: while Claude is held waiting, the chat says so. */
     apply("chat_waiting");

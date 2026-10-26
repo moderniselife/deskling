@@ -297,11 +297,11 @@ static void row(lv_obj_t *parent, lv_color_t tint, const char *icon, const char 
     lv_obj_set_width(txt, 0);
     lv_obj_t *t = dk_label(txt, DK_FONT_M, DK_INK, title);
     lv_obj_set_width(t, lv_pct(100));
-    lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
+    dk_one_line(t);
     if (body && body[0]) {
         lv_obj_t *b = dk_label(txt, DK_FONT_XS, DK_MUTED, body);
         lv_obj_set_width(b, lv_pct(100));
-        lv_label_set_long_mode(b, LV_LABEL_LONG_MODE_DOTS);
+        dk_one_line(b);
     }
     if (when && when[0]) dk_label(r, DK_FONT_XS, DK_MUTED, when);
     if (feed_id) {

@@ -106,10 +106,10 @@ lv_obj_t *scr_home_create(void)
 
     h.headline = dk_label(buddy, DK_FONT_H2, DK_INK, "All quiet");
     lv_obj_set_width(h.headline, lv_pct(100));
-    lv_label_set_long_mode(h.headline, LV_LABEL_LONG_MODE_DOTS);
+    dk_one_line(h.headline);
     h.subline = dk_label(buddy, DK_FONT_M, DK_INK_SOFT, "");
     lv_obj_set_size(h.subline, lv_pct(100), 54);
-    lv_label_set_long_mode(h.subline, LV_LABEL_LONG_MODE_DOTS);
+    dk_one_line(h.subline);
 
     lv_obj_t *bottom = dk_box(buddy);
     lv_obj_set_width(bottom, lv_pct(100));
@@ -271,7 +271,7 @@ static void build_agents(void)
         snprintf(buf, sizeof(buf), "%s #6A6274 · %s#", a->name, a->host);
         lv_obj_t *n = dk_label(row, DK_FONT_M, DK_INK, buf);
         lv_label_set_recolor(n, true);
-        lv_label_set_long_mode(n, LV_LABEL_LONG_MODE_DOTS);
+        dk_one_line(n);
         lv_obj_set_flex_grow(n, 1);
         lv_obj_t *pill = dk_pill(row, dk_state_pill(a->state), DK_FONT_XS, dk_state_label(a->state));
         if (a->state == DK_NEEDS_YOU) dk_anim_wiggle(pill);
@@ -352,10 +352,10 @@ static void build_feed(void)
         lv_obj_set_width(txt, 0);
         lv_obj_t *t = dk_label(txt, DK_FONT_M, DK_INK, f->title);
         lv_obj_set_width(t, lv_pct(100));
-        lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
+        dk_one_line(t);
         lv_obj_t *b = dk_label(txt, DK_FONT_XS, DK_MUTED, f->body);
         lv_obj_set_width(b, lv_pct(100));
-        lv_label_set_long_mode(b, LV_LABEL_LONG_MODE_DOTS);
+        dk_one_line(b);
         char ago[12];
         ui_ago(f->ts, ago, sizeof(ago));
         dk_label(row, DK_FONT_XS, strcmp(ago, "now") == 0 ? DK_GOOD_INK : DK_MUTED, ago);
@@ -416,7 +416,7 @@ static void build_reminders(void)
         lv_obj_set_width(txt, 0);
         lv_obj_t *t = dk_label(txt, DK_FONT_M, DK_INK, r->title);
         lv_obj_set_width(t, lv_pct(100));
-        lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
+        dk_one_line(t);
         char due[40], meta[96];
         ui_due_text(r->due, due, sizeof(due));
         snprintf(meta, sizeof(meta), "%s · from %s", due, r->from);

@@ -35,7 +35,7 @@ static lv_obj_t *night_card(lv_obj_t *parent, const char *heading, lv_obj_t **va
     dk_label(c, DK_FONT_S, DK_NIGHT_MUTED, heading);
     *value = dk_label(c, DK_FONT_XL, DK_NIGHT_TEXT, "");
     lv_obj_set_width(*value, lv_pct(100));
-    lv_label_set_long_mode(*value, LV_LABEL_LONG_MODE_DOTS);
+    dk_one_line(*value);
     return c;
 }
 
