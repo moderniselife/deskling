@@ -80,7 +80,7 @@ export async function encrypt(payload: Uint8Array, sub: PushSub): Promise<Uint8A
 export async function vapidAuth(endpoint: string, vapid: Vapid): Promise<string> {
   const aud = new URL(endpoint).origin;
   const head = b64url(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
-  const claims = b64url(enc.encode(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: "https://deskling.mojolayers.com" })));
+  const claims = b64url(enc.encode(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 3600, sub: "https://deskling.mojolayers.com" })));
   const key = await crypto.subtle.importKey("jwk", vapid.privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(`${head}.${claims}`));
   return `vapid t=${head}.${claims}.${b64url(sig)}, k=${vapid.publicKey}`;
