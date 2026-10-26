@@ -17,3 +17,9 @@ new_sqlite_classes = ["Hub"]
 [vars]
 # Where /flash and the screen's updater find firmware builds (manifest.json + .bin files).
 FIRMWARE_URL = "https://deskling.mojolayers.com/firmware/"
+
+# Pages written as plain HTML files (src/pages/*.html) are bundled as text.
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true

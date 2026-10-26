@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FBF6EF">
+<title>Deskling</title>
+<style>
+:root {
+  --ground: #FBF6EF; --card: #FFFFFF; --sunk: #F3ECE1; --line: #E9E1D4;
+  --ink: #2A2433; --ink-2: #3A3346; --muted: #6A6274;
+  --lilac: #CFC4F2; --lilac-deep: #BDB1EA; --tint-lilac: #ECE7FB;
+  --peach: #F4B393; --tint-peach: #FCE8DC; --butter: #F5E1A4; --tint-butter: #FBF0D6;
+  --good: #2F8A63; --good-bg: #D3EEDF; --alert: #C8553D; --alert-bg: #FDE8E1; --purple: #5B4FA8;
+  --bubble: #F3ECE1;
+  --shadow: inset 0 2px 1px rgba(255,255,255,.8), inset 0 -10px 18px -8px rgba(42,36,51,.1), 0 18px 34px -18px rgba(91,79,168,.26);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #221D2B; --card: #2E2739; --sunk: #1A1621; --line: #3A3247;
+    --ink: #FBF6EF; --ink-2: #E9E3F2; --muted: #BDB4C9;
+    --tint-lilac: #322A47; --tint-peach: #36283A; --tint-butter: #34302F;
+    --good: #7ED3A8; --good-bg: #2B4A3C; --alert-bg: #4A2A26; --purple: #CFC4F2; --bubble: #3A3247;
+    --shadow: inset 0 1px 1px rgba(255,255,255,.1), 0 18px 46px -20px rgba(207,196,242,.22);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 600 16px/1.5 ui-rounded, "Nunito", "SF Pro Rounded", system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
+button { font: inherit; font-weight: 800; color: var(--ink); background: var(--card); border: 3px solid var(--ink); border-radius: 999px; padding: 8px 18px; min-height: 44px; cursor: pointer; }
+button.solid { background: var(--ink); color: var(--ground); }
+button.on { background: var(--ink); color: var(--ground); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, textarea:focus-visible, input:focus-visible, .row:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+.muted { color: var(--muted); }
+.hide { display: none !important; }
+
+/* layout */
+.top { display: flex; align-items: center; gap: 12px; padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top)); }
+.mark { font-weight: 900; font-size: 24px; letter-spacing: -.02em; display: flex; align-items: center; gap: 10px; }
+.mark i { width: 30px; height: 26px; border-radius: 12px 12px 10px 10px; background: var(--lilac); position: relative; display: inline-block; }
+.mark i::before, .mark i::after { content: ""; position: absolute; top: -6px; width: 11px; height: 11px; border-radius: 50%; background: var(--lilac); }
+.mark i::before { left: 2px; } .mark i::after { right: 2px; }
+.conn { width: 10px; height: 10px; border-radius: 50%; background: var(--alert); }
+.conn.ok { background: var(--good); }
+.top .grow { flex: 1; }
+.app { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; padding: 0 16px 16px; height: calc(100% - 70px); }
+.pane { background: var(--card); border-radius: 32px; box-shadow: var(--shadow); min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.list { padding: 14px; overflow-y: auto; }
+@media (max-width: 820px) {
+  .app { grid-template-columns: 1fr; }
+  .app.chatting .side { display: none; }
+  .app:not(.chatting) .main { display: none; }
+}
+h2 { font-size: 13px; letter-spacing: .06em; color: var(--muted); margin: 14px 8px 8px; font-weight: 800; }
+
+/* sessions */
+.row { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 22px; cursor: pointer; }
+.row:hover { background: var(--sunk); }
+.row.sel { background: var(--tint-lilac); }
+.badge { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900; flex: none; background: var(--lilac); color: #2A2433; }
+.badge.claude { background: #F4C7AE; } .badge.ink { background: #2A2433; color: #FBF6EF; }
+.row .txt { min-width: 0; flex: 1; }
+.row .name { font-weight: 900; }
+.row .sub { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.state { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--lilac-deep); }
+.state.working { background: var(--purple); animation: pulse 1.6s ease-in-out infinite; }
+.state.needs_you { background: var(--alert); } .state.waiting { background: #D9A400; } .state.done { background: var(--good); }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .state.working { animation: none; } }
+.empty { padding: 24px 12px; color: var(--muted); }
+.feed .row { cursor: default; padding: 8px 12px; }
+.feed .row:hover { background: none; }
+
+/* requests */
+.ask { margin: 8px 0 12px; padding: 18px; border-radius: 26px; background: var(--alert-bg); }
+.ask.q { background: var(--tint-butter); }
+.ask h3 { margin: 4px 0 10px; font-size: 22px; line-height: 1.2; font-weight: 900; }
+.ask .who { font-size: 14px; color: var(--muted); }
+.ask code { display: block; background: var(--card); border: 3px solid var(--ink); border-radius: 16px; padding: 10px 14px; font: 600 15px/1.4 ui-monospace, Menlo, monospace; word-break: break-word; white-space: pre-wrap; margin-bottom: 8px; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* chat */
+.head { padding: 16px 20px 12px; border-bottom: 2px solid var(--sunk); display: flex; gap: 12px; align-items: flex-start; }
+.head .txt { flex: 1; min-width: 0; }
+.head h1 { margin: 0; font-size: 26px; line-height: 1.1; font-weight: 900; letter-spacing: -.02em; }
+.head .sub { color: var(--muted); font-size: 14px; }
+.back { display: none; padding: 6px 14px; }
+@media (max-width: 820px) {
+  .back { display: inline-block; flex: none; }
+  .head { padding: 12px 14px 10px; gap: 10px; }
+  .head .badge { display: none; }
+  .head h1 { font-size: 22px; }
+  .head .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .top button { padding: 6px 14px; min-height: 40px; }
+  .lines { padding: 12px 14px; }
+}
+.helpers { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.helper { font-size: 13px; padding: 4px 12px; border-radius: 999px; background: var(--tint-lilac); }
+.helper.done { background: var(--good-bg); }
+.lines { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 6px; }
+.b { max-width: min(640px, 88%); padding: 12px 16px; border-radius: 22px; white-space: pre-wrap; word-wrap: break-word; }
+.b.agent { background: var(--bubble); align-self: flex-start; border-bottom-left-radius: 8px; }
+.b.you { background: var(--ink); color: var(--ground); align-self: flex-end; border-bottom-right-radius: 8px; }
+.b img { display: block; max-width: 100%; border-radius: 14px; margin-top: 8px; }
+.cap { font-size: 12px; color: var(--muted); font-weight: 800; margin: 0 6px 6px; }
+.cap.you { align-self: flex-end; }
+.quote { align-self: flex-end; max-width: min(560px, 80%); font-size: 14px; color: var(--muted); border-left: 4px solid var(--lilac); padding: 2px 10px; margin-top: 8px; white-space: pre-wrap; }
+.step { display: flex; gap: 10px; align-items: baseline; color: var(--muted); font-size: 15px; padding: 1px 4px; white-space: pre-wrap; }
+.step::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lilac-deep); flex: none; transform: translateY(-1px); }
+.step.thought::before { background: var(--peach); }
+.typing { align-self: flex-start; background: var(--bubble); border-radius: 22px; padding: 12px 18px; letter-spacing: 3px; }
+.compose { padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); border-top: 2px solid var(--sunk); }
+.compose form { display: flex; gap: 10px; align-items: flex-end; }
+textarea { flex: 1; font: inherit; color: var(--ink); background: var(--ground); border: 3px solid var(--line); border-radius: 22px; padding: 10px 16px; resize: none; min-height: 48px; max-height: 160px; }
+.quick { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+.quick button { white-space: nowrap; font-size: 14px; padding: 4px 14px; min-height: 36px; border-width: 2px; }
+.nochat { margin: auto; text-align: center; color: var(--muted); padding: 24px; }
+
+/* new session sheet */
+dialog { border: 0; border-radius: 32px; padding: 22px; width: min(640px, calc(100% - 32px)); background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+dialog::backdrop { background: rgba(42,36,51,.35); }
+dialog h1 { margin: 0 0 6px; font-weight: 900; font-size: 28px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button { font-size: 15px; padding: 6px 16px; min-height: 40px; }
+
+/* sign in */
+.gate { max-width: 460px; margin: 10vh auto; padding: 28px; background: var(--card); border-radius: 32px; box-shadow: var(--shadow); }
+.gate h1 { margin: 0 0 6px; font-weight: 900; }
+.gate input { width: 100%; font: inherit; padding: 12px 14px; border-radius: 16px; border: 3px solid var(--line); background: var(--ground); color: var(--ink); margin: 12px 0; }
+</style>
+</head>
+<body>
+<div id="gate" class="gate hide">
+  <h1>Deskling</h1>
+  <p class="muted">Your agents, in this browser: what they're doing, their conversations, and their questions for you. Paste your relay token to start. It stays in this browser.</p>
+  <form id="gateform"><input id="token" type="password" autocomplete="current-password" placeholder="Relay token" aria-label="Relay token"><button class="solid">Open Deskling</button></form>
+  <p class="muted" id="gatemsg"></p>
+</div>
+
+<div id="shell" class="hide" style="height:100%">
+  <div class="top">
+    <span class="mark"><i aria-hidden="true"></i>deskling</span>
+    <span class="conn" id="conn" title="Not connected"></span>
+    <span class="grow"></span>
+    <button id="newbtn" class="solid">New session</button>
+  </div>
+  <div class="app" id="app">
+    <section class="pane side" aria-label="Sessions">
+      <div class="list">
+        <div id="asks"></div>
+        <h2>Sessions</h2>
+        <div id="sessions"></div>
+        <h2>Reminders</h2>
+        <div id="reminders"></div>
+        <h2>Notifications</h2>
+        <div id="feed" class="feed"></div>
+        <div class="btns" style="margin:12px 8px">
+          <button data-action="focus" id="focusbtn">Focus</button>
+          <button data-action="snooze_all">Snooze all</button>
+          <button data-action="ping_when_done" id="pingbtn">Ping me when done</button>
+        </div>
+        <p class="muted" style="margin:16px 8px 4px;font-size:14px">This browser keeps your relay token. <button id="signout" style="min-height:32px;padding:2px 12px;border-width:2px;font-size:14px">Sign out</button></p>
+      </div>
+    </section>
+    <section class="pane main" id="main" aria-label="Conversation">
+      <div class="nochat" id="nochat">Pick a session to see its conversation.</div>
+    </section>
+  </div>
+</div>
+
+<dialog id="newdlg" aria-labelledby="newtitle">
+  <form method="dialog" id="newform">
+    <h1 id="newtitle">New session</h1>
+    <p class="muted" id="newhint"></p>
+    <h2>Where</h2><div class="chips" id="n-where"></div>
+    <div id="n-engine-box"><h2>Agent</h2><div class="chips" id="n-engine"></div></div>
+    <div id="n-model-box"><h2>Model</h2><div class="chips" id="n-model"></div></div>
+    <div id="n-project-box"><h2>Project</h2><div class="chips" id="n-project"></div></div>
+    <h2 id="n-ask">What should it do?</h2>
+    <textarea id="n-prompt" rows="3" placeholder="Fix the flaky login test" style="width:100%"></textarea>
+    <div class="btns"><button class="solid" id="n-start" value="start">Start</button><button value="cancel" formnovalidate>Cancel</button></div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+var $ = function (id) { return document.getElementById(id); };
+function el(tag, props) {
+  var n = document.createElement(tag);
+  if (props) for (var k in props) { if (k === "class") n.className = props[k]; else if (k.slice(0, 2) === "on") n.addEventListener(k.slice(2), props[k]); else if (k === "text") n.textContent = props[k]; else n.setAttribute(k, props[k]); }
+  var add = function (c) { if (c == null || c === false) return; if (Array.isArray(c)) c.forEach(add); else n.append(c); };
+  for (var i = 2; i < arguments.length; i++) add(arguments[i]);
+  return n;
+}
+var token = "", ws = null, S = null, open = "", picks = {}, retry = 1000, imgs = {}, drafts = {};
+var BADGE = { "claude-code": ["C", "claude"], cursor: ["Cu", "ink"], codex: ["Cx", ""], gemini: ["G", ""], opencode: ["Oc", "ink"], custom: ["A", ""] };
+var LABEL = { "claude-code": "Claude", cursor: "Cursor", codex: "Codex", gemini: "Gemini", opencode: "OpenCode", custom: "Agent" };
+var STATE = { idle: "Idle", working: "Working", waiting: "Your turn", needs_you: "Needs you", done: "Done" };
+try { token = localStorage.getItem("deskling-token") || ""; } catch (e) {}
+
+function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
+function who(a) { return a.source === "custom" ? a.name : LABEL[a.source] || "Agent"; }
+
+function connect() {
+  if (ws) { ws.onclose = null; ws.close(); }
+  var proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(proto + "://" + location.host + "/ws?token=" + encodeURIComponent(token));
+  ws.onopen = function () { retry = 1000; $("conn").className = "conn ok"; $("conn").title = "Connected"; send({ type: "view", agentId: open }); };
+  ws.onmessage = function (e) { var m = JSON.parse(e.data); if (m.type === "snapshot") { S = m; render(); } };
+  ws.onclose = function (e) {
+    $("conn").className = "conn"; $("conn").title = "Reconnecting";
+    if (!S && e.code !== 1000) { showGate("That token didn't work. Check it on your relay's setup page."); return; }
+    setTimeout(connect, retry); retry = Math.min(retry * 2, 15000);
+  };
+}
+function showGate(msg) { $("gate").classList.remove("hide"); $("shell").classList.add("hide"); $("gatemsg").textContent = msg || ""; }
+$("gateform").addEventListener("submit", function (e) {
+  e.preventDefault(); token = $("token").value.trim(); if (!token) return;
+  try { localStorage.setItem("deskling-token", token); } catch (x) {}
+  $("gate").classList.add("hide"); $("shell").classList.remove("hide"); S = null; connect();
+});
+$("signout").onclick = function () { try { localStorage.removeItem("deskling-token"); } catch (x) {} token = ""; if (ws) { ws.onclose = null; ws.close(); } showGate(""); };
+document.querySelectorAll("[data-action]").forEach(function (b) { b.onclick = function () { send({ type: "action", name: b.dataset.action }); }; });
+
+function ago(ts) { var s = Math.max(0, (Date.now() - ts) / 1000); return s < 60 ? "now" : s < 3600 ? Math.floor(s / 60) + " min" : Math.floor(s / 3600) + " h"; }
+
+function openChat(id) {
+  open = id;
+  $("app").classList.toggle("chatting", !!id);
+  send({ type: "view", agentId: id });
+  render(true);
+}
+
+// ---- requests: permissions and questions, answered here
+function askCard(p) {
+  var a = S.agents.find(function (x) { return x.id === p.agentId; });
+  var name = a ? who(a) : "Claude";
+  var head = el("div", { class: "who" }, p.name + " · " + p.host);
+  if (p.kind === "question") {
+    picks[p.id] = picks[p.id] || {};
+    var qs = p.questions.map(function (q) {
+      var chosen = picks[p.id][q.question] || (q.multiSelect ? [] : "");
+      return el("div", null, el("h3", { text: q.question }), el("div", { class: "btns" }, q.options.map(function (o) {
+        var on = q.multiSelect ? chosen.indexOf(o.label) >= 0 : chosen === o.label;
+        return el("button", { type: "button", class: on ? "on" : "", title: o.description || "", onclick: function () {
+          if (q.multiSelect) { var c = (picks[p.id][q.question] || []).slice(); var i = c.indexOf(o.label); if (i >= 0) c.splice(i, 1); else c.push(o.label); picks[p.id][q.question] = c; }
+          else picks[p.id][q.question] = o.label;
+          if (p.questions.length === 1 && !q.multiSelect) send({ type: "answer", id: p.id, answers: picks[p.id] });
+          render();
+        } }, o.label);
+      })));
+    });
+    var needSend = p.questions.length > 1 || p.questions.some(function (q) { return q.multiSelect; });
+    return el("div", { class: "ask q" }, head, qs, el("div", { class: "btns" },
+      needSend ? el("button", { class: "solid", onclick: function () { send({ type: "answer", id: p.id, answers: picks[p.id] }); } }, "Send answers") : null,
+      el("button", { onclick: function () { send({ type: "decision", id: p.id, decision: "computer" }); } }, "On my computer")));
+  }
+  var what = p.tool === "Bash" ? "run a command" : "use " + p.tool;
+  return el("div", { class: "ask" }, head, el("h3", { text: name + " wants to " + what }),
+    el("code", { text: p.summary || "(no details)" }), p.detail ? el("div", { class: "muted", text: p.detail }) : null,
+    el("div", { class: "btns" },
+      el("button", { class: "solid", onclick: function () { send({ type: "decision", id: p.id, decision: "allow" }); } }, "Allow once"),
+      el("button", { onclick: function () { send({ type: "decision", id: p.id, decision: "deny" }); } }, "Deny"),
+      el("button", { onclick: function () { send({ type: "decision", id: p.id, decision: "computer" }); } }, "On my computer")));
+}
+
+// Pictures need the token, so they're fetched rather than linked.
+function picture(id) {
+  var img = el("img", { alt: "Picture from the session" });
+  if (imgs[id]) { img.src = imgs[id]; return img; }
+  fetch("/img/" + encodeURIComponent(id), { headers: { authorization: "Bearer " + token } })
+    .then(function (r) { return r.ok ? r.blob() : null; })
+    .then(function (b) { if (b) { imgs[id] = URL.createObjectURL(b); img.src = imgs[id]; } });
+  return img;
+}
+
+var lastSig = "";
+function render(force) {
+  if (!S) return;
+  $("gate").classList.add("hide"); $("shell").classList.remove("hide");
+  // Requests for the open session show in its chat instead.
+  $("asks").replaceChildren.apply($("asks"), S.pending.filter(function (p) { return p.agentId !== open; }).map(askCard));
+  $("sessions").replaceChildren.apply($("sessions"), S.agents.length ? S.agents.map(function (a) {
+    var b = BADGE[a.source] || BADGE.custom;
+    return el("div", { class: "row" + (a.id === open ? " sel" : ""), tabindex: "0", role: "button", onclick: function () { openChat(a.id); }, onkeydown: function (e) { if (e.key === "Enter") openChat(a.id); } },
+      el("span", { class: "badge " + b[1], "aria-hidden": "true" }, b[0]),
+      el("span", { class: "txt" }, el("div", { class: "name", text: a.name }), el("div", { class: "sub", text: a.host + " · " + (a.task || STATE[a.state]) })),
+      el("span", { class: "state " + a.state, title: STATE[a.state], role: "img", "aria-label": STATE[a.state] }));
+  }) : [el("div", { class: "empty", text: "No sessions yet. Start one here, or start Claude Code or OpenCode on a computer with Deskling set up." })]);
+  $("reminders").replaceChildren.apply($("reminders"), S.reminders.length ? S.reminders.map(function (r) {
+    return el("div", { class: "row", onclick: function () { send({ type: "reminder_done", id: r.id, done: !r.done }); } },
+      el("span", { class: "state " + (r.done ? "done" : "waiting") }),
+      el("span", { class: "txt" }, el("div", { class: "name", text: r.title, style: r.done ? "text-decoration:line-through;opacity:.6" : "" }), el("div", { class: "sub", text: (r.due ? new Date(r.due).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Any time") + " · from " + r.from })));
+  }) : [el("div", { class: "empty", text: "None" })]);
+  $("feed").replaceChildren.apply($("feed"), S.feed.length ? S.feed.slice(0, 8).map(function (f) {
+    return el("div", { class: "row" }, el("span", { class: "state " + ({ alert: "needs_you", good: "done", reminder: "waiting" }[f.level] || "idle") }),
+      el("span", { class: "txt", onclick: function () { if (f.agentId) openChat(f.agentId); }, style: f.agentId ? "cursor:pointer" : "" }, el("div", { class: "name", text: f.title }), el("div", { class: "sub", text: (f.body ? f.body + " · " : "") + ago(f.ts) })),
+      el("button", { "aria-label": "Clear", style: "min-height:32px;padding:0 10px;border-width:2px", onclick: function () { send({ type: "feed_dismiss", id: f.id }); } }, "×"));
+  }) : [el("div", { class: "empty", text: "Quiet" })]);
+  $("focusbtn").className = S.focus ? "on" : ""; $("pingbtn").className = S.pingWhenDone ? "on" : "";
+  renderChat(force);
+  if ($("newdlg").open) renderNew();
+}
+
+function renderChat(force) {
+  var a = S.agents.find(function (x) { return x.id === open; });
+  var main = $("main");
+  if (!a) { if (open && !force) { /* the session ended: keep what's shown */ return; } main.replaceChildren(el("div", { class: "nochat", text: "Pick a session to see its conversation." })); lastSig = ""; return; }
+  var sig = JSON.stringify([a.chat, a.state, a.task, a.helpers, a.model, a.context, a.listening, a.canMessage, S.pending.filter(function (p) { return p.agentId === a.id; }).map(function (p) { return p.id; })]);
+  if (sig === lastSig && !force) return;
+  lastSig = sig;
+  var lines = main.querySelector(".lines");
+  var atBottom = !lines || lines.scrollHeight - lines.scrollTop - lines.clientHeight < 80;
+  var keep = lines ? lines.scrollTop : 0;
+  var b = BADGE[a.source] || BADGE.custom;
+  var meta = [a.host, LABEL[a.source] || "Agent"];
+  if (a.model) meta.push(a.model);
+  if (a.context) meta.push(Math.round(a.context / 1000) + "k tokens in context");
+  var head = el("div", { class: "head" },
+    el("button", { class: "back", onclick: function () { openChat(""); } }, "Sessions"),
+    el("span", { class: "badge " + b[1], "aria-hidden": "true" }, b[0]),
+    el("div", { class: "txt" }, el("h1", { text: a.name }), el("div", { class: "sub", text: (STATE[a.state] + (a.task ? " · " + a.task : "")) }), el("div", { class: "sub", text: meta.join(" · ") }),
+      a.helpers && a.helpers.length ? el("div", { class: "helpers" }, a.helpers.map(function (h) { return el("span", { class: "helper" + (h.done ? " done" : ""), title: h.task || "" }, h.name + (h.done ? " · done" : h.task ? " · " + h.task : "")); })) : null));
+  var list = el("div", { class: "lines", role: "log", "aria-live": "polite" });
+  var chat = a.chat || [];
+  if (!chat.length) {
+    if (a.lastPrompt) list.append(el("div", { class: "b you", text: a.lastPrompt }));
+    if (a.lastMessage) list.append(el("div", { class: "b agent", text: a.lastMessage }));
+  }
+  chat.forEach(function (c) {
+    if (c.from === "tool" || c.from === "thought") { list.append(el("div", { class: "step " + c.from, text: c.text })); return; }
+    if (c.quote) list.append(el("div", { class: "quote", text: c.quote }));
+    var bub = el("div", { class: "b " + (c.from === "you" ? "you" : "agent"), text: c.text });
+    if (c.image) bub.append(picture(c.image));
+    list.append(bub);
+    if (c.from === "you") list.append(el("div", { class: "cap you", text: c.status === "queued" ? "Queued" : c.status === "typed" ? "From your computer" : "Sent from Deskling" }));
+  });
+  var tail = chat[chat.length - 1];
+  if (a.state === "working" && tail && (tail.from !== "agent")) list.append(el("div", { class: "typing", "aria-label": "Working" }, "•••"));
+  S.pending.filter(function (p) { return p.agentId === a.id; }).forEach(function (p) { list.append(askCard(p)); });
+
+  var compose;
+  if (a.canMessage) {
+    var ta = el("textarea", { rows: "1", placeholder: "Message " + a.name + "…", "aria-label": "Message" });
+    ta.value = drafts[a.id] || "";
+    ta.addEventListener("input", function () { drafts[a.id] = ta.value; ta.style.height = "auto"; ta.style.height = Math.min(160, ta.scrollHeight) + "px"; });
+    ta.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+    var form = el("form", { onsubmit: function (e) { e.preventDefault(); var t = ta.value.trim(); if (!t) return; send({ type: "message", agentId: a.id, text: t }); ta.value = ""; drafts[a.id] = ""; } }, ta, el("button", { class: "solid" }, "Send"));
+    var quick = el("div", { class: "quick" }, ["Continue", "Yes please", "Run the tests", "Wrap up and summarise"].map(function (t) { return el("button", { type: "button", onclick: function () { send({ type: "message", agentId: a.id, text: t }); } }, t); }));
+    if (a.source === "claude-code" && !a.channel) quick.prepend(el("button", { type: "button", class: a.listening ? "on" : "", title: "When it finishes, it waits for your next message from here", onclick: function () { send({ type: "listen", agentId: a.id, minutes: a.listening ? 0 : 30 }); } }, a.listening ? "Listening" : "Keep listening"));
+    compose = el("div", { class: "compose" }, quick, form);
+  } else {
+    compose = el("div", { class: "compose muted", text: who(a) + " can't take messages from here." });
+  }
+  var focused = document.activeElement && document.activeElement.tagName === "TEXTAREA" && main.contains(document.activeElement);
+  main.replaceChildren(head, list, compose);
+  if (focused) { var t2 = main.querySelector("textarea"); if (t2) { t2.focus(); t2.setSelectionRange(t2.value.length, t2.value.length); } }
+  list.scrollTop = atBottom ? list.scrollHeight : keep;
+}
+
+// ---- new session
+var N = { target: "", engine: "", model: "", project: "" };
+function chipRow(box, items, cur, set) {
+  $(box).replaceChildren.apply($(box), items.map(function (it) { return el("button", { type: "button", class: it[0] === cur ? "on" : "", onclick: function () { set(it[0]); renderNew(); } }, it[1]); }));
+}
+function renderNew() {
+  var ts = S.targets || [];
+  if (!ts.some(function (t) { return t.id === N.target; })) N.target = ts[0] ? ts[0].id : "";
+  var t = ts.find(function (x) { return x.id === N.target; });
+  var es = (t && t.engines) || [];
+  if (!es.some(function (e) { return e.id === N.engine; })) N.engine = es[0] ? es[0].id : "";
+  var e = es.find(function (x) { return x.id === N.engine; });
+  var ms = (e && e.models) || [];
+  if (!ms.some(function (m) { return m.id === N.model; })) N.model = ms[0] ? ms[0].id : "";
+  var ps = (t && t.projects) || [];
+  if (ps.indexOf(N.project) < 0) N.project = ps[0] || "";
+  chipRow("n-where", ts.map(function (x) { return [x.id, x.name]; }), N.target, function (v) { N.target = v; });
+  chipRow("n-engine", es.map(function (x) { return [x.id, x.name]; }), N.engine, function (v) { N.engine = v; N.model = ""; });
+  chipRow("n-model", ms.map(function (x) { return [x.id, x.name]; }), N.model, function (v) { N.model = v; });
+  chipRow("n-project", ps.map(function (x) { return [x, x]; }), N.project, function (v) { N.project = v; });
+  $("n-engine-box").classList.toggle("hide", es.length < 2);
+  $("n-model-box").classList.toggle("hide", !ms.length);
+  $("n-project-box").classList.toggle("hide", !ps.length);
+  var other = e && e.id !== "claude";
+  $("n-ask").textContent = "What should " + (other ? e.name : "Claude") + " do?";
+  $("newhint").textContent = !ts.length ? "Nowhere to start one yet. Run the Deskling runner on a computer, or add a cloud routine, from your relay's setup page."
+    : t && t.kind === "cloud" ? "A new cloud session starts with this as its first message, and listens for you here."
+    : other ? e.name + " starts on that computer with this as its first message. Message it from here any time."
+    : "Claude starts in the background on that computer with this as its first message, and listens for you here.";
+  $("n-start").disabled = !ts.length;
+}
+$("newbtn").onclick = function () { if (!S) return; renderNew(); $("newdlg").showModal(); $("n-prompt").focus(); };
+$("newform").addEventListener("submit", function (e) {
+  var go = e.submitter && e.submitter.value === "start";
+  var text = $("n-prompt").value.trim();
+  if (!go) return;
+  if (!text) { e.preventDefault(); $("n-prompt").focus(); return; }
+  send({ type: "start", target: N.target, project: N.project, prompt: text, engine: N.engine, model: N.model });
+  $("n-prompt").value = "";
+});
+
+setInterval(function () { if (S) render(); }, 30000); // keeps the "how long ago" fresh
+if (token) { $("shell").classList.remove("hide"); connect(); } else showGate("");
+</script>
+</body>
+</html>

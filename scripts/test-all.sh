@@ -44,6 +44,8 @@ relay() {
   for _ in $(seq 60); do curl -s "http://127.0.0.1:$port/setup" >/dev/null && break; sleep 1; done
   DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node test/smoke.mjs
   local rc=$?
+  # Deskling in a browser (/app), against the same relay.
+  [ $rc = 0 ] && { DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node "$ROOT/tests/web/app.test.mjs"; rc=$?; }
   kill "$pid" 2>/dev/null
   pkill -P "$pid" 2>/dev/null
   return $rc

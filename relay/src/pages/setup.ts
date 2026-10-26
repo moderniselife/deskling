@@ -47,7 +47,7 @@ a{color:var(--purple)}
   <div id="app" hidden>
     <section>
       <h2>Status</h2>
-      <div class="row"><span id="screens" class="pill">…</span><span id="agents" class="pill">…</span><span class="muted">Live preview: <a href="/sim" target="_blank">the browser simulator</a></span></div>
+      <div class="row"><span id="screens" class="pill">…</span><span id="agents" class="pill">…</span><span class="muted">On your phone or another computer: <a href="/app" target="_blank">Deskling in your browser</a></span></div>
     </section>
 
     <section>
@@ -137,7 +137,7 @@ a{color:var(--purple)}
 
     <section>
       <h2>Try it</h2>
-      <p class="muted">Each button sends something to every connected screen (and the simulator).</p>
+      <p class="muted">Each button sends something to every connected screen (and Deskling in your browser).</p>
       <div class="row">
         <button id="t-notify">Send a notification</button>
         <button id="t-remind">Remind me in 1 minute</button>

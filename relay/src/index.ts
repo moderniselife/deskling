@@ -1,5 +1,5 @@
 import { Hub } from "./hub";
-import { SIM_HTML } from "./sim";
+import APP_HTML from "./pages/app.html";
 import { FLASH_HTML } from "./pages/flash";
 import { SETUP_HTML } from "./pages/setup";
 
@@ -39,10 +39,10 @@ export default {
     if (url.pathname === "/" && req.method === "GET") {
       return Response.redirect(new URL("/setup", url).toString(), 302);
     }
-    // The simulator page holds no secrets: it asks for the token and keeps it in the browser.
-    // These pages hold no secrets either: they ask for the token and keep it in the browser tab.
+    // These pages hold no secrets: they ask for the token and keep it in the browser.
+    // /app is Deskling in a browser (/sim is its old address).
     if (req.method === "GET") {
-      if (url.pathname === "/sim") return html(SIM_HTML);
+      if (url.pathname === "/app" || url.pathname === "/sim") return html(APP_HTML);
       if (url.pathname === "/setup") return html(SETUP_HTML);
       if (url.pathname === "/flash") {
         let fw = env.FIRMWARE_URL || DEFAULT_FIRMWARE_URL;

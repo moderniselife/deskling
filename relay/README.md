@@ -34,7 +34,7 @@ The whole walkthrough is in [docs/setup.md](../docs/setup.md).
 
 ```bash
 echo DESKLING_TOKEN=dev-token > .dev.vars
-npm run dev                       # http://127.0.0.1:8787, simulator at /sim
+npm run dev                       # http://127.0.0.1:8787, Deskling in your browser at /app
 npm test                          # end-to-end smoke test against the dev server
 ```
 

@@ -42,16 +42,16 @@ npx wrangler deploy                       # prints your relay URL
 
 ## 2. Try it in the browser before the screen exists (2 min)
 
-Open `https://<relay>/sim` in another tab and paste the same token. That's a working Deskling in your browser, talking to your relay with the same protocol as the real screen.
+Open `https://<relay>/app` in another tab and paste the same token. That's a working Deskling in your browser (on your phone too), talking to your relay with the same protocol as the real screen.
 
 Back on the **/setup** tab, press the buttons under **Try it**:
 
-| Button | What you should see in the simulator |
+| Button | What you should see in the browser |
 | --- | --- |
-| Send a notification | It appears in the feed, and Deskling waves |
-| Remind me in 1 minute | A reminder card. A minute later it starts nudging you |
+| Send a notification | It appears under Notifications |
+| Remind me in 1 minute | It appears under Reminders (the screen nudges you a minute later) |
 | Add a pretend session / Remove it | A "demo-project" session appears / disappears |
-| Ask for permission | A full-screen request. Tap Allow, and the setup page says "You tapped Allow ✔" |
+| Ask for permission | A request card. Tap Allow once, and the setup page says "You tapped Allow ✔" |
 | Ask a question | Three options. Tap one, and the setup page shows your answer |
 
 If these work, your relay is fine. Anything that goes wrong later is on the agent side or the screen side.
@@ -90,7 +90,7 @@ New-Item -ItemType Directory -Force "$HOME\.deskling" | Out-Null
 Set-Content "$HOME\.deskling\config" "DESKLING_URL=`"https://<your relay>`"`nDESKLING_TOKEN=`"<your token>`""
 ```
 
-**Check it:** start a session in any project. Within a second, it shows up in `/sim` as a session. Ask Claude to do something that needs permission, e.g. "run `ls` in a new terminal". The simulator jumps to the permission screen. Tap **Allow** and Claude carries on.
+**Check it:** start a session in any project. Within a second, it shows up in `/app` as a session. Ask Claude to do something that needs permission, e.g. "run `ls` in a new terminal". A permission card appears. Tap **Allow** and Claude carries on.
 
 Now try `remind me in 2 minutes to stretch`. Claude calls the `deskling_remind` tool, and the reminder lands on the screen.
 
@@ -139,7 +139,7 @@ The screen says **All set!** and jumps to the home screen. The `/setup` page now
 | --- | --- |
 | `/setup` says the token doesn't match | It's case-sensitive. Re-run `npx wrangler secret put DESKLING_TOKEN`, or change it in the Cloudflare dashboard → Workers → deskling-relay → Settings → Variables. Then update the plugin (`/plugin` → deskling → configure) and the screen. |
 | Sessions don't show up | Run `/plugin` in Claude Code and check deskling is enabled and configured. Hooks give up after a few seconds, so a wrong URL never blocks Claude, it just stays silent. |
-| Permission requests don't reach the screen | The plugin waits 30 s by default (the `approval_wait` setting) before falling back to the normal prompt on your computer. Make sure the screen or `/sim` is open. |
+| Permission requests don't reach the screen | The plugin waits 30 s by default (the `approval_wait` setting) before falling back to the normal prompt on your computer. Make sure the screen or `/app` is open. |
 | `/flash` can't see a port | Try another cable (many are charge-only) or another USB-C port on the board. On Windows, install the CH340 driver. |
 | `/flash` says "Couldn't load the firmware list" | No release is published yet; see [firmware/README](../firmware/README.md#releases). |
 | Three colour bars or a garbled picture after flashing | Wrong panel option. Flash again and pick the other panel. |
