@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { makeZip, type ZipEntry } from "./zip";
 import type {
+  Helper,
   Agent,
   AgentState,
   Answers,
@@ -17,9 +18,12 @@ import type {
 } from "./types";
 
 const FEED_MAX = 40;
-const CHAT_MAX = 30;
+const CHAT_MAX = 80; // messages and tool steps kept per session
 const CHAT_TEXT_MAX = 1200; // the screen keeps this much of each chat line
-const SNAPSHOT_CHAT = 12; // chat lines per session sent to the screen
+const SNAPSHOT_CHAT = 16; // chat lines per session sent to the screen
+const STEPS_SHOWN = 4; // tool steps shown in a row before they collapse into a count
+const HELPER_MAX = 4; // helpers per session the screen shows
+const HELPER_KEEP_MS = 10 * 60 * 1000; // finished helpers stay listed this long
 const QUIET_MS = 2 * 60 * 60 * 1000; // "working" with no news for this long is shown as idle
 const AGENT_STALE_MS = 12 * 60 * 60 * 1000; // forget sessions idle for 12 h
 const REMINDER_KEEP_DONE_MS = 24 * 60 * 60 * 1000;
@@ -61,7 +65,8 @@ function oneLine(s: unknown, max = 90): string {
 function readable(s: unknown): string {
   if (typeof s !== "string") return "";
   return s
-    .replace(/<(system-reminder|local-command-stdout|local-command-stderr|command-message|command-args)>[\s\S]*?<\/\1>/g, "")
+    .replace(/<(system-reminder|agent-message|task-notification|local-command-stdout|local-command-stderr|command-message|command-args)(\s[^>]*)?>[\s\S]*?<\/\1>/g, "")
+    .replace(/\[Image #\d+\]/g, "[photo]")
     .replace(/<command-name>\s*([\s\S]*?)\s*<\/command-name>/g, "$1")
     .replace(/<\/?[a-z][a-z0-9-]*>/gi, "")
     .replace(/\*\*(.+?)\*\*/g, "$1")
@@ -111,6 +116,32 @@ function toolSummary(tool: string, input: Record<string, unknown> | undefined): 
     json = "";
   }
   return { summary: oneLine(json, 160), detail: "" };
+}
+
+/**
+ * The conversation as the screen shows it: messages in full, and runs of tool steps cut to
+ * the last few with a count of the rest (like the app's collapsed step list).
+ */
+function chatView(lines: ChatLine[]): ChatLine[] {
+  const out: ChatLine[] = [];
+  let run: ChatLine[] = [];
+  const flush = () => {
+    if (run.length > STEPS_SHOWN) {
+      const hidden = run.length - STEPS_SHOWN;
+      out.push({ ...run[0], id: run[0].id + "m", text: `${hidden} earlier step${hidden > 1 ? "s" : ""}` });
+    }
+    out.push(...run.slice(-STEPS_SHOWN));
+    run = [];
+  };
+  for (const l of lines) {
+    if (l.from === "tool") run.push(l);
+    else {
+      flush();
+      out.push({ ...l, text: clip(l.text, CHAT_TEXT_MAX) });
+    }
+  }
+  flush();
+  return out.slice(-SNAPSHOT_CHAT);
 }
 
 /** A short "what it's doing" line for the screen, from a tool call. */
@@ -366,10 +397,16 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         return empty();
 
       case "UserPromptSubmit": {
-        const prompt = readable(body.prompt);
-        agent.lastPrompt = clip(prompt, 400);
-        this.setAgent(agent, "working", oneLine(prompt) || "Working");
-        if (prompt) this.pushChat(sid, "you", clip(prompt, CHAT_TEXT_MAX), "typed");
+        const raw = typeof body.prompt === "string" ? body.prompt : "";
+        const handbacks = this.finishHandbacks(agent, raw);
+        const prompt = readable(raw);
+        if (prompt) {
+          agent.lastPrompt = clip(prompt, 400);
+          this.pushChat(sid, "you", clip(prompt, CHAT_TEXT_MAX), "typed");
+        } else if (handbacks) {
+          this.pushChat(sid, "tool", handbacks > 1 ? `${handbacks} helpers reported back` : "A helper reported back", "sent");
+        }
+        this.setAgent(agent, "working", oneLine(prompt) || (handbacks ? "Reading a helper's report" : "Working"));
         // Messages queued on the screen ride along with the prompt you typed.
         const queued = this.channelLive(sid) ? [] : this.takeQueued(sid);
         await this.commit({ kind: "agent", id: sid });
@@ -390,8 +427,10 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         if (type === "permission_prompt") {
           // If a request is already open on the screen, it's showing; otherwise flag the terminal prompt.
           if (!this.state.pending.some((p) => p.agentId === sid)) {
-            this.setAgent(agent, "needs_you", message || "Waiting for permission");
-            this.addFeed("alert", "Permission needed", `${name} · ${host}`, sid);
+            // No request reached the screen, so it can only be answered where it's showing.
+            const where = os === "cloud" ? "in the Claude app" : `on ${host}`;
+            this.setAgent(agent, "needs_you", `${message || "Waiting for permission"} (answer it ${where})`);
+            this.addFeed("alert", "Permission needed", `${name} · answer it ${where}`, sid);
           }
           await this.commit({ kind: "permission", id: sid });
         } else if (type === "idle_prompt") {
@@ -443,11 +482,55 @@ export class Hub extends DurableObject<Record<string, unknown>> {
           return empty();
         }
         // Live activity: what the session is doing right now, so the screen keeps moving.
-        if (tool === "AskUserQuestion" || agent.state === "needs_you") return empty();
-        const task = activity(tool, body.tool_input as Record<string, unknown> | undefined);
-        if (agent.state !== "working") this.setAgent(agent, "working", task);
-        else agent.task = task;
+        if (tool === "AskUserQuestion") return empty();
+        const input = body.tool_input as Record<string, unknown> | undefined;
+        const task = activity(tool, input);
+        const sub = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (sub) {
+          // A helper's step: show it on the helper, not as the session's own work.
+          const h = this.helper(agent, sub, oneLine(body.agent_type, 60));
+          h.task = task;
+          h.updated = Date.now();
+          await this.commitLive(sid);
+          return empty();
+        }
+        if (tool === "Agent" || tool === "Task") {
+          const desc = oneLine(input?.description ?? input?.subagent_type ?? "", 60);
+          (agent.helperNames ??= []).push(desc || "Helper");
+          agent.helperNames = agent.helperNames.slice(-HELPER_MAX);
+        }
+        // Still flagged as waiting for permission but no request is open: it was answered elsewhere.
+        const open = this.state.pending.some((p) => p.agentId === sid);
+        if (agent.state !== "working" && !open) this.setAgent(agent, "working", task);
+        else if (agent.state === "working") agent.task = task;
+        if (tool !== "SendUserMessage") this.pushChat(sid, "tool", task, "sent");
         await this.commitLive(sid);
+        return empty();
+      }
+
+      case "SubagentStart": {
+        const id = String(body.agent_id ?? "");
+        if (id) {
+          const name = agent.helperNames?.shift() || oneLine(body.agent_type, 60) || "Helper";
+          const h = this.helper(agent, id, name);
+          h.done = false;
+          h.updated = Date.now();
+          this.pushChat(sid, "tool", `Started a helper: ${name}`, "sent");
+          await this.commitLive(sid);
+        }
+        return empty();
+      }
+
+      case "SubagentStop": {
+        const id = String(body.agent_id ?? "");
+        const h = id ? agent.helpers?.find((x) => x.id === id) : undefined;
+        if (h && !h.done) {
+          h.done = true;
+          h.task = "";
+          h.updated = Date.now();
+          this.pushChat(sid, "tool", `Helper finished: ${h.name}`, "sent");
+          await this.commitLive(sid);
+        }
         return empty();
       }
 
@@ -455,6 +538,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         // A message Claude sends you while it works (SendUserMessage in the Claude app and Cowork).
         const input = (body.tool_input ?? {}) as Record<string, unknown>;
         const text = clip(readable(input.message ?? input.text ?? ""), CHAT_TEXT_MAX);
+        if (agent.state === "needs_you" && !this.state.pending.some((p) => p.agentId === sid)) this.setAgent(agent, "working", "Working");
         if (text) {
           this.pushChat(sid, "agent", text, "sent");
           agent.lastMessage = text;
@@ -878,6 +962,36 @@ export class Hub extends DurableObject<Record<string, unknown>> {
 
   // ------------------------------------------------------------ helpers
 
+  // ------------------------------------------------------------ helpers (subagents)
+
+  private helper(agent: Agent, id: string, name = ""): Helper {
+    const list = (agent.helpers ??= []);
+    let h = list.find((x) => x.id === id);
+    if (!h) {
+      h = { id, name: name || "Helper", task: "", done: false, updated: Date.now() };
+      list.push(h);
+      // Keep the working ones and the most recent finished ones.
+      const now = Date.now();
+      agent.helpers = list.filter((x) => !x.done || now - x.updated < HELPER_KEEP_MS).slice(-HELPER_MAX);
+    }
+    return h;
+  }
+
+  /** Subagent hand-backs arrive in the session as prompts: mark those helpers finished. */
+  private finishHandbacks(agent: Agent, prompt: string): number {
+    let n = 0;
+    for (const m of prompt.matchAll(/<agent-message\s+from="([^"]+)"/g)) {
+      const h = agent.helpers?.find((x) => x.id === m[1]);
+      if (h) {
+        h.done = true;
+        h.task = "";
+        h.updated = Date.now();
+      }
+      n++;
+    }
+    return n;
+  }
+
   private upsertAgent(id: string, source: Source, name: string, host: string, os: string): Agent {
     const now = Date.now();
     let a = this.state.agents[id];
@@ -957,7 +1071,9 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         lastPrompt: clip(a.lastPrompt, 160),
         channel: this.channelLive(a.id),
         canMessage: a.source === "claude-code",
-        chat: (s.chats[a.id] ?? []).slice(-SNAPSHOT_CHAT).map((c) => ({ ...c, text: clip(c.text, CHAT_TEXT_MAX) })),
+        chat: chatView(s.chats[a.id] ?? []),
+        helpers: (a.helpers ?? []).map(({ id, name, task, done }) => ({ id, name, task, done })),
+        helperNames: undefined,
       }));
     const reminders = [...s.reminders].sort((a, b) => Number(a.done) - Number(b.done) || (a.due ?? Infinity) - (b.due ?? Infinity));
     return JSON.stringify({

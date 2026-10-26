@@ -124,8 +124,18 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
             copy_str(line->id, sizeof(line->id), c, "id");
             copy_str(line->text, sizeof(line->text), c, "text");
             line->from_you = str_is(c, "from", "you");
+            line->step = str_is(c, "from", "tool");
             line->status = str_is(c, "status", "queued") ? DK_CHAT_QUEUED : str_is(c, "status", "delivered") ? DK_CHAT_DELIVERED : str_is(c, "status", "typed") ? DK_CHAT_TYPED : DK_CHAT_SENT;
             line->ts = get_i64(c, "ts");
+        }
+        cJSON_ArrayForEach(c, cJSON_GetObjectItemCaseSensitive(it, "helpers"))
+        {
+            if (a->helpers_n >= DK_MAX_HELPERS) break;
+            dk_helper_t *h = &a->helpers[a->helpers_n++];
+            copy_str(h->id, sizeof(h->id), c, "id");
+            copy_str(h->name, sizeof(h->name), c, "name");
+            copy_str(h->task, sizeof(h->task), c, "task");
+            h->done = get_bool(c, "done");
         }
     }
 

@@ -15,6 +15,17 @@ export interface Agent {
   lastMessage: string; // the last thing it said
   since: number; // ms epoch when the current state started
   updated: number;
+  helpers?: Helper[]; // subagents it has handed work to
+  helperNames?: string[]; // descriptions from Agent tool calls, waiting for their SubagentStart
+}
+
+/** A subagent working for a session. */
+export interface Helper {
+  id: string; // Claude Code's agent_id
+  name: string; // what it was asked to do
+  task: string; // what it's doing now
+  done: boolean;
+  updated: number;
 }
 
 export type FeedLevel = "info" | "good" | "alert" | "reminder";
@@ -68,7 +79,7 @@ export interface Pending {
 
 export interface ChatLine {
   id: string;
-  from: "you" | "agent";
+  from: "you" | "agent" | "tool"; // "tool" = a step it took (a command, a file it edited...)
   text: string;
   status: "queued" | "delivered" | "sent" | "typed"; // "sent" = an agent reply, "typed" = you, on the computer
   ts: number;

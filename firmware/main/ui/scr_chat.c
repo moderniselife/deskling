@@ -6,7 +6,7 @@
 
 static struct {
     lv_obj_t *scr, *face, *badge_row, *name, *status, *delivery;
-    lv_obj_t *bubbles, *quick, *input_row, *ta, *kb;
+    lv_obj_t *bubbles, *quick, *input_row, *ta, *kb, *helpers, *helper_list;
     char agent_id[72];
     char last_line[16];
 } c;
@@ -114,6 +114,17 @@ lv_obj_t *scr_chat_create(void)
     lv_obj_set_width(c.delivery, lv_pct(100));
     lv_label_set_long_mode(c.delivery, LV_LABEL_LONG_MODE_WRAP);
 
+    // Helpers: the subagents this session has handed work to.
+    c.helpers = dk_card(left, DK_CARD, 22);
+    lv_obj_set_width(c.helpers, lv_pct(100));
+    lv_obj_set_style_pad_all(c.helpers, 16, 0);
+    dk_col(c.helpers, 8);
+    dk_heading(c.helpers, "HELPERS");
+    c.helper_list = dk_box(c.helpers);
+    lv_obj_set_width(c.helper_list, lv_pct(100));
+    dk_col(c.helper_list, 8);
+    lv_obj_add_flag(c.helpers, LV_OBJ_FLAG_HIDDEN);
+
     // ---- right: the conversation
     lv_obj_t *right = dk_card(c.scr, DK_CARD, 36);
     lv_obj_set_height(right, lv_pct(100));
@@ -126,8 +137,12 @@ lv_obj_t *scr_chat_create(void)
     lv_obj_set_width(c.bubbles, lv_pct(100));
     lv_obj_set_flex_grow(c.bubbles, 1);
     dk_col(c.bubbles, 12);
-    lv_obj_set_flex_align(c.bubbles, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_add_flag(c.bubbles, LV_OBJ_FLAG_SCROLLABLE);
+    // Start-aligned (end-aligned content that overflows can't be scrolled back to); a growing
+    // spacer at the top keeps a short conversation sitting at the bottom.
+    lv_obj_set_flex_align(c.bubbles, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    // Bubbles are plain labels, so the list itself has to take the press or a drag can't scroll it.
+    lv_obj_add_flag(c.bubbles, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_ELASTIC);
+    lv_obj_set_scroll_dir(c.bubbles, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(c.bubbles, LV_SCROLLBAR_MODE_OFF);
 
     c.quick = dk_box(right);
@@ -202,6 +217,25 @@ static lv_obj_t *bubble(const char *text, bool mine, const char *meta)
     return wrap;
 }
 
+/* A step it took: a quiet line with a dot, like the app's list of steps. */
+static lv_obj_t *step_row(const char *text)
+{
+    lv_obj_t *row = dk_box(c.bubbles);
+    lv_obj_set_width(row, lv_pct(100));
+    dk_row(row, 10);
+    lv_obj_set_style_pad_left(row, 6, 0);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *dot = dk_box(row);
+    lv_obj_set_size(dot, 8, 8);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(dot, DK_LILAC, 0);
+    lv_obj_t *l = dk_label(row, DK_FONT_S, DK_MUTED, text);
+    lv_obj_set_flex_grow(l, 1);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
+    return row;
+}
+
 static void typing(void)
 {
     lv_obj_t *b = dk_card(c.bubbles, DK_LINE, 24);
@@ -239,6 +273,8 @@ static void rebuild_head(const dk_agent_t *a)
         sig = dk_hash(sig, &a->source, sizeof(a->source));
         sig = dk_hash(sig, &a->channel, sizeof(a->channel));
         sig = dk_hash(sig, &a->can_message, sizeof(a->can_message));
+        sig = dk_hash(sig, a->helpers, sizeof(a->helpers[0]) * a->helpers_n);
+        sig = dk_hash(sig, &a->helpers_n, sizeof(a->helpers_n));
     }
     if (sig == s_head_sig) return;
     s_head_sig = sig;
@@ -265,6 +301,36 @@ static void rebuild_head(const dk_agent_t *a)
     dk_mood_t mood = ui_mood_for(a);
     if (deskling_get_mood(c.face) != mood && deskling_get_mood(c.face) != DK_MOOD_HAPPY) deskling_set_mood(c.face, mood);
 
+    lv_obj_clean(c.helper_list);
+    if (a->helpers_n) {
+        lv_obj_remove_flag(c.helpers, LV_OBJ_FLAG_HIDDEN);
+        for (int i = 0; i < a->helpers_n; i++) {
+            const dk_helper_t *h = &a->helpers[i];
+            lv_obj_t *row = dk_box(c.helper_list);
+            lv_obj_set_width(row, lv_pct(100));
+            dk_row(row, 10);
+            lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+            lv_obj_t *dot = dk_box(row);
+            lv_obj_set_size(dot, 12, 12);
+            lv_obj_set_style_margin_top(dot, 5, 0);
+            lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_color(dot, h->done ? DK_GOOD_INK : DK_PURPLE, 0);
+            if (!h->done) dk_anim_breathe_opa(dot, LV_OPA_40, LV_OPA_COVER, 1400, i * 200);
+            lv_obj_t *col = dk_box(row);
+            lv_obj_set_flex_grow(col, 1);
+            dk_col(col, 0);
+            lv_obj_t *n = dk_label(col, DK_FONT_S, DK_INK, h->name);
+            lv_obj_set_width(n, lv_pct(100));
+            lv_label_set_long_mode(n, LV_LABEL_LONG_MODE_DOTS);
+            lv_obj_t *t = dk_label(col, DK_FONT_XS, DK_MUTED, h->done ? "Finished" : (h->task[0] ? h->task : "Working"));
+            lv_obj_set_width(t, lv_pct(100));
+            lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
+        }
+    } else {
+        lv_obj_add_flag(c.helpers, LV_OBJ_FLAG_HIDDEN);
+    }
+
     if (a->can_message) {
         lv_obj_remove_flag(c.quick, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(c.input_row, LV_OBJ_FLAG_HIDDEN);
@@ -289,7 +355,7 @@ static const char *chat_meta(const dk_agent_t *a, const dk_chat_t *line)
 static void rebuild_chat(const dk_agent_t *a, bool animate_new)
 {
     const dk_chat_t *tail = a && a->chat_n ? &a->chat[a->chat_n - 1] : NULL;
-    bool typing_on = tail && tail->from_you && tail->status != DK_CHAT_QUEUED && a->state == DK_WORKING;
+    bool typing_on = tail && (tail->step || (tail->from_you && tail->status != DK_CHAT_QUEUED)) && a->state == DK_WORKING;
     uint32_t sig = dk_hash_str(DK_HASH0, c.agent_id);
     if (a) {
         for (int i = 0; i < a->chat_n; i++) {
@@ -309,6 +375,9 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     bool follow = near_bottom() || new_line || !animate_new;
     lv_coord_t keep = lv_obj_get_scroll_y(c.bubbles);
     lv_obj_clean(c.bubbles);
+    lv_obj_t *spacer = dk_box(c.bubbles);
+    lv_obj_set_size(spacer, 1, 0);
+    lv_obj_set_flex_grow(spacer, 1);
     if (!a) return;
 
     if (a->chat_n == 0) {
@@ -321,7 +390,10 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
         }
     }
     lv_obj_t *last = NULL;
-    for (int i = 0; i < a->chat_n; i++) last = bubble(a->chat[i].text, a->chat[i].from_you, chat_meta(a, &a->chat[i]));
+    for (int i = 0; i < a->chat_n; i++) {
+        const dk_chat_t *line = &a->chat[i];
+        last = line->step ? step_row(line->text) : bubble(line->text, line->from_you, chat_meta(a, line));
+    }
     if (typing_on) typing();
     if (animate_new && last && new_line) dk_anim_pop(lv_obj_get_child(last, 0), 0);
     snprintf(c.last_line, sizeof(c.last_line), "%s", tail ? tail->id : "");

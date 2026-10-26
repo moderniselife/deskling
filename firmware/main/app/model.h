@@ -15,7 +15,8 @@ extern "C" {
 #define DK_MAX_FEED 12
 #define DK_MAX_REMINDERS 12
 #define DK_MAX_PENDING 4
-#define DK_MAX_CHAT 12
+#define DK_MAX_CHAT 16
+#define DK_MAX_HELPERS 4
 #define DK_MAX_QUESTIONS 4
 #define DK_MAX_OPTIONS 6
 
@@ -44,9 +45,18 @@ typedef struct {
     char id[16];
     char text[1216];
     bool from_you;
+    bool step; // a tool step it took ("Editing scr_chat.c"), not a message
     dk_chat_status_t status;
     int64_t ts;
 } dk_chat_t;
+
+/* A helper (subagent) the session handed part of its work to. */
+typedef struct {
+    char id[40];
+    char name[64];
+    char task[96];
+    bool done;
+} dk_helper_t;
 
 typedef struct {
     char id[72];
@@ -64,6 +74,8 @@ typedef struct {
     bool can_message;
     dk_chat_t chat[DK_MAX_CHAT];
     int chat_n;
+    dk_helper_t helpers[DK_MAX_HELPERS];
+    int helpers_n;
 } dk_agent_t;
 
 typedef struct {

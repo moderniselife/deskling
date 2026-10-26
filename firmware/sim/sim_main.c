@@ -721,12 +721,20 @@ int main(int argc, char **argv)
 
     /* A real conversation: your prompts from the computer, long replies, and live activity that
        updates the header without yanking the conversation back to the bottom. */
+    drag(1180, 754, 1180, 754, 20, 0); /* the keyboard's tick closes it */
     apply("chat_long");
     run(1200);
     shot("08b_chat_conversation");
     expect_text("From your computer");
+    expect_text("Research Claude Code docs");
     {
         lv_obj_t *list = lv_obj_get_parent(lv_obj_get_parent(find_label(lv_screen_active(), "From your computer")));
+        int32_t before = lv_obj_get_scroll_y(list);
+        drag(800, 120, 800, 440, 300, 0);
+        run(800);
+        bool scrolled = lv_obj_get_scroll_y(list) < before - 100;
+        printf("%s  dragging the chat scrolls back through it (%d -> %d)\n", scrolled ? "PASS" : "FAIL", (int)before, (int)lv_obj_get_scroll_y(list));
+        if (!scrolled) s_failures++;
         lv_obj_scroll_to_y(list, 0, LV_ANIM_OFF);
         run(100);
         apply("chat_live");
