@@ -858,6 +858,24 @@ int main(int argc, char **argv)
         expect_sent("\"type\":\"listen\"");
     }
 
+    // OpenCode: its own badge, model and helpers, and its permission prompts.
+    apply("opencode");
+    run(600);
+    ui_open_chat("oc-ses_1");
+    run(900);
+    shot("08c_chat_opencode");
+    expect_text("Plan the change");
+    apply("permission_opencode");
+    run(1200);
+    shot("09b_permission_opencode");
+    expect_text("OpenCode wants to run a command");
+    tap("Allow once");
+    run(500);
+    expect_sent("\"id\":\"p9\",\"decision\":\"allow\"");
+    expect_text("OpenCode is carrying on.");
+    apply("busy");
+    run(2500);
+
     apply("permission");
     run(1200);
     shot("09_permission");
