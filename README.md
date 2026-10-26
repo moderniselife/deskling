@@ -58,7 +58,7 @@ From across the room you can:
    [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/moderniselife/deskling/tree/main/relay)
 
    Then open `https://<relay>/setup`. It has your copy-paste details and test buttons, and `/sim` is a working Deskling in the browser.
-2. **Claude Code.** Run `/plugin marketplace add moderniselife/deskling`, then `/plugin install deskling@deskling`, and paste the relay URL and token. [Cursor and the CLI](hooks/README.md) are set up the same way.
+2. **Claude Code.** Run `/plugin marketplace add moderniselife/deskling`, then `/plugin install deskling@deskling`, then `/plugin configure deskling@deskling` and paste the relay URL and token. [Cursor and the CLI](hooks/README.md) are set up the same way.
 3. **Screen.** Open [deskling.mojolayers.com/install](https://deskling.mojolayers.com/install) (or `https://<relay>/flash`) in Chrome or Edge and install over USB (once). Pick your Wi-Fi on the screen, then open `deskling.local` and paste the relay details. Updates arrive over the air after that.
 4. **Case.** Print the fit template first, then the parts for your printer ([details](case/README.md)).
 

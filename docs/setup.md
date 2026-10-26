@@ -63,9 +63,18 @@ In Claude Code (terminal or the desktop app), on Mac or Windows:
 ```
 /plugin marketplace add moderniselife/deskling
 /plugin install deskling@deskling
+/plugin configure deskling@deskling
 ```
 
-It asks for your **relay URL** and **token**. Give the computer a name if you like (it defaults to its hostname). Then restart Claude Code.
+The last one asks for your **relay URL** and **token**, and optionally a name for this computer (it defaults to its hostname). Then restart Claude Code.
+
+From a terminal instead (your relay's `/setup` page has this with your details filled in):
+
+```bash
+echo '{"relay_url":"https://<your relay>","token":"<your token>"}' | claude plugin configure deskling@deskling --values-stdin
+```
+
+`claude plugin configure deskling@deskling` on its own shows which options are still unset.
 
 **Check it:** start a session in any project. Within a second, it shows up in `/sim` as a session. Ask Claude to do something that needs permission, e.g. "run `ls` in a new terminal". The simulator jumps to the permission screen. Tap **Allow** and Claude carries on.
 

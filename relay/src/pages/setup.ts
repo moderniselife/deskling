@@ -71,9 +71,13 @@ a{color:var(--purple)}
 
     <section>
       <h2>Claude Code (Mac, Windows, desktop app)</h2>
-      <p>In Claude Code, run these two commands. When it asks, paste the relay URL and token from above.</p>
+      <p>In Claude Code, run these three commands. The last one asks for the relay URL and token from above.</p>
       <div class="copy"><code id="mk">/plugin marketplace add moderniselife/deskling</code><button class="ghost" data-copy="mk">Copy</button></div>
       <div class="copy"><code id="plugin">/plugin install deskling@deskling</code><button class="ghost" data-copy="plugin">Copy</button></div>
+      <div class="copy"><code id="pconf">/plugin configure deskling@deskling</code><button class="ghost" data-copy="pconf">Copy</button></div>
+      <p class="muted">Prefer the terminal? This sets both in one go (the token is included when you copy it):</p>
+      <div class="copy"><code id="cliconf"></code><button class="ghost" data-copy="cliconfraw">Copy</button></div>
+      <span id="cliconfraw" hidden></span>
       <p class="muted">Restart Claude Code afterwards. The desktop app uses the same plugins. To send messages to sessions that are sitting idle, start Claude with <code>claude --channels plugin:deskling@deskling</code>.</p>
     </section>
 
@@ -126,6 +130,9 @@ async function unlock() {
   $('url').textContent = origin; $('tokraw').textContent = token;
   const conf = 'DESKLING_URL="' + origin + '"\\nDESKLING_TOKEN="' + token + '"';
   $('confraw').textContent = conf; $('conf').textContent = conf.replace(token, '\\u2022'.repeat(8));
+  const json = JSON.stringify({ relay_url: origin, token });
+  const cli = "echo '" + json + "' | claude plugin configure deskling@deskling --values-stdin";
+  $('cliconfraw').textContent = cli; $('cliconf').textContent = cli.replace(token, '\\u2022'.repeat(8));
   poll(); setInterval(poll, 3000);
 }
 $('unlock').onclick = unlock;

@@ -9,9 +9,10 @@ Inside Claude Code:
 ```
 /plugin marketplace add moderniselife/deskling
 /plugin install deskling@deskling
+/plugin configure deskling@deskling
 ```
 
-When the plugin is enabled, Claude Code asks for:
+`/plugin configure` asks for these (or pipe JSON to `claude plugin configure deskling@deskling --values-stdin` from a terminal):
 
 | Option | |
 | --- | --- |
