@@ -132,11 +132,50 @@ async function relay(path, init = {}) {
   return res.json();
 }
 
+// ---- running commands safely on every platform
+/** Where a command is on this computer's PATH (Windows: with its extension), or "". */
+function which(bin) {
+  if (!bin) return "";
+  const win = platform() === "win32";
+  const exts = win ? ["", ...(process.env.PATHEXT || ".EXE;.CMD;.BAT").split(";")] : [""];
+  if (/[\\/]/.test(bin)) {
+    for (const ext of exts) if (existsSync(bin + ext) && (!win || ext || /\.\w+$/.test(bin))) return bin + ext;
+    return "";
+  }
+  for (const dir of (process.env.PATH || "").split(win ? ";" : ":")) {
+    for (const ext of win ? exts.slice(1) : exts) {
+      if (dir && existsSync(join(dir, bin + ext))) return join(dir, bin + ext);
+    }
+  }
+  return "";
+}
+const onPath = (bin) => !!which(bin);
+
+// Windows: npm installs commands as .cmd scripts, which only run through cmd.exe, and cmd.exe
+// treats & | < > ^ % and quotes in your prompt as commands. Quote and escape every argument the
+// way cross-spawn does (twice for .cmd scripts, which pass their arguments through cmd again).
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+function cmdArg(arg, shim) {
+  let a = String(arg).replace(/\r?\n/g, " ");
+  a = a.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"').replace(/(?=(\\+?)?)\1$/, "$1$1");
+  a = `"${a}"`.replace(CMD_META, "^$1");
+  return shim ? a.replace(CMD_META, "^$1") : a;
+}
+function runCmd(bin, args, opts = {}) {
+  if (platform() !== "win32") return spawn(bin, args, opts);
+  const path = which(bin);
+  if (/\.exe$/i.test(path)) return spawn(path, args, { ...opts, shell: false });
+  const shim = /\.(cmd|bat)$/i.test(path);
+  const line = [(path || bin).replace(CMD_META, "^$1"), ...args.map((a) => cmdArg(a, shim))].join(" ");
+  return spawn(process.env.comspec || "cmd.exe", ["/d", "/s", "/c", `"${line}"`], { ...opts, shell: false, windowsVerbatimArguments: true });
+}
+
 // ---- which agents this computer can start
 function has(cmd) {
   if (!cmd || cmd === "off") return false;
   try {
-    const r = spawnSync(cmd, ["--version"], { shell: platform() === "win32", timeout: 15_000, stdio: "ignore", windowsHide: true });
+    if (platform() === "win32") return onPath(cmd); // starting .cmd scripts just to ask is slow there
+    const r = spawnSync(cmd, ["--version"], { timeout: 15_000, stdio: "ignore" });
     return r.status === 0;
   } catch {
     return false;
@@ -230,9 +269,8 @@ async function ensureOpenCode() {
   stopOpenCode();
   mkdirSync(join(HOME, ".deskling"), { recursive: true });
   const fd = openSync(join(HOME, ".deskling", "opencode.log"), "a");
-  oc.proc = spawn(OPENCODE, ["serve", "--port", String(OC_PORT), "--hostname", "127.0.0.1"], {
+  oc.proc = runCmd(OPENCODE, ["serve", "--port", String(OC_PORT), "--hostname", "127.0.0.1"], {
     cwd: HOME,
-    shell: platform() === "win32",
     env: { ...process.env, OPENCODE_SERVER_PASSWORD: oc.password, OPENCODE_SERVER_USERNAME: "opencode" },
     stdio: ["ignore", fd, fd],
     windowsHide: true,
@@ -296,19 +334,6 @@ const ACP_KNOWN = [
   { id: "kiro", name: "Kiro", bin: "kiro-cli-chat", args: ["acp"], source: "custom" },
 ];
 
-/** On this computer's PATH? (Without running it: some of these are slow to start.) */
-function onPath(bin) {
-  if (!bin) return false;
-  if (/[\\/]/.test(bin)) return existsSync(bin);
-  const exts = platform() === "win32" ? (process.env.PATHEXT || ".EXE;.CMD;.BAT").split(";") : [""];
-  for (const dir of (process.env.PATH || "").split(platform() === "win32" ? ";" : ":")) {
-    for (const ext of exts) {
-      if (dir && existsSync(join(dir, bin + ext))) return true;
-    }
-  }
-  return false;
-}
-
 /** The ACP agents to offer: the known ones that are installed, plus DESKLING_ACP
  *  ("Name=command args; Other=command"), which also replaces a known one with the same name. */
 function acpAgents() {
@@ -361,7 +386,7 @@ class AcpSession {
 
   async start() {
     // DESKLING_BRIDGED: the agent's own Deskling plugin or hooks stay quiet (this shows the session).
-    this.proc = spawn(this.def.bin, this.def.args, { cwd: this.cwd, env: { ...process.env, DESKLING_BRIDGED: "1" }, shell: platform() === "win32", stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: platform() !== "win32" });
+    this.proc = runCmd(this.def.bin, this.def.args, { cwd: this.cwd, env: { ...process.env, DESKLING_BRIDGED: "1" }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: platform() !== "win32" });
     let buf = "";
     let err = "";
     this.proc.stdout.on("data", (d) => {
@@ -608,7 +633,7 @@ function startHeadless(job) {
   const logFile = join(HOME, ".deskling", "sessions.log");
   mkdirSync(join(HOME, ".deskling"), { recursive: true });
   const fd = openSync(logFile, "a");
-  const child = spawn(CLAUDE, ["-p", job.prompt], { cwd: job.project, shell: platform() === "win32", detached: true, stdio: ["ignore", fd, fd], windowsHide: true });
+  const child = runCmd(CLAUDE, ["-p", job.prompt], { cwd: job.project, detached: true, stdio: ["ignore", fd, fd], windowsHide: true });
   child.on("error", () => {});
   child.unref();
   return { ok: true, mode: "headless" };
@@ -624,9 +649,11 @@ function start(job) {
 function startBg(job) {
   return new Promise((done) => {
     log(`starting a session in ${job.project}: ${job.prompt.slice(0, 80)}`);
+    // (On Windows cmd.exe runs it, so a missing command doesn't show up as an error code.)
+    if (platform() === "win32" && !onPath(CLAUDE)) return done({ ok: false, missing: true, error: `"${CLAUDE}" isn't on this computer's PATH` });
     let err = "";
     // `claude --bg` hands the session to Claude Code's background supervisor and returns.
-    const child = spawn(CLAUDE, ["--bg", job.prompt], { cwd: job.project, shell: platform() === "win32", stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+    const child = runCmd(CLAUDE, ["--bg", job.prompt], { cwd: job.project, stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
     child.stderr.on("data", (d) => (err += d));
     child.on("error", (e) => done({ ok: false, missing: e.code === "ENOENT", error: e.code === "ENOENT" ? `"${CLAUDE}" isn't on this computer's PATH` : e.message }));
     child.on("exit", (code) => done(code === 0 ? { ok: true } : { ok: false, error: err.trim().split("\n").pop() || `claude exited with ${code}` }));
