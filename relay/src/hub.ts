@@ -2,6 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import { makeZip, type ZipEntry } from "./zip";
 import type {
   Helper,
+  Machine,
+  StartJob,
   Agent,
   AgentState,
   Answers,
@@ -32,6 +34,8 @@ const MAX_WAIT_S = 110;
 const HOLD_S = 85; // one round of a listening Stop hook (the hook asks again until listening ends)
 const LISTEN_MAX_MIN = 120;
 const IMAGES_KEPT = 8; // pictures kept per session
+const MACHINE_GONE_MS = 3 * 60 * 1000; // a runner that hasn't checked in for this long is offline
+const RUNNER_POLL_S = 50;
 const IMAGE_MAX_BYTES = 1_800_000;
 const CHANNEL_LIVE_MS = 45 * 1000;
 const SOURCES: Source[] = ["claude-code", "cursor", "codex", "gemini", "custom"];
@@ -237,6 +241,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
   private listeners = new Map<string, (why: "message" | "cancel") => void>();
   /** Transcript lines already handled, per session (uploads can overlap after a retry). */
   private seenLines = new Map<string, Set<string>>();
+  /** Runners waiting for a job, by machine. */
+  private runnerPolls = new Map<string, () => void>();
   private channels = new Map<string, Channel>();
   private channelPolls = new Map<string, () => void>();
 
@@ -262,6 +268,30 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     };
 
     if (req.method === "POST" && path === "/transcript") return this.onTranscript(url.searchParams.get("sid") ?? "", await req.text());
+    // ---- starting sessions: the runner on your computers, and a cloud routine
+    if (req.method === "POST" && path === "/runner/register") return this.onRunnerRegister((await readJson()) ?? {});
+    if (req.method === "GET" && path === "/runner/poll") return this.onRunnerPoll(url.searchParams.get("machine") ?? "");
+    if (req.method === "POST" && path === "/runner/done") {
+      const b = (await readJson()) ?? {};
+      if (b.ok === false) {
+        this.addFeed("alert", "Couldn't start the session", `${oneLine(b.machine, 40)} · ${oneLine(b.error, 100)}`, null);
+        await this.commit({ kind: "feed" });
+      }
+      return json({ ok: true });
+    }
+    if (path === "/api/routine") {
+      if (req.method === "POST") {
+        const b = (await readJson()) ?? {};
+        const u = String(b.url ?? "").trim();
+        const t = String(b.token ?? "").trim();
+        if (!u && !t) this.state.routine = null;
+        else if (!/^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/[\w-]+\/fire$/.test(u) || !t) return json({ error: "That isn't a routine's API trigger URL and token" }, 400);
+        else this.state.routine = { url: u, token: t, name: oneLine(b.name, 40) || "Cloud" };
+        await this.commit({ kind: "agent" });
+      }
+      return json({ routine: this.state.routine ? { url: this.state.routine.url, name: this.state.routine.name, token: "…" + this.state.routine.token.slice(-4) } : null });
+    }
+
     if (req.method === "POST" && path === "/quote") {
       const a = this.state.agents[url.searchParams.get("sid") ?? ""];
       const name = baseName(url.searchParams.get("name") ?? "");
@@ -346,6 +376,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     if (req.method === "POST" && path === "/channel/register") return this.onChannelRegister((await readJson()) ?? {});
     if (req.method === "GET" && path === "/channel/poll") return this.onChannelPoll(url);
     if (req.method === "POST" && path === "/channel/reply") return this.onChannelReply((await readJson()) ?? {});
+    if (req.method === "POST" && path === "/channel/permission") return this.onChannelPermission((await readJson()) ?? {});
 
     return json({ error: "not found" }, 404);
   }
@@ -647,6 +678,116 @@ export class Hub extends DurableObject<Record<string, unknown>> {
   }
 
   /** Put a request on the screen and wait for an answer, a decision, or the timeout. */
+  // ------------------------------------------------------------ starting sessions
+
+  private machinesOnline(): Machine[] {
+    const now = Date.now();
+    return Object.values(this.state.machines ?? {}).filter((m) => now - m.seen < MACHINE_GONE_MS);
+  }
+
+  private async onRunnerRegister(b: Record<string, unknown>): Promise<Response> {
+    const id = oneLine(b.machine, 40);
+    if (!id) return json({ error: "machine name missing" }, 400);
+    const projects = (Array.isArray(b.projects) ? b.projects : [])
+      .slice(0, 40)
+      .map((p) => ({ name: oneLine((p as Record<string, unknown>).name, 48), path: String((p as Record<string, unknown>).path ?? "").slice(0, 300) }))
+      .filter((p) => p.name && p.path);
+    const known = this.state.machines?.[id];
+    const changed = !known || JSON.stringify(known.projects) !== JSON.stringify(projects) || Date.now() - known.seen > MACHINE_GONE_MS;
+    (this.state.machines ??= {})[id] = { id, os: oneLine(b.os, 20), projects, seen: Date.now() };
+    if (changed) await this.commit({ kind: "agent" });
+    else await this.save();
+    return json({ ok: true });
+  }
+
+  /** A runner waits here (up to RUNNER_POLL_S) for a session to start. */
+  private async onRunnerPoll(machine: string): Promise<Response> {
+    const m = this.state.machines?.[machine];
+    if (m) m.seen = Date.now();
+    const take = () => {
+      const i = (this.state.jobs ?? []).findIndex((j) => j.machine === machine);
+      return i < 0 ? null : (this.state.jobs as StartJob[]).splice(i, 1)[0];
+    };
+    let job = take();
+    if (!job) {
+      this.runnerPolls.get(machine)?.();
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(() => {
+          this.runnerPolls.delete(machine);
+          resolve();
+        }, RUNNER_POLL_S * 1000);
+        this.runnerPolls.set(machine, () => {
+          clearTimeout(t);
+          this.runnerPolls.delete(machine);
+          resolve();
+        });
+      });
+      job = take();
+    }
+    if (job) await this.save();
+    return json({ job });
+  }
+
+  /** Start a new session from the screen: on a computer with the runner, or in the cloud. */
+  private async startSession(target: string, project: string, prompt: string): Promise<void> {
+    if (!prompt) return;
+    const now = Date.now();
+    if (target === "cloud") {
+      const r = this.state.routine;
+      if (!r) {
+        this.addFeed("alert", "No cloud routine yet", "Add one on your relay's setup page", null);
+        await this.commit({ kind: "feed" });
+        return;
+      }
+      let ok = false;
+      let detail = "";
+      try {
+        const res = await fetch(r.url, {
+          method: "POST",
+          headers: { authorization: `Bearer ${r.token}`, "anthropic-version": "2023-06-01", "anthropic-beta": "experimental-cc-routine-2026-04-01", "content-type": "application/json" },
+          body: JSON.stringify({ text: prompt }),
+        });
+        ok = res.ok;
+        detail = ok ? "" : `${res.status} ${oneLine(await res.text(), 120)}`;
+      } catch (e) {
+        detail = oneLine(String(e), 120);
+      }
+      if (ok) {
+        (this.state.expectNew ??= []).push({ host: "cloud", until: now + 5 * 60 * 1000 });
+        this.addFeed("good", "Starting a cloud session", oneLine(prompt, 100), null);
+      } else {
+        this.addFeed("alert", "Couldn't start a cloud session", detail || "The routine didn't answer", null);
+      }
+      await this.commit({ kind: "feed" });
+      return;
+    }
+    const m = this.state.machines?.[target];
+    if (!m || now - m.seen > MACHINE_GONE_MS) {
+      this.addFeed("alert", "That computer isn't online", `Start the Deskling runner on ${target}`, null);
+      await this.commit({ kind: "feed" });
+      return;
+    }
+    const path = m.projects.find((p) => p.path === project || p.name === project)?.path ?? m.projects[0]?.path ?? "";
+    (this.state.jobs ??= []).push({ id: shortId(), machine: m.id, project: path, prompt, ts: now });
+    (this.state.expectNew ??= []).push({ host: m.id.toLowerCase(), until: now + 5 * 60 * 1000 });
+    this.addFeed("good", `Starting a session on ${m.id}`, oneLine(prompt, 100), null);
+    await this.commit({ kind: "feed" });
+    this.runnerPolls.get(m.id)?.();
+  }
+
+  /** A session you started from the screen has appeared: it listens for you straight away. */
+  private adoptNew(agent: Agent): void {
+    const now = Date.now();
+    const list = (this.state.expectNew ?? []).filter((e) => e.until > now);
+    const host = agent.os === "cloud" ? "cloud" : agent.host.toLowerCase();
+    const i = list.findIndex((e) => e.host === host);
+    if (i >= 0) {
+      list.splice(i, 1);
+      agent.listenUntil = now + 30 * 60 * 1000;
+    }
+    this.state.expectNew = list;
+  }
+
   // ------------------------------------------------------------ transcript
 
   /**
@@ -964,6 +1105,25 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     return json({ ok: true });
   }
 
+  /**
+   * A permission dialog open in a terminal session with the live channel: show it on the screen
+   * and answer it from there (the terminal dialog stays open too; the first answer wins).
+   */
+  private async onChannelPermission(body: Record<string, unknown>): Promise<Response> {
+    const ch = this.channels.get(String(body.cid ?? ""));
+    if (!ch) return json({ error: "unknown channel, register again" }, 409);
+    if (!ch.agentId) this.linkChannel(ch);
+    const agent = ch.agentId ? this.state.agents[ch.agentId] : undefined;
+    if (!agent) return json({});
+    const tool = oneLine(body.tool_name, 40) || "Tool";
+    // Already on the screen from the PermissionRequest hook: that answer is on its way.
+    if (this.state.pending.some((p) => p.agentId === agent.id && p.tool === tool)) return json({});
+    const wait = Math.min(MAX_WAIT_S, Math.max(5, Number(body.wait ?? MAX_WAIT_S) || MAX_WAIT_S));
+    const r = await this.ask(agent, "permission", tool, oneLine(body.input_preview, 160), oneLine(body.description, 120), [], wait);
+    if ("decision" in r && (r.decision === "allow" || r.decision === "deny")) return json({ behavior: r.decision });
+    return json({});
+  }
+
   /** Match a channel to the Claude Code session on the same machine and folder. */
   private linkChannel(ch: Channel): void {
     const taken = new Set([...this.channels.values()].filter((c) => c !== ch && c.agentId).map((c) => c.agentId));
@@ -1089,6 +1249,10 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       await this.commit({ kind: "chat", id: agentId });
       this.listeners.get(agentId)?.("message");
       for (const ch of this.channels.values()) if (ch.agentId === agentId) this.channelPolls.get(ch.id)?.();
+      return;
+    }
+    if (type === "start") {
+      await this.startSession(String(msg.target ?? ""), String(msg.project ?? ""), clip(msg.prompt, 2000));
       return;
     }
     if (type === "listen") {
@@ -1237,6 +1401,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     if (!a) {
       a = { id, source, name, host, os, state: "idle", task: "", lastPrompt: "", lastMessage: "", since: now, updated: now };
       this.state.agents[id] = a;
+      this.adoptNew(a);
     }
     a.source = source;
     // The first name sticks: later events come from wherever Claude has cd'd to.
@@ -1296,6 +1461,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     this.state.reminders = this.state.reminders.filter((r) => !r.done || (r.doneAt ?? 0) > now - REMINDER_KEEP_DONE_MS);
     this.state.pending = this.state.pending.filter((p) => this.waiters.has(p.id));
     for (const [id, ch] of this.channels) if (now - ch.lastPoll > 10 * 60 * 1000) this.channels.delete(id);
+    if (this.state.jobs?.length) this.state.jobs = this.state.jobs.filter((j) => now - j.ts < 10 * 60 * 1000);
   }
 
   private snapshot(cause: Cause): string {
@@ -1328,6 +1494,11 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       pending: s.pending,
       focus: s.focus,
       pingWhenDone: s.pingWhenDone,
+      // Where the screen can start a new session.
+      targets: [
+        ...(s.routine ? [{ id: "cloud", name: s.routine.name || "Cloud", kind: "cloud", projects: [] as string[] }] : []),
+        ...this.machinesOnline().map((m) => ({ id: m.id, name: m.id, kind: "computer", projects: m.projects.map((p) => p.name).slice(0, 12) })),
+      ],
     });
   }
 

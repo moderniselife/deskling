@@ -188,6 +188,28 @@ await fetch(`${URL_BASE}/transcript?sid=s-smoke`, { method: "POST", headers: aut
 s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.chat?.some((c) => c.text === "also check the docs" && c.from === "you"));
 check("messages you send mid-turn show up", true);
 
+// Channel permission relay: a terminal dialog answered on the screen.
+const perm = fetch(`${URL_BASE}/channel/permission`, { method: "POST", headers: auth, body: JSON.stringify({ cid: reg.cid, request_id: "abcde", tool_name: "Write", description: "Create a file", input_preview: "notes.md", wait: 10 }) }).then((r) => r.json());
+s = await waitFor((m) => m.pending.some((p) => p.tool === "Write" && p.summary === "notes.md"));
+ws.send(JSON.stringify({ type: "decision", id: s.pending.find((p) => p.tool === "Write").id, decision: "allow" }));
+check("a channel's permission dialog is answered on the screen", (await perm).behavior === "allow");
+
+// Starting sessions: a runner on a computer picks up the job; a bad routine is refused.
+await fetch(`${URL_BASE}/runner/register`, { method: "POST", headers: auth, body: JSON.stringify({ machine: "test-mac", os: "mac", projects: [{ name: "web-app", path: "/Users/joe/code/web-app" }] }) });
+s = await waitFor((m) => m.targets?.some((t) => t.id === "test-mac" && t.projects.includes("web-app")));
+check("a computer with the runner is offered for new sessions", true);
+const jobP = fetch(`${URL_BASE}/runner/poll?machine=test-mac`, { headers: auth }).then((r) => r.json());
+await new Promise((r) => setTimeout(r, 300));
+ws.send(JSON.stringify({ type: "start", target: "test-mac", project: "web-app", prompt: "add a dark mode" }));
+const { job } = await jobP;
+check("the runner gets the new session to start", job?.project === "/Users/joe/code/web-app" && job.prompt === "add a dark mode");
+await hook({ hook_event_name: "SessionStart", session_id: "s-new" });
+s = await waitFor((m) => m.agents.some((a) => a.id === "s-new"));
+check("the session it starts listens for you straight away", s.agents.find((a) => a.id === "s-new").listening === true);
+await hook({ hook_event_name: "SessionEnd", session_id: "s-new" });
+const badRoutine = await fetch(`${URL_BASE}/api/routine`, { method: "POST", headers: auth, body: JSON.stringify({ url: "https://example.com/fire", token: "x" }) });
+check("a routine URL that isn't Anthropic's is refused", badRoutine.status === 400);
+
 // Keep listening: a finished session waits for the screen; typing on the computer lets it go.
 ws.send(JSON.stringify({ type: "listen", agentId: "s-smoke", minutes: 5 }));
 s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.listening);

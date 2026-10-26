@@ -92,8 +92,35 @@ export interface ChatLine {
   ts: number;
 }
 
+/** A computer running the Deskling runner: it can start sessions in its project folders. */
+export interface Machine {
+  id: string; // machine name
+  os: string;
+  projects: { name: string; path: string }[];
+  seen: number; // last heartbeat
+}
+
+/** A Claude Code routine with an API trigger: firing it starts a new cloud session. */
+export interface Routine {
+  url: string; // https://api.anthropic.com/v1/claude_code/routines/<id>/fire
+  token: string; // the routine's own trigger token
+  name: string;
+}
+
+export interface StartJob {
+  id: string;
+  machine: string;
+  project: string; // folder path on that machine
+  prompt: string;
+  ts: number;
+}
+
 export interface State {
   agents: Record<string, Agent>;
+  machines?: Record<string, Machine>;
+  routine?: Routine | null;
+  jobs?: StartJob[]; // waiting for their runner
+  expectNew?: { host: string; until: number }[]; // sessions you just started: listen to them when they appear
   feed: FeedItem[];
   reminders: Reminder[];
   pending: Pending[];

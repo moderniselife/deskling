@@ -381,8 +381,8 @@ void ui_go(scr_id_t id)
     uint32_t ms = 250;
     if (id == SCR_ALERT) how = LV_SCREEN_LOAD_ANIM_OVER_TOP, ms = 380;
     else if (s_cur == SCR_ALERT) how = LV_SCREEN_LOAD_ANIM_FADE_IN, ms = 300;
-    else if (id == SCR_CHAT) how = LV_SCREEN_LOAD_ANIM_MOVE_LEFT, ms = 320;
-    else if (s_cur == SCR_CHAT) how = LV_SCREEN_LOAD_ANIM_MOVE_RIGHT, ms = 320;
+    else if (id == SCR_CHAT || id == SCR_NEW) how = LV_SCREEN_LOAD_ANIM_MOVE_LEFT, ms = 320;
+    else if (s_cur == SCR_CHAT || s_cur == SCR_NEW) how = LV_SCREEN_LOAD_ANIM_MOVE_RIGHT, ms = 320;
     else if (id == SCR_NIGHT || s_cur == SCR_NIGHT) how = LV_SCREEN_LOAD_ANIM_FADE_IN, ms = 700;
     s_cur = id;
     set_backlight(id == SCR_NIGHT ? 25 : 100);
@@ -392,6 +392,7 @@ void ui_go(scr_id_t id)
     if (id == SCR_SETUP) scr_setup_refresh();
     if (id == SCR_HOME) scr_home_refresh(DK_CAUSE_HELLO, "");
     if (id == SCR_CHAT) scr_chat_refresh(DK_CAUSE_HELLO);
+    if (id == SCR_NEW) scr_new_refresh();
     show_screen(s_scr[id], how, ms);
     ui_gestures_on_screen(id);
 }
@@ -408,6 +409,9 @@ bool ui_back(void)
     switch (s_cur) {
     case SCR_CHAT:
         ui_go(s_chat_from == SCR_CHAT || s_chat_from == SCR_ALERT ? SCR_SESSIONS : s_chat_from);
+        return true;
+    case SCR_NEW:
+        ui_go(SCR_SESSIONS);
         return true;
     case SCR_SESSIONS:
     case SCR_SETTINGS:
@@ -569,6 +573,7 @@ void ui_init(void)
     s_scr[SCR_HOME] = scr_home_create();
     s_scr[SCR_SESSIONS] = scr_sessions_create();
     s_scr[SCR_CHAT] = scr_chat_create();
+    s_scr[SCR_NEW] = scr_new_create();
     s_scr[SCR_ALERT] = scr_alert_create();
     s_scr[SCR_NIGHT] = scr_night_create();
     s_scr[SCR_SETUP] = scr_setup_create();
@@ -617,6 +622,7 @@ void ui_apply_model(const dk_model_t *m)
     if (s_cur == SCR_HOME) scr_home_refresh(m->cause, m->cause_id);
     else if (s_cur == SCR_SESSIONS) scr_sessions_refresh();
     else if (s_cur == SCR_CHAT) scr_chat_refresh(m->cause);
+    else if (s_cur == SCR_NEW) scr_new_refresh();
     else if (s_cur == SCR_NIGHT) scr_night_refresh();
     ui_gestures_refresh();
 

@@ -74,6 +74,155 @@ Those sessions never see your computer, so they can't read `~/.deskling/config` 
 
 Keep that zip to yourself: it has your token in it. Having the marketplace plugin installed as well is fine; the relay drops the doubled events. For Claude Code on the web with network access set to **Trusted**, add your relay's domain to the environment's allowed domains.
 
+### Cloud repos
+
+Sessions started by a routine (New session → Cloud on Deskling) or on Claude Code on the web run in a fresh cloud container. If your personal plugin doesn't load there, give the repo the hooks instead:
+
+1. In the cloud environment's settings, add the environment variables `DESKLING_URL` and `DESKLING_TOKEN` (your relay), and if its network access is **Trusted**, allow your relay's domain and `raw.githubusercontent.com`.
+2. Commit this as `.claude/settings.json` in the repo (merge it with any hooks you already have). Each container downloads the hook script once:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f'",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f sync'",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f'",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f stop'",
+            "timeout": 7200
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f'",
+            "async": true,
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f wait'",
+            "timeout": 130
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f live'",
+            "async": true,
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f wait'",
+            "timeout": 130
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f'",
+            "async": true,
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f'",
+            "async": true,
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "SendUserMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=/tmp/deskling-hook.sh; [ -s $f ] || curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/scripts/deskling-hook.sh -o $f; bash $f'",
+            "async": true,
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Starting sessions from Deskling
+
+Tap **New session** on Deskling's Sessions screen, pick where and in which project, and type what Claude should do. The new session listens for you straight away, so you can carry on the whole conversation from the screen.
+
+- **Your computers:** run [`runner/deskling-runner.mjs`](runner/deskling-runner.mjs) (Node 18+, reads `~/.deskling/config`). `node deskling-runner.mjs --install` starts it at login on macOS, Windows and Linux. It offers the git projects one level inside `~/code`, `~/Projects`, `~/dev`, `~/src`, `~/Developer`, `~/repos` and `~/GitHub` (or the folders in `DESKLING_PROJECTS`), and starts `claude --bg "<your prompt>"` there. If background sessions aren't available to you, it runs `claude -p` instead, which still listens for you on Deskling.
+- **The cloud:** create a routine at claude.ai/code whose prompt says to do what the fire payload asks, add an API trigger, and paste its URL and token into your relay's setup page.
+
 ## Cursor
 
 Cursor's hooks give Deskling status (prompt sent, files edited, finished) and, if you opt in, shell and MCP approvals.

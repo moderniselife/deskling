@@ -101,6 +101,25 @@ a{color:var(--purple)}
     </section>
 
     <section>
+      <h2>Start sessions from Deskling</h2>
+      <p>Tap <b>New session</b> on the screen, pick where it runs and what it should do, and it starts already listening for you, so the whole conversation can happen on Deskling.</p>
+      <h3>On your computers</h3>
+      <p>Run the small Deskling runner on each computer you want to start sessions on. It needs Node 18 or newer and the <code>~/.deskling/config</code> above. It offers the git projects in your usual code folders (change that with <code>DESKLING_PROJECTS</code>) and starts Claude Code in the background there.</p>
+      <p class="muted">Mac or Linux, in Terminal:</p>
+      <div class="copy"><code id="runmac"></code><button class="ghost" data-copy="runmac">Copy</button></div>
+      <p class="muted">Windows, in PowerShell:</p>
+      <div class="copy"><code id="runwin"></code><button class="ghost" data-copy="runwin">Copy</button></div>
+      <h3>In the cloud</h3>
+      <ol class="steps">
+        <li>At <a href="https://claude.ai/code" target="_blank">claude.ai/code</a>, create a <b>routine</b> for the repo and environment you want, with this as its prompt: <code>Do what the user asks in the routine's fire payload. They sent it from their Deskling screen.</code></li>
+        <li>Add an <b>API trigger</b> to it and paste its URL and token here.</li>
+        <li>Make sure the sessions it starts report to Deskling: your personal plugin (above) if your account's plugins load there, or the cloud environment variables <code>DESKLING_URL</code> and <code>DESKLING_TOKEN</code> plus the hooks in <a href="https://github.com/moderniselife/deskling/tree/main/hooks#cloud-repos" target="_blank">hooks/README</a>.</li>
+      </ol>
+      <div class="row"><input id="rurl" placeholder="https://api.anthropic.com/v1/claude_code/routines/…/fire" style="flex:2"><input id="rtok" type="password" placeholder="Trigger token" style="flex:1"></div>
+      <div class="row" style="margin-top:10px"><button id="rsave">Save</button><button class="ghost" id="rclear">Remove</button><span class="muted" id="rmsg"></span></div>
+    </section>
+
+    <section>
       <h2>Try it</h2>
       <p class="muted">Each button sends something to every connected screen (and the simulator).</p>
       <div class="row">
@@ -144,8 +163,18 @@ async function unlock() {
   const json = JSON.stringify({ relay_url: origin, token });
   const cli = "echo '" + json + "' | claude plugin configure deskling@deskling --values-stdin";
   $('cliconfraw').textContent = cli; $('cliconf').textContent = cli.replace(token, '\\u2022'.repeat(8));
+  const raw = 'https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/runner/deskling-runner.mjs';
+  $('runmac').textContent = 'mkdir -p ~/.deskling && curl -fsSL ' + raw + ' -o ~/.deskling/deskling-runner.mjs && node ~/.deskling/deskling-runner.mjs --install';
+  $('runwin').textContent = 'New-Item -ItemType Directory -Force "$HOME\\\\.deskling" | Out-Null; Invoke-WebRequest ' + raw + ' -OutFile "$HOME\\\\.deskling\\\\deskling-runner.mjs"; node "$HOME\\\\.deskling\\\\deskling-runner.mjs" --install';
+  call('/api/routine').then((r) => { if (r.routine) { $('rurl').value = r.routine.url; $('rmsg').textContent = 'Saved (token ' + r.routine.token + ')'; } }).catch(() => {});
   poll(); setInterval(poll, 3000);
 }
+const saveRoutine = async (url, tok) => {
+  const r = await call('/api/routine', { method: 'POST', body: JSON.stringify({ url, token: tok }) });
+  $('rmsg').textContent = r.error ? r.error : r.routine ? 'Saved. Cloud shows up under New session.' : 'Removed.';
+};
+$('rsave').onclick = () => saveRoutine($('rurl').value.trim(), $('rtok').value.trim()).catch((e) => ($('rmsg').textContent = e.message));
+$('rclear').onclick = () => { $('rurl').value = ''; $('rtok').value = ''; saveRoutine('', '').catch((e) => ($('rmsg').textContent = e.message)); };
 $('unlock').onclick = unlock;
 $('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
 $('relayhost').textContent = location.host;

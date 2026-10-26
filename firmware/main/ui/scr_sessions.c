@@ -34,6 +34,12 @@ static void tab_cb(lv_event_t *e)
     scr_sessions_refresh();
 }
 
+static void new_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_go(SCR_NEW);
+}
+
 lv_obj_t *scr_sessions_create(void)
 {
     s.scr = lv_obj_create(NULL);
@@ -62,7 +68,14 @@ lv_obj_t *scr_sessions_create(void)
     dk_label(titles, DK_FONT_H2, DK_INK, "Sessions");
     s.subtitle = dk_label(titles, DK_FONT_M, DK_MUTED, "");
 
-    lv_obj_t *tabs = dk_card(header, DK_CARD, LV_RADIUS_CIRCLE);
+    lv_obj_t *right = dk_box(header);
+    dk_row(right, 14);
+    lv_obj_t *nb = dk_button(right, "+  New session", true, DK_FONT_S);
+    lv_obj_set_style_radius(nb, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_height(nb, 60);
+    lv_obj_add_event_cb(nb, new_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *tabs = dk_card(right, DK_CARD, LV_RADIUS_CIRCLE);
     lv_obj_set_style_pad_all(tabs, 6, 0);
     dk_row(tabs, 8);
     static const char *labels[] = {"All", "Needs you", "Working", "Done"};

@@ -130,6 +130,18 @@ typedef struct {
     int64_t expires;
 } dk_pending_t;
 
+#define DK_MAX_TARGETS 6
+#define DK_MAX_PROJECTS 12
+
+/* Somewhere the screen can start a new session: the cloud, or a computer running the runner. */
+typedef struct {
+    char id[48];
+    char name[48];
+    bool cloud;
+    char projects[DK_MAX_PROJECTS][48];
+    int projects_n;
+} dk_target_t;
+
 typedef struct {
     int64_t now; // relay clock at snapshot time (ms)
     dk_cause_t cause;
@@ -144,6 +156,8 @@ typedef struct {
     int pending_n;
     bool focus;
     bool ping_when_done;
+    dk_target_t targets[DK_MAX_TARGETS];
+    int targets_n;
 } dk_model_t;
 
 /** Parse a relay snapshot. Returns false if it isn't a snapshot (out is untouched then). */
@@ -161,6 +175,8 @@ void dk_send_answer(const dk_pending_t *p, const char *const *labels);
 void dk_send_message(const char *agent_id, const char *text);
 /* Keep listening for minutes (0 = stop): when the session finishes, it waits for a message from the screen. */
 void dk_send_listen(const char *agent_id, int minutes);
+/* Start a new session on a target ("cloud" or a computer), in one of its projects, with a first prompt. */
+void dk_send_start(const char *target, const char *project, const char *prompt);
 void dk_send_reminder_done(const char *reminder_id, bool done);
 void dk_send_action(const char *name); // "focus" | "snooze_all" | "ping_when_done"
 /** Remove one notification from the feed, or all of them when feed_id is NULL. */

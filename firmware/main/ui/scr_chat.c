@@ -6,8 +6,9 @@
 
 static struct {
     lv_obj_t *scr, *face, *badge_row, *name, *status, *delivery;
-    lv_obj_t *bubbles, *quick, *input_row, *ta, *kb, *helpers, *helper_list, *listen, *listen_label, *usage;
+    lv_obj_t *right, *bubbles, *quick, *input_row, *ta, *kb, *helpers, *helper_list, *listen, *listen_label, *usage;
     bool listening;
+    bool can_message;
     bool follow; // the conversation is pinned to its newest line (you haven't scrolled back)
     char agent_id[72];
     char last_line[16];
@@ -48,10 +49,21 @@ static void quick_cb(lv_event_t *e)
     send_text((const char *)lv_event_get_user_data(e));
 }
 
+/* The keyboard covers the bottom of the screen: lift the conversation and the message box above it. */
+static void kb_room(bool open)
+{
+    lv_obj_set_style_pad_bottom(c.right, open ? 22 + 292 : 22, 0);
+    if (open) lv_obj_add_flag(c.quick, LV_OBJ_FLAG_HIDDEN);
+    else if (c.can_message) lv_obj_remove_flag(c.quick, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_update_layout(c.right);
+    lv_obj_scroll_to_y(c.bubbles, LV_COORD_MAX, LV_ANIM_OFF);
+}
+
 static void kb_hide(void)
 {
     lv_obj_add_flag(c.kb, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_state(c.ta, LV_STATE_FOCUSED);
+    kb_room(false);
 }
 
 static void send_cb(lv_event_t *e)
@@ -69,6 +81,7 @@ static void ta_cb(lv_event_t *e)
         if (lv_obj_has_flag(c.kb, LV_OBJ_FLAG_HIDDEN)) {
             lv_obj_remove_flag(c.kb, LV_OBJ_FLAG_HIDDEN);
             dk_anim_drop_in(c.kb, 120, 0);
+            kb_room(true);
         }
     } else if (code == LV_EVENT_READY) {
         send_cb(e);
@@ -156,7 +169,7 @@ lv_obj_t *scr_chat_create(void)
     lv_obj_add_flag(c.helpers, LV_OBJ_FLAG_HIDDEN);
 
     // ---- right: the conversation
-    lv_obj_t *right = dk_card(c.scr, DK_CARD, 36);
+    lv_obj_t *right = c.right = dk_card(c.scr, DK_CARD, 36);
     lv_obj_set_height(right, lv_pct(100));
     lv_obj_set_flex_grow(right, 1);
     lv_obj_set_style_pad_hor(right, 26, 0);
@@ -381,6 +394,7 @@ static void rebuild_head(const dk_agent_t *a)
     }
     dk_set_text(c.usage, mc);
     c.listening = a->listening;
+    c.can_message = a->can_message;
     dk_set_text(c.delivery, a->channel ? "Live channel: messages arrive straight away."
                             : a->listening ? "Listening: when Claude finishes, it waits for your next message from here."
                             : a->can_message ? "Messages arrive when Claude finishes its current step, or with your next prompt."

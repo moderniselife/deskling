@@ -19,7 +19,7 @@ import { homedir, hostname, platform } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 // ~/.deskling/config, over the deskling.conf a personal copy of the plugin carries.
 function fileConfig() {
@@ -164,6 +164,30 @@ async function pollLoop() {
   }
 }
 
+/* A permission dialog: ask on Deskling (the relay waits up to ~110 s per round) and answer it if you tap. */
+async function relayPermission(p) {
+  if (!p.request_id || !URL_BASE || !TOKEN) return;
+  try {
+    for (let round = 0; round < 5; round++) {
+      await ensureChannel();
+      const { status, body } = await relay("/channel/permission", {
+        method: "POST",
+        body: JSON.stringify({ cid: channelId, request_id: p.request_id, tool_name: p.tool_name, description: p.description, input_preview: p.input_preview, wait: 110 }),
+      });
+      if (status === 409) {
+        channelId = null;
+        continue;
+      }
+      if (body.behavior === "allow" || body.behavior === "deny") {
+        send({ jsonrpc: "2.0", method: "notifications/claude/channel/permission", params: { request_id: p.request_id, behavior: body.behavior } });
+      }
+      return;
+    }
+  } catch (e) {
+    log("permission relay failed:", e.message);
+  }
+}
+
 // ------------------------------------------------------------ JSON-RPC loop
 
 const INSTRUCTIONS = [
@@ -182,7 +206,9 @@ async function handle(msg) {
       id,
       result: {
         protocolVersion: params?.protocolVersion ?? "2025-06-18",
-        capabilities: { tools: {}, experimental: { "claude/channel": {} } },
+        // claude/channel/permission: Claude Code also sends us its permission dialogs, so they
+        // can be answered on Deskling (Claude Code 2.1.234 or later, with --channels).
+        capabilities: { tools: {}, experimental: { "claude/channel": {}, "claude/channel/permission": {} } },
         serverInfo: { name: "deskling", version: VERSION },
         instructions: INSTRUCTIONS,
       },
@@ -191,6 +217,10 @@ async function handle(msg) {
   }
   if (method === "notifications/initialized") {
     if (channelMode && URL_BASE && TOKEN) pollLoop();
+    return;
+  }
+  if (method === "notifications/claude/channel/permission_request") {
+    relayPermission(params ?? {});
     return;
   }
   if (method === "ping") return send({ jsonrpc: "2.0", id, result: {} });

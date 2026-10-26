@@ -146,6 +146,21 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
         }
     }
 
+    cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "targets"))
+    {
+        if (out->targets_n >= DK_MAX_TARGETS) break;
+        dk_target_t *t = &out->targets[out->targets_n++];
+        copy_str(t->id, sizeof(t->id), it, "id");
+        copy_str(t->name, sizeof(t->name), it, "name");
+        t->cloud = str_is(it, "kind", "cloud");
+        const cJSON *pj;
+        cJSON_ArrayForEach(pj, cJSON_GetObjectItemCaseSensitive(it, "projects"))
+        {
+            if (t->projects_n >= DK_MAX_PROJECTS || !cJSON_IsString(pj)) break;
+            snprintf(t->projects[t->projects_n++], sizeof(t->projects[0]), "%s", pj->valuestring);
+        }
+    }
+
     cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "feed"))
     {
         if (out->feed_n >= DK_MAX_FEED) break;
@@ -279,6 +294,16 @@ void dk_send_listen(const char *agent_id, int minutes)
     cJSON_AddStringToObject(o, "type", "listen");
     cJSON_AddStringToObject(o, "agentId", agent_id);
     cJSON_AddNumberToObject(o, "minutes", minutes);
+    send_obj(o);
+}
+
+void dk_send_start(const char *target, const char *project, const char *prompt)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "start");
+    cJSON_AddStringToObject(o, "target", target);
+    cJSON_AddStringToObject(o, "project", project ? project : "");
+    cJSON_AddStringToObject(o, "prompt", prompt);
     send_obj(o);
 }
 

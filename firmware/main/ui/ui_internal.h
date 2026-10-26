@@ -11,7 +11,7 @@
 #include "theme.h"
 #include "ui.h"
 
-typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_BOOT, SCR_CALIB, SCR_UPDATE, SCR_COUNT } scr_id_t;
+typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_BOOT, SCR_CALIB, SCR_UPDATE, SCR_NEW, SCR_COUNT } scr_id_t;
 
 /** The latest snapshot (never NULL after ui_init). */
 extern const dk_model_t *g_model;
@@ -116,3 +116,7 @@ lv_obj_t *ui_source_badge(lv_obj_t *parent, dk_source_t src);
 /* Chat pictures (images.c): returns the picture once it's here, and starts fetching it if not. */
 const lv_image_dsc_t *ui_image_get(const char *id, bool *failed);
 void scr_chat_images_changed(void);
+
+/* New session (scr_new.c) */
+lv_obj_t *scr_new_create(void);
+void scr_new_refresh(void);

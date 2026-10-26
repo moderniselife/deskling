@@ -723,6 +723,21 @@ int main(int argc, char **argv)
     shot("06_sessions");
     expect_text("Sessions");
 
+    tap("+  New session");
+    run(900);
+    tap("MacBook");
+    run(300);
+    tap("web-app");
+    run(300);
+    shot("06b_new_session");
+    tap_obj(find_class(lv_screen_active(), &lv_textarea_class), "the prompt box");
+    run(300);
+    lv_textarea_set_text(find_class(lv_screen_active(), &lv_textarea_class), "Fix the flaky login test");
+    tap("Start");
+    run(900);
+    expect_sent("\"type\":\"start\",\"target\":\"MacBook\",\"project\":\"web-app\"");
+    expect_screen(SCR_SESSIONS, "sessions (after starting one)");
+
     tap("web-app");
     run(900);
     shot("07_chat");
