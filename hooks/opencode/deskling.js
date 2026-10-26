@@ -113,8 +113,16 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
     return id;
   };
   const session = (sid) => {
-    if (!sessions.has(sid)) sessions.set(sid, { parentID: null, directory, title: "", busy: false, helpers: new Map() });
-    return sessions.get(sid);
+    if (!sessions.has(sid)) sessions.set(sid, { parentID: null, directory, title: "", busy: false, helpers: new Map(), seen: 0 });
+    const s = sessions.get(sid);
+    s.seen = Date.now();
+    return s;
+  };
+  // OpenCode can run for days: keep the per-message and per-part caches small.
+  const remember = (map, key, value) => {
+    map.delete(key);
+    map.set(key, value);
+    if (map.size > 400) map.delete(map.keys().next().value);
   };
 
   // ---- batched updates to the relay (streaming text arrives many times a second)
@@ -157,7 +165,12 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
     if (polling) return;
     polling = true;
     for (;;) {
-      const ids = [...sessions.entries()].filter(([, s]) => !s.parentID).map(([sid]) => agentId(sid));
+      // Sessions used in the last day take messages from the screen (newest first).
+      const ids = [...sessions.entries()]
+        .filter(([, s]) => !s.parentID && Date.now() - s.seen < 86_400_000)
+        .sort((a, b) => b[1].seen - a[1].seen)
+        .slice(0, 40)
+        .map(([sid]) => agentId(sid));
       if (!ids.length) {
         await new Promise((r) => setTimeout(r, 3000));
         continue;
@@ -293,7 +306,7 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
           }
         } else if (t === "message.updated") {
           const info = p.info || {};
-          roles.set(info.id, info.role);
+          remember(roles, info.id, info.role);
           if (info.role === "assistant" && !session(info.sessionID).parentID) {
             const tk = info.tokens || {};
             const ctx = (tk.input || 0) + (tk.cache?.read || 0) + (tk.cache?.write || 0);
@@ -302,7 +315,7 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
         } else if (t === "message.part.delta") {
           if (p.field !== "text") return;
           const text = (texts.get(p.partID) || "") + (p.delta || "");
-          texts.set(p.partID, text);
+          remember(texts, p.partID, text);
           const s = session(p.sessionID);
           if (s.parentID || roles.get(p.messageID) !== "assistant") return;
           queue(p.sessionID, {}, { key: p.partID, from: "agent", text });
@@ -326,7 +339,7 @@ export const DesklingPlugin = async ({ directory, serverUrl }) => {
             return;
           }
           if (part.type === "text" && !part.synthetic && part.text) {
-            texts.set(part.id, part.text);
+            remember(texts, part.id, part.text);
             const role = roles.get(part.messageID);
             if (role === "user") queue(sid, {}, { key: part.id, from: "you", text: part.text });
             else if (role === "assistant") queue(sid, {}, { key: part.id, from: "agent", text: part.text });
