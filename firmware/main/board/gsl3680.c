@@ -156,6 +156,11 @@ static esp_err_t read_data(esp_lcd_touch_handle_t tp)
             n++;
         }
     }
+    // Log where each new press lands (helps check the touch orientation from the boot log).
+    static bool was_down;
+    if (n && !was_down) ESP_LOGI(TAG, "press at %u,%u (panel coordinates)", pts[0].x, pts[0].y);
+    was_down = n > 0;
+
     portENTER_CRITICAL(&tp->data.lock);
     // Light smoothing for a held finger; new touches report immediately.
     if (n && tp->data.points) {

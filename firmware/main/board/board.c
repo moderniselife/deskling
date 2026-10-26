@@ -161,7 +161,10 @@ static esp_lcd_touch_handle_t touch_init(void)
         .x_max = BOARD_LCD_H_RES,
         .y_max = BOARD_LCD_V_RES,
         .rst_gpio_num = BOARD_TOUCH_RST_GPIO,
-        .int_gpio_num = BOARD_TOUCH_INT_GPIO,
+        // Polled, not interrupt-driven: with an INT pin, esp_lvgl_port only reads the panel after
+        // an interrupt, and the GSL3680's INT edge isn't reliable across board batches. Polling
+        // costs one small I2C read per LVGL input tick (~30 ms).
+        .int_gpio_num = GPIO_NUM_NC,
         .levels = {.reset = 0, .interrupt = 0},
         .flags =
             {
