@@ -1,25 +1,29 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 10 }] }
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 10}]}
     ],
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" sync", "timeout": 8 }] }
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" sync", "timeout": 8}]}
     ],
     "Notification": [
-      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 10 }] }
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 10}]}
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" sync", "timeout": 8 }] }
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" sync", "timeout": 8}]}
     ],
     "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 5 }] }
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 5}]}
     ],
     "PreToolUse": [
-      { "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" wait", "timeout": 130 }] }
+      {"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" wait", "timeout": 130}]},
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" live", "async": true, "timeout": 5}]}
     ],
     "PermissionRequest": [
-      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" wait", "timeout": 130 }] }
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\" wait", "timeout": 130}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "SendUserMessage", "hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/deskling-hook.sh\"", "async": true, "timeout": 5}]}
     ]
   }
 }

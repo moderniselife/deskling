@@ -44,7 +44,7 @@ for v in "${VARIANTS[@]}"; do
   DESKLING_VERSION="$VERSION" idf.py -B "$b" \
     -DSDKCONFIG="$b/sdkconfig" \
     -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;config/$chip.defaults;config/$lcd.defaults" \
-    build >"$b.log" 2>&1 || { tail -40 "$b.log"; echo "build $v failed (full log: firmware/$b.log)" >&2; exit 1; }
+    reconfigure build >"$b.log" 2>&1 || { tail -40 "$b.log"; echo "build $v failed (full log: firmware/$b.log)" >&2; exit 1; }
 
   # File names carry the version, so a published build never changes (and can be cached forever).
   cp "$b/deskling.bin" "$DIST/deskling-$VERSION-$v.bin"

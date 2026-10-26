@@ -70,7 +70,7 @@ export interface ChatLine {
   id: string;
   from: "you" | "agent";
   text: string;
-  status: "queued" | "delivered" | "sent"; // "sent" = an agent reply
+  status: "queued" | "delivered" | "sent" | "typed"; // "sent" = an agent reply, "typed" = you, on the computer
   ts: number;
 }
 

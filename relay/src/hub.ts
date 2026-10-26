@@ -17,7 +17,10 @@ import type {
 } from "./types";
 
 const FEED_MAX = 40;
-const CHAT_MAX = 20;
+const CHAT_MAX = 30;
+const CHAT_TEXT_MAX = 1200; // the screen keeps this much of each chat line
+const SNAPSHOT_CHAT = 12; // chat lines per session sent to the screen
+const QUIET_MS = 2 * 60 * 60 * 1000; // "working" with no news for this long is shown as idle
 const AGENT_STALE_MS = 12 * 60 * 60 * 1000; // forget sessions idle for 12 h
 const REMINDER_KEEP_DONE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_WAIT_S = 30;
@@ -50,6 +53,34 @@ function oneLine(s: unknown, max = 90): string {
   return flat.length > max ? flat.slice(0, max - 1) + "…" : flat;
 }
 
+/**
+ * What a person would want to read from a prompt or a reply: Claude Code wraps some prompts in
+ * tags meant for the model (<system-reminder>, <command-name>…), and replies use markdown that the
+ * screen can't render. Typographic marks become their plain forms so the screen's fonts have them.
+ */
+function readable(s: unknown): string {
+  if (typeof s !== "string") return "";
+  return s
+    .replace(/<(system-reminder|local-command-stdout|local-command-stderr|command-message|command-args)>[\s\S]*?<\/\1>/g, "")
+    .replace(/<command-name>\s*([\s\S]*?)\s*<\/command-name>/g, "$1")
+    .replace(/<\/?[a-z][a-z0-9-]*>/gi, "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/`{3}[a-z]*\n?/gi, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[*•]\s+/gm, "- ")
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, "$1 ($2)")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\u2192/g, "->")
+    .replace(/\u00A0/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function clip(s: unknown, max: number): string {
   if (typeof s !== "string") return "";
   const t = s.trim();
@@ -80,6 +111,44 @@ function toolSummary(tool: string, input: Record<string, unknown> | undefined): 
     json = "";
   }
   return { summary: oneLine(json, 160), detail: "" };
+}
+
+/** A short "what it's doing" line for the screen, from a tool call. */
+function activity(tool: string, input: Record<string, unknown> | undefined): string {
+  const i = input ?? {};
+  const str = (k: string) => (typeof i[k] === "string" ? (i[k] as string) : "");
+  const file = (k: string) => baseName(str(k));
+  switch (tool) {
+    case "Bash":
+    case "PowerShell":
+      return oneLine(str("description") || "Running " + str("command"), 90);
+    case "Read":
+      return oneLine("Reading " + file("file_path"), 90);
+    case "Edit":
+    case "MultiEdit":
+    case "NotebookEdit":
+      return oneLine("Editing " + (file("file_path") || file("notebook_path")), 90);
+    case "Write":
+      return oneLine("Writing " + file("file_path"), 90);
+    case "Grep":
+    case "Glob":
+      return oneLine("Searching for " + (str("pattern") || "files"), 90);
+    case "WebSearch":
+      return oneLine("Searching the web for " + str("query"), 90);
+    case "WebFetch":
+      return oneLine("Reading " + str("url").replace(/^https?:\/\//, ""), 90);
+    case "Task":
+    case "Agent":
+      return oneLine(str("description") || "Working with a helper", 90);
+    case "TodoWrite":
+    case "TaskCreate":
+    case "TaskUpdate":
+      return "Updating its to-do list";
+    case "SendUserMessage":
+      return "Writing to you";
+    default:
+      return oneLine("Using " + tool.replace(/^mcp__[^_]+__/, "").replace(/_/g, " "), 90);
+  }
 }
 
 function parseQuestions(input: unknown): Question[] {
@@ -162,14 +231,15 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       if (!body) return json({ error: "bad json" }, 400);
       // The same event twice within a few seconds means two copies of the plugin are installed
       // (say the marketplace one and your personal one): only act on the first.
-      if (this.seenRecently(raw)) return empty();
+      if (this.seenRecently(url.search + raw)) return empty();
       const host = oneLine(req.headers.get("x-deskling-host") ?? "", 40) || "computer";
       const os = oneLine(req.headers.get("x-deskling-os") ?? "", 20) || "unknown";
       const src = (req.headers.get("x-deskling-source") ?? "claude-code").toLowerCase() as Source;
       const wait = Math.min(MAX_WAIT_S, Math.max(0, Number(url.searchParams.get("wait") ?? DEFAULT_WAIT_S) || DEFAULT_WAIT_S));
       if (src === "cursor") return this.onCursorHook(body, host, os, wait, url.searchParams.get("approve") === "1");
       const label = oneLine(req.headers.get("x-deskling-label") ?? "", 30);
-      return this.onHook(body, host, os, wait, label);
+      const project = oneLine(req.headers.get("x-deskling-project") ?? "", 48);
+      return this.onHook(body, host, os, wait, label, url.searchParams.get("live") === "1", project);
     }
 
     if (req.method === "POST" && path === "/api/event") {
@@ -273,11 +343,11 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     return false;
   }
 
-  private async onHook(body: Record<string, unknown>, host: string, os: string, wait: number, label = ""): Promise<Response> {
+  private async onHook(body: Record<string, unknown>, host: string, os: string, wait: number, label = "", live = false, project = ""): Promise<Response> {
     const event = String(body.hook_event_name ?? "");
     const sid = String(body.session_id ?? "") || `${host}-unknown`;
     // Cowork sessions without a project folder run in a home directory: name them after the app.
-    const dir = baseName(body.cwd);
+    const dir = project || baseName(body.cwd);
     const name = label && /^(claude|root|user|home|)$/i.test(dir) ? label : dir || label || "claude";
 
     if (event === "SessionEnd") {
@@ -287,6 +357,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     }
 
     const agent = this.upsertAgent(sid, "claude-code", name, host, os);
+    if (project) agent.name = name; // the folder the session started in is always right
 
     switch (event) {
       case "SessionStart":
@@ -295,8 +366,10 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         return empty();
 
       case "UserPromptSubmit": {
-        agent.lastPrompt = clip(body.prompt, 400);
-        this.setAgent(agent, "working", oneLine(body.prompt) || "Working");
+        const prompt = readable(body.prompt);
+        agent.lastPrompt = clip(prompt, 400);
+        this.setAgent(agent, "working", oneLine(prompt) || "Working");
+        if (prompt) this.pushChat(sid, "you", clip(prompt, CHAT_TEXT_MAX), "typed");
         // Messages queued on the screen ride along with the prompt you typed.
         const queued = this.channelLive(sid) ? [] : this.takeQueued(sid);
         await this.commit({ kind: "agent", id: sid });
@@ -337,10 +410,12 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       }
 
       case "Stop": {
-        const full = clip(body.last_assistant_message, 600);
+        const full = clip(readable(body.last_assistant_message), CHAT_TEXT_MAX);
         const summary = oneLine(full, 120);
         agent.lastMessage = full;
-        if (full) this.pushChat(sid, "agent", full, "sent");
+        // Skip it if the same words already arrived mid-turn (a message Claude sent while working).
+        const chat = this.state.chats[sid] ?? [];
+        if (full && !chat.slice(-3).some((c) => c.from === "agent" && c.text === full)) this.pushChat(sid, "agent", full, "sent");
         // Anything queued on the screen keeps Claude going instead of stopping.
         const queued = this.channelLive(sid) ? [] : this.takeQueued(sid);
         if (queued.length) {
@@ -359,11 +434,37 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         return empty();
       }
 
-      case "PreToolUse":
-        if (String(body.tool_name) === "AskUserQuestion") return this.onQuestion(agent, body, wait);
-        agent.updated = Date.now();
-        await this.save();
+      case "PreToolUse": {
+        const tool = String(body.tool_name ?? "");
+        if (!live) {
+          if (tool === "AskUserQuestion") return this.onQuestion(agent, body, wait);
+          agent.updated = Date.now();
+          await this.save();
+          return empty();
+        }
+        // Live activity: what the session is doing right now, so the screen keeps moving.
+        if (tool === "AskUserQuestion" || agent.state === "needs_you") return empty();
+        const task = activity(tool, body.tool_input as Record<string, unknown> | undefined);
+        if (agent.state !== "working") this.setAgent(agent, "working", task);
+        else agent.task = task;
+        await this.commitLive(sid);
         return empty();
+      }
+
+      case "PostToolUse": {
+        // A message Claude sends you while it works (SendUserMessage in the Claude app and Cowork).
+        const input = (body.tool_input ?? {}) as Record<string, unknown>;
+        const text = clip(readable(input.message ?? input.text ?? ""), CHAT_TEXT_MAX);
+        if (text) {
+          this.pushChat(sid, "agent", text, "sent");
+          agent.lastMessage = text;
+          await this.commit({ kind: "chat", id: sid });
+        } else {
+          agent.updated = Date.now();
+          await this.save();
+        }
+        return empty();
+      }
 
       case "PermissionRequest":
         if (String(body.tool_name) === "AskUserQuestion") return empty(); // handled as a question
@@ -785,7 +886,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       this.state.agents[id] = a;
     }
     a.source = source;
-    a.name = name || a.name;
+    // The first name sticks: later events come from wherever Claude has cd'd to.
+    if (!a.name || a.name === "claude") a.name = name || a.name;
     a.host = host || a.host;
     a.os = os || a.os;
     a.updated = now;
@@ -836,6 +938,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     const now = Date.now();
     for (const [id, a] of Object.entries(this.state.agents)) {
       if (now - a.updated > AGENT_STALE_MS) this.removeAgent(id);
+      else if ((a.state === "working" || a.state === "waiting") && now - a.updated > QUIET_MS) this.setAgent(a, "idle", "Quiet for a while");
     }
     this.state.reminders = this.state.reminders.filter((r) => !r.done || (r.doneAt ?? 0) > now - REMINDER_KEEP_DONE_MS);
     this.state.pending = this.state.pending.filter((p) => this.waiters.has(p.id));
@@ -854,7 +957,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         lastPrompt: clip(a.lastPrompt, 160),
         channel: this.channelLive(a.id),
         canMessage: a.source === "claude-code",
-        chat: (s.chats[a.id] ?? []).slice(-6).map((c) => ({ ...c, text: clip(c.text, 280) })),
+        chat: (s.chats[a.id] ?? []).slice(-SNAPSHOT_CHAT).map((c) => ({ ...c, text: clip(c.text, CHAT_TEXT_MAX) })),
       }));
     const reminders = [...s.reminders].sort((a, b) => Number(a.done) - Number(b.done) || (a.due ?? Infinity) - (b.due ?? Infinity));
     return JSON.stringify({
@@ -872,6 +975,28 @@ export class Hub extends DurableObject<Record<string, unknown>> {
 
   private async save(): Promise<void> {
     await this.ctx.storage.put("state", this.state);
+  }
+
+  /**
+   * Live activity arrives with every tool call. Screens get it at most every 1.5 s (the last
+   * one always lands), so a busy session doesn't make them redraw constantly.
+   */
+  private liveAt = 0;
+  private liveTimer: ReturnType<typeof setTimeout> | null = null;
+  private async commitLive(sid: string): Promise<void> {
+    const now = Date.now();
+    if (now - this.liveAt >= 1500 && !this.liveTimer) {
+      this.liveAt = now;
+      await this.commit({ kind: "agent", id: sid });
+      return;
+    }
+    await this.save();
+    if (this.liveTimer) return;
+    this.liveTimer = setTimeout(() => {
+      this.liveTimer = null;
+      this.liveAt = Date.now();
+      void this.commit({ kind: "agent", id: sid });
+    }, Math.max(100, 1500 - (now - this.liveAt)));
   }
 
   /** Persist, re-arm reminders and push a fresh snapshot to every screen. */

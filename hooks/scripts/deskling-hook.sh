@@ -4,6 +4,7 @@
 #   deskling-hook.sh        fire-and-forget (status events)
 #   deskling-hook.sh sync   quick round trip, prints the relay's reply
 #                           (Stop / UserPromptSubmit pick up messages queued on the screen)
+#   deskling-hook.sh live   fire-and-forget tool activity (what the session is doing now)
 #   deskling-hook.sh wait   PermissionRequest / AskUserQuestion: wait for an answer
 #                           on the screen and print it for Claude Code
 #
@@ -47,6 +48,10 @@ fi
 [ -z "$NAME" ] && NAME="$(hostname 2>/dev/null || echo computer)"
 NAME="${NAME%%.*}" # drop .local and domain suffixes
 
+# The folder the session started in names it, wherever Claude has cd'd to since.
+PROJECT=""
+[ -n "${CLAUDE_PROJECT_DIR:-}" ] && PROJECT="$(basename "$CLAUDE_PROJECT_DIR" 2>/dev/null)"
+
 URL="${URL%/}"
 WAIT="${WAIT%%.*}"
 case "$WAIT" in '' | *[!0-9]*) WAIT=30 ;; esac
@@ -64,6 +69,7 @@ if [ "$1" = "wait" ]; then
     -H "X-Deskling-Host: ${NAME}" \
     -H "X-Deskling-OS: ${OS}" \
     -H "X-Deskling-Label: ${LABEL}" \
+    -H "X-Deskling-Project: ${PROJECT}" \
     --data-binary @- 2>/dev/null || true
 elif [ "$1" = "sync" ]; then
   curl -sSf --max-time 4 -X POST "${URL}/hook" \
@@ -72,14 +78,18 @@ elif [ "$1" = "sync" ]; then
     -H "X-Deskling-Host: ${NAME}" \
     -H "X-Deskling-OS: ${OS}" \
     -H "X-Deskling-Label: ${LABEL}" \
+    -H "X-Deskling-Project: ${PROJECT}" \
     --data-binary @- 2>/dev/null || true
 else
-  curl -sSf --max-time 5 -o /dev/null -X POST "${URL}/hook" \
+  Q=""
+  [ "$1" = "live" ] && Q="?live=1"
+  curl -sSf --max-time 5 -o /dev/null -X POST "${URL}/hook${Q}" \
     -H "Authorization: Bearer ${TOKEN}" \
     -H "Content-Type: application/json" \
     -H "X-Deskling-Host: ${NAME}" \
     -H "X-Deskling-OS: ${OS}" \
     -H "X-Deskling-Label: ${LABEL}" \
+    -H "X-Deskling-Project: ${PROJECT}" \
     --data-binary @- 2>/dev/null || true
 fi
 exit 0

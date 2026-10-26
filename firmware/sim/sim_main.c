@@ -719,6 +719,24 @@ int main(int argc, char **argv)
 
     shot("08_chat_keyboard");
 
+    /* A real conversation: your prompts from the computer, long replies, and live activity that
+       updates the header without yanking the conversation back to the bottom. */
+    apply("chat_long");
+    run(1200);
+    shot("08b_chat_conversation");
+    expect_text("From your computer");
+    {
+        lv_obj_t *list = lv_obj_get_parent(lv_obj_get_parent(find_label(lv_screen_active(), "From your computer")));
+        lv_obj_scroll_to_y(list, 0, LV_ANIM_OFF);
+        run(100);
+        apply("chat_live");
+        run(600);
+        bool kept = lv_obj_get_scroll_y(list) < 40;
+        printf("%s  live activity keeps your place in the chat\n", kept ? "PASS" : "FAIL");
+        if (!kept) s_failures++;
+        expect_text("Working · Running the sim tests");
+    }
+
     apply("permission");
     run(1200);
     shot("09_permission");

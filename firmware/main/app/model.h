@@ -15,14 +15,14 @@ extern "C" {
 #define DK_MAX_FEED 12
 #define DK_MAX_REMINDERS 12
 #define DK_MAX_PENDING 4
-#define DK_MAX_CHAT 6
+#define DK_MAX_CHAT 12
 #define DK_MAX_QUESTIONS 4
 #define DK_MAX_OPTIONS 6
 
 typedef enum { DK_IDLE, DK_WORKING, DK_WAITING, DK_NEEDS_YOU, DK_DONE } dk_state_t;
 typedef enum { DK_SRC_CLAUDE, DK_SRC_CURSOR, DK_SRC_CODEX, DK_SRC_GEMINI, DK_SRC_CUSTOM } dk_source_t;
 typedef enum { DK_FEED_INFO, DK_FEED_GOOD, DK_FEED_ALERT, DK_FEED_REMINDER } dk_level_t;
-typedef enum { DK_CHAT_QUEUED, DK_CHAT_DELIVERED, DK_CHAT_SENT } dk_chat_status_t;
+typedef enum { DK_CHAT_QUEUED, DK_CHAT_DELIVERED, DK_CHAT_SENT, DK_CHAT_TYPED } dk_chat_status_t;
 
 typedef enum {
     DK_CAUSE_HELLO,
@@ -42,7 +42,7 @@ typedef enum {
 
 typedef struct {
     char id[16];
-    char text[288];
+    char text[1216];
     bool from_you;
     dk_chat_status_t status;
     int64_t ts;

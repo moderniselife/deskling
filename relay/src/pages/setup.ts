@@ -175,12 +175,15 @@ async function poll() {
 
 $('t-notify').onclick = () => event({ kind: 'notify', title: 'Hello from setup!', body: 'If you can read this, the relay works.', level: 'good' }).then(() => say('Sent! Look at the screen.')).catch((e) => say(e.message, false));
 $('t-remind').onclick = () => event({ kind: 'reminder', title: 'Stand up and stretch', in_minutes: 1, from: 'setup page' }).then(() => say('Reminder set for a minute from now.')).catch((e) => say(e.message, false));
-$('t-agent').onclick = () => event({ kind: 'status', id: 'setup-demo', name: 'demo-project', host: 'This browser', state: 'working', task: 'Pretending to refactor the login flow', source: 'custom' }).then(() => say('A pretend session is "working" now.')).catch((e) => say(e.message, false));
+$('t-agent').onclick = () => event({ kind: 'status', id: 'setup-demo', name: 'demo-project', host: 'Setup page', state: 'working', task: 'Pretending to refactor the login flow', source: 'custom' }).then(() => say('A pretend session is "working" now.')).catch((e) => say(e.message, false));
 $('t-clear').onclick = () => event({ kind: 'status', id: 'setup-demo', remove: true }).then(() => say('Removed.')).catch((e) => say(e.message, false));
 
 async function fakeHook(body, label) {
   say(label + ' Waiting up to 60 s for you to answer on the screen\\u2026');
-  const r = await call('/hook?wait=60', { method: 'POST', headers: { 'x-deskling-host': 'This browser', 'x-deskling-os': 'web' }, body: JSON.stringify({ session_id: 'setup-demo-hook', cwd: '/demo/setup-test', ...body }) });
+  const hook = (b, q) => call('/hook' + (q || ''), { method: 'POST', headers: { 'x-deskling-host': 'Setup page', 'x-deskling-os': 'web' }, body: JSON.stringify({ session_id: 'setup-demo-hook', cwd: '/demo/setup-test', ...b }) });
+  let r;
+  try { r = await hook(body, '?wait=60'); }
+  finally { hook({ hook_event_name: 'SessionEnd' }).catch(() => {}); } // the pretend session goes away again
   const out = r.hookSpecificOutput;
   if (!out) return say('No answer (it timed out, or you picked "On my computer").', false);
   if (out.decision) return say('You tapped ' + (out.decision.behavior === 'allow' ? 'Allow' : 'Deny') + ' \\u2714');

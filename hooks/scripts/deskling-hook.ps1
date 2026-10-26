@@ -3,6 +3,7 @@
 #
 #   deskling-hook.ps1          fire-and-forget
 #   deskling-hook.ps1 sync     quick round trip, prints the relay's reply
+#   deskling-hook.ps1 live     fire-and-forget tool activity (what the session is doing now)
 #   deskling-hook.ps1 wait     PermissionRequest / AskUserQuestion: wait for an answer on the screen
 
 param([string]$Mode = "")
@@ -42,6 +43,8 @@ $headers = @{
   "X-Deskling-Host" = $name
   "X-Deskling-OS" = "windows"
 }
+# The folder the session started in names it, wherever Claude has cd'd to since.
+if ($env:CLAUDE_PROJECT_DIR) { $headers["X-Deskling-Project"] = Split-Path -Leaf $env:CLAUDE_PROJECT_DIR }
 $body = [System.Text.Encoding]::UTF8.GetBytes($payload)
 
 try {
@@ -55,7 +58,8 @@ try {
       -ContentType "application/json" -Body $body -TimeoutSec 4
     if ($res.Content) { [Console]::Out.Write($res.Content) }
   } else {
-    Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook" -Headers $headers `
+    $q = if ($Mode -eq "live") { "?live=1" } else { "" }
+    Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$url/hook$q" -Headers $headers `
       -ContentType "application/json" -Body $body -TimeoutSec 5 | Out-Null
   }
 } catch { }

@@ -114,14 +114,17 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
         a->channel = get_bool(it, "channel");
         a->can_message = get_bool(it, "canMessage");
         const cJSON *c;
-        cJSON_ArrayForEach(c, cJSON_GetObjectItemCaseSensitive(it, "chat"))
+        const cJSON *chat = cJSON_GetObjectItemCaseSensitive(it, "chat");
+        int skip = cJSON_GetArraySize(chat) - DK_MAX_CHAT; // keep the newest lines
+        cJSON_ArrayForEach(c, chat)
         {
+            if (skip-- > 0) continue;
             if (a->chat_n >= DK_MAX_CHAT) break;
             dk_chat_t *line = &a->chat[a->chat_n++];
             copy_str(line->id, sizeof(line->id), c, "id");
             copy_str(line->text, sizeof(line->text), c, "text");
             line->from_you = str_is(c, "from", "you");
-            line->status = str_is(c, "status", "queued") ? DK_CHAT_QUEUED : str_is(c, "status", "delivered") ? DK_CHAT_DELIVERED : DK_CHAT_SENT;
+            line->status = str_is(c, "status", "queued") ? DK_CHAT_QUEUED : str_is(c, "status", "delivered") ? DK_CHAT_DELIVERED : str_is(c, "status", "typed") ? DK_CHAT_TYPED : DK_CHAT_SENT;
             line->ts = get_i64(c, "ts");
         }
     }

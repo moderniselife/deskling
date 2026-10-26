@@ -196,7 +196,7 @@ static lv_obj_t *bubble(const char *text, bool mine, const char *meta)
     lv_obj_set_style_pad_hor(b, 18, 0);
     lv_obj_set_style_pad_ver(b, 14, 0);
     lv_obj_t *l = dk_label(b, DK_FONT_M, mine ? DK_GROUND : DK_INK, text);
-    lv_obj_set_style_max_width(l, 560, 0);
+    lv_obj_set_style_max_width(l, 680, 0);
     lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
     if (meta) dk_label(wrap, DK_FONT_XS, DK_MUTED, meta);
     return wrap;
@@ -219,17 +219,30 @@ static void typing(void)
     dk_anim_pop(b, 0);
 }
 
-static uint32_t s_chat_sig;
+static uint32_t s_head_sig, s_chat_sig;
 
-static void rebuild(bool animate_new)
+static bool near_bottom(void)
 {
-    const dk_agent_t *a = dk_model_find_agent(g_model, c.agent_id);
+    return lv_obj_get_scroll_bottom(c.bubbles) < 80;
+}
+
+/* Who it is and what it's doing. Live activity changes this every few seconds; the bubbles
+   below are left alone unless the conversation itself changed, so you can scroll back and read. */
+static void rebuild_head(const dk_agent_t *a)
+{
     uint32_t sig = dk_hash_str(DK_HASH0, c.agent_id);
-    if (a) sig = dk_hash(sig, a, sizeof(*a));
-    if (sig == s_chat_sig) return; // nothing this screen shows has changed
-    s_chat_sig = sig;
+    if (a) {
+        sig = dk_hash_str(sig, a->name);
+        sig = dk_hash_str(sig, a->host);
+        sig = dk_hash_str(sig, a->task);
+        sig = dk_hash(sig, &a->state, sizeof(a->state));
+        sig = dk_hash(sig, &a->source, sizeof(a->source));
+        sig = dk_hash(sig, &a->channel, sizeof(a->channel));
+        sig = dk_hash(sig, &a->can_message, sizeof(a->can_message));
+    }
+    if (sig == s_head_sig) return;
+    s_head_sig = sig;
     lv_obj_clean(c.badge_row);
-    lv_obj_clean(c.bubbles);
     if (!a) {
         lv_label_set_text(c.name, "Session ended");
         lv_label_set_text(c.status, "This session isn't running any more.");
@@ -242,13 +255,13 @@ static void rebuild(bool animate_new)
 
     ui_source_badge(c.badge_row, a->source);
     dk_label(c.badge_row, DK_FONT_S, DK_INK, a->host);
-    lv_label_set_text(c.name, a->name);
+    dk_set_text(c.name, a->name);
     char st[160];
     snprintf(st, sizeof(st), "%s%s%s", dk_state_label(a->state), a->task[0] ? " · " : "", a->task);
-    lv_label_set_text(c.status, st);
-    lv_label_set_text(c.delivery, a->channel ? "Live channel: messages arrive straight away."
-                                  : a->can_message ? "Messages arrive when Claude finishes its current step, or with your next prompt."
-                                                   : "This tool can't take messages from Deskling yet.");
+    dk_set_text(c.status, st);
+    dk_set_text(c.delivery, a->channel ? "Live channel: messages arrive straight away."
+                            : a->can_message ? "Messages arrive when Claude finishes its current step, or with your next prompt."
+                                             : "This tool can't take messages from Deskling yet.");
     dk_mood_t mood = ui_mood_for(a);
     if (deskling_get_mood(c.face) != mood && deskling_get_mood(c.face) != DK_MOOD_HAPPY) deskling_set_mood(c.face, mood);
 
@@ -259,6 +272,44 @@ static void rebuild(bool animate_new)
         lv_obj_add_flag(c.quick, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(c.input_row, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+static const char *chat_meta(const dk_agent_t *a, const dk_chat_t *line)
+{
+    if (line->from_you) {
+        switch (line->status) {
+        case DK_CHAT_QUEUED: return "Queued";
+        case DK_CHAT_TYPED: return "From your computer";
+        default: return "Delivered";
+        }
+    }
+    return a->source == DK_SRC_CLAUDE ? "Claude" : dk_source_label(a->source);
+}
+
+static void rebuild_chat(const dk_agent_t *a, bool animate_new)
+{
+    const dk_chat_t *tail = a && a->chat_n ? &a->chat[a->chat_n - 1] : NULL;
+    bool typing_on = tail && tail->from_you && tail->status != DK_CHAT_QUEUED && a->state == DK_WORKING;
+    uint32_t sig = dk_hash_str(DK_HASH0, c.agent_id);
+    if (a) {
+        for (int i = 0; i < a->chat_n; i++) {
+            sig = dk_hash_str(sig, a->chat[i].id);
+            sig = dk_hash(sig, &a->chat[i].status, sizeof(a->chat[i].status));
+        }
+        if (!a->chat_n) {
+            sig = dk_hash_str(sig, a->last_prompt);
+            sig = dk_hash_str(sig, a->last_message);
+        }
+        sig = dk_hash(sig, &typing_on, sizeof(typing_on));
+    }
+    if (sig == s_chat_sig) return;
+    s_chat_sig = sig;
+
+    bool new_line = tail && strcmp(tail->id, c.last_line) != 0;
+    bool follow = near_bottom() || new_line || !animate_new;
+    lv_coord_t keep = lv_obj_get_scroll_y(c.bubbles);
+    lv_obj_clean(c.bubbles);
+    if (!a) return;
 
     if (a->chat_n == 0) {
         if (a->last_prompt[0]) bubble(a->last_prompt, true, "From your computer");
@@ -270,17 +321,20 @@ static void rebuild(bool animate_new)
         }
     }
     lv_obj_t *last = NULL;
-    for (int i = 0; i < a->chat_n; i++) {
-        const dk_chat_t *line = &a->chat[i];
-        const char *meta = line->from_you ? (line->status == DK_CHAT_QUEUED ? "Queued" : "Delivered") : (a->source == DK_SRC_CLAUDE ? "Claude" : dk_source_label(a->source));
-        last = bubble(line->text, line->from_you, meta);
-    }
-    const dk_chat_t *tail = a->chat_n ? &a->chat[a->chat_n - 1] : NULL;
-    if (tail && tail->from_you && tail->status == DK_CHAT_DELIVERED && a->state == DK_WORKING) typing();
-    if (animate_new && last && tail && strcmp(tail->id, c.last_line) != 0) dk_anim_pop(lv_obj_get_child(last, 0), 0);
+    for (int i = 0; i < a->chat_n; i++) last = bubble(a->chat[i].text, a->chat[i].from_you, chat_meta(a, &a->chat[i]));
+    if (typing_on) typing();
+    if (animate_new && last && new_line) dk_anim_pop(lv_obj_get_child(last, 0), 0);
     snprintf(c.last_line, sizeof(c.last_line), "%s", tail ? tail->id : "");
     lv_obj_update_layout(c.bubbles);
-    lv_obj_scroll_to_y(c.bubbles, LV_COORD_MAX, LV_ANIM_ON);
+    if (follow) lv_obj_scroll_to_y(c.bubbles, LV_COORD_MAX, animate_new ? LV_ANIM_ON : LV_ANIM_OFF);
+    else lv_obj_scroll_to_y(c.bubbles, keep, LV_ANIM_OFF);
+}
+
+static void rebuild(bool animate_new)
+{
+    const dk_agent_t *a = dk_model_find_agent(g_model, c.agent_id);
+    rebuild_head(a);
+    rebuild_chat(a, animate_new);
 }
 
 void scr_chat_show(const char *agent_id)
@@ -289,7 +343,7 @@ void scr_chat_show(const char *agent_id)
     c.last_line[0] = '\0';
     lv_textarea_set_text(c.ta, "");
     kb_hide();
-    s_chat_sig = 0; // always build afresh when opening a chat
+    s_head_sig = s_chat_sig = 0; // always build afresh when opening a chat
     rebuild(false);
 }
 
