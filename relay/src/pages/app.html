@@ -164,6 +164,7 @@ dialog h1 { margin: 0 0 6px; font-weight: 900; font-size: 28px; }
           <button data-action="snooze_all">Snooze all</button>
           <button data-action="ping_when_done" id="pingbtn">Ping me when done</button>
         </div>
+        <div class="btns" style="margin:0 8px"><button id="notifybtn" class="hide">Notify me here</button></div>
         <p class="muted" style="margin:16px 8px 4px;font-size:14px">This browser keeps your relay token. <button id="signout" style="min-height:32px;padding:2px 12px;border-width:2px;font-size:14px">Sign out</button></p>
       </div>
     </section>
@@ -403,6 +404,34 @@ $("newform").addEventListener("submit", function (e) {
   send({ type: "start", target: N.target, project: N.project, prompt: text, engine: N.engine, model: N.model });
   $("n-prompt").value = "";
 });
+
+// ---- notifications in this browser (while it's open in a tab or on the home screen)
+var seenFeed = null;
+function notifyOn() { try { return localStorage.getItem("deskling-notify") === "1" && Notification.permission === "granted"; } catch (e) { return false; } }
+function notifyButton() {
+  var b = $("notifybtn");
+  if (!("Notification" in window)) return;
+  b.classList.remove("hide");
+  b.className = notifyOn() ? "on" : "";
+  b.textContent = notifyOn() ? "Notifying you here" : "Notify me here";
+}
+$("notifybtn").onclick = function () {
+  if (notifyOn()) { try { localStorage.setItem("deskling-notify", "0"); } catch (e) {} notifyButton(); return; }
+  Notification.requestPermission().then(function (p) { try { localStorage.setItem("deskling-notify", p === "granted" ? "1" : "0"); } catch (e) {} notifyButton(); });
+};
+function notifyNew() {
+  if (!S) return;
+  var ids = S.feed.map(function (f) { return f.id; });
+  if (seenFeed && notifyOn() && document.hidden) {
+    S.feed.filter(function (f) { return seenFeed.indexOf(f.id) < 0 && f.level !== "info"; }).slice(0, 3).forEach(function (f) {
+      var n = new Notification(f.title, { body: f.body || "", icon: "/app-icon.svg", tag: f.id });
+      n.onclick = function () { window.focus(); if (f.agentId) openChat(f.agentId); n.close(); };
+    });
+  }
+  seenFeed = ids;
+}
+var renderInner = render;
+render = function (force) { renderInner(force); notifyNew(); notifyButton(); };
 
 setInterval(function () { if (S) render(); }, 30000); // keeps the "how long ago" fresh
 if (token) { $("shell").classList.remove("hide"); connect(); } else showGate("");
