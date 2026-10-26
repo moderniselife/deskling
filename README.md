@@ -21,7 +21,8 @@ From across the room you can:
 | --- | --- |
 | ![Permission](docs/media/permission.gif) | ![Question](docs/media/question.gif) |
 | ![Sessions](docs/media/sessions.png) | ![Chat](docs/media/chat.png) |
-| ![Night clock](docs/media/night.gif) | ![Case](docs/media/case.png) |
+| ![New session](docs/media/new-session.png) | ![Night clock](docs/media/night.gif) |
+| ![Case](docs/media/case.png) | |
 
 ## How it fits together
 
