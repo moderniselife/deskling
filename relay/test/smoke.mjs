@@ -256,11 +256,14 @@ check("the runner is told to start OpenCode with that model", job2?.engine === "
 const badRoutine = await fetch(`${URL_BASE}/api/routine`, { method: "POST", headers: auth, body: JSON.stringify({ url: "https://example.com/fire", token: "x" }) });
 check("a routine URL that isn't Anthropic's is refused", badRoutine.status === 400);
 
-// Keep listening: a finished session waits for the screen; typing on the computer lets it go.
+// Wait for my reply: a finished session waits for the screen; typing on the computer lets it go.
 ws.send(JSON.stringify({ type: "listen", agentId: "s-smoke", minutes: 5 }));
 s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.listening);
 let held = hook({ hook_event_name: "Stop", last_assistant_message: "Done." }, "?hold=1&round=0");
-await new Promise((r) => setTimeout(r, 800));
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.holding);
+let sm = s.agents.find((a) => a.id === "s-smoke");
+check("while held it shows as waiting for your reply, not done", sm.state === "waiting" && sm.task === "Waiting for your reply", `${sm.state} ${sm.task}`);
+check("and the notification says it's waiting", s.feed.some((f) => f.title === "Claude is waiting for your reply"));
 ws.send(JSON.stringify({ type: "message", agentId: "s-smoke", text: "now add a test" }));
 const lout = await (await held).json();
 check("a screen message wakes a listening session", lout.decision === "block" && lout.reason.includes("now add a test"));
@@ -269,7 +272,16 @@ await new Promise((r) => setTimeout(r, 800));
 await fetch(`${URL_BASE}/listen/release`, { method: "POST", headers: auth, body: JSON.stringify({ session_id: "s-smoke" }) });
 const rel = await held;
 check("typing on the computer releases it", rel.status === 204 || (await rel.text()) === "");
+// Turning waiting off while it's held: it lets go and the session shows as finished.
+snapshots.length = 0; // only what happens from here
+held = hook({ hook_event_name: "Stop", last_assistant_message: "All done." }, "?hold=1&round=0");
+s = await waitFor((m) => m.agents.find((a) => a.id === "s-smoke")?.holding);
+snapshots.length = 0;
 ws.send(JSON.stringify({ type: "listen", agentId: "s-smoke", minutes: 0 }));
+const off = await held;
+check("turning waiting off lets it go", off.status === 204 || (await off.text()) === "");
+s = await waitFor((m) => { const x = m.agents.find((a) => a.id === "s-smoke"); return x && !x.holding && !x.listening; });
+check("and it shows as finished", s.agents.find((a) => a.id === "s-smoke").state === "done");
 
 // Bridges (OpenCode and others): report a session, stream a reply, ask, and collect screen messages.
 const agentPost = (path, body) => fetch(`${URL_BASE}${path}`, { method: "POST", headers: auth, body: JSON.stringify(body) });

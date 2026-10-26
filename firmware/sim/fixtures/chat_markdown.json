@@ -100,7 +100,8 @@
    ],
    "listening": true,
    "model": "claude-opus-5-5",
-   "context": 412345
+   "context": 412345,
+   "listenUntil": "@1440"
   },
   {
    "id": "cursor-1",

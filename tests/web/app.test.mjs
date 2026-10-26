@@ -106,6 +106,26 @@ await page.getByRole("button", { name: "Start" }).click();
 const j = (await job).job;
 check("it starts on that computer with that agent, model and project", j?.engine === "opencode" && j.model === "opencode/big-pickle" && j.project === "/Users/joe/code/web-app" && j.prompt === "Tidy the CSS", JSON.stringify(j));
 
+// Wait for my reply: armed while Claude works, then a clear "waiting for your reply" when it finishes.
+const ccHook = (body, q = "") => fetch(`${URL_BASE}/hook${q}`, { method: "POST", headers: { ...auth, "x-deskling-host": "MacBook", "x-deskling-os": "mac" }, body: JSON.stringify({ session_id: "cc-wait", cwd: "/Users/joe/code/shop", ...body }) });
+await ccHook({ hook_event_name: "SessionStart", source: "startup" });
+await ccHook({ hook_event_name: "UserPromptSubmit", prompt: "Tidy the checkout page" });
+await page.getByText("shop", { exact: true }).first().click();
+await page.getByRole("button", { name: "Wait for my reply" }).click();
+await page.getByRole("button", { name: /^On for (29|30) min · stop$/ }).waitFor({ timeout: 5000 });
+check("Wait for my reply turns on, with the minutes left", true);
+const hold = ccHook({ hook_event_name: "Stop", last_assistant_message: "Tidied. **Ship it?**" }, "?hold=1&round=0");
+await page.locator(".waitcard").getByText("Claude is waiting for your reply").waitFor({ timeout: 5000 });
+check("when Claude finishes, the chat says it's waiting for your reply", await page.getByRole("button", { name: "Stop waiting" }).isVisible() && await page.getByText("Your turn · Waiting for your reply").first().isVisible());
+if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-waiting.png` });
+await page.getByRole("button", { name: "Stop waiting" }).click();
+const let_go = await hold;
+check("Stop waiting lets Claude finish", let_go.status === 204 || (await let_go.text()) === "");
+await page.getByRole("button", { name: "Wait for my reply" }).waitFor({ timeout: 5000 });
+check("and it shows as done", await page.getByText("Done · Finished").first().isVisible());
+await ccHook({ hook_event_name: "SessionEnd", reason: "other" });
+await page.getByText("api-server", { exact: true }).first().click();
+
 // Phone: the list first, then the chat with a way back.
 const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
 await phone.addInitScript((t) => localStorage.setItem("deskling-token", t), TOKEN);

@@ -10,7 +10,7 @@ Being tested as the `v0.3.2-testN` builds. Install the newest one over the air o
 - **Formatted replies.** Replies show their Markdown: headings, bold, `code`, lists, quotes, code blocks, tables and links.
 - **Show all.** A long reply has a Show all button that opens the whole of it in a reader.
 - **Earlier steps open.** "12 earlier steps" opens in place to list them, and folds away again, like the steps in the Claude app.
-- **Keep listening.** A finished session waits for your next message from Deskling, so you can carry on the conversation without the computer.
+- **Wait for my reply.** When Claude finishes, it waits for your next message from Deskling instead of stopping, so you can carry on the conversation without the computer. While it waits, the session shows "Your turn · Waiting for your reply" with the minutes left, a card in the chat and a notification; "Stop waiting" lets it finish. Tapped after Claude has already stopped, it says it starts next time. (It was called "Keep listening".)
 - **New session.** Start a session from the screen: in the cloud (with a routine), or on one of your computers running the Deskling runner, in one of its projects. Pick the agent too: Claude Code, OpenCode with any of your models (local ones included), or Gemini CLI, Cursor, Codex, Copilot, Goose and others the runner finds.
 - **OpenCode.** OpenCode sessions show up like Claude Code ones, with an "Oc" badge, and you can approve, answer and message them.
 - Tapping a notification, or a session in the notification list, opens its chat.

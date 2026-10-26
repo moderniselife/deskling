@@ -37,6 +37,8 @@ const REMINDER_KEEP_DONE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_WAIT_S = 30;
 const MAX_WAIT_S = 110;
 const HOLD_S = 85; // one round of a listening Stop hook (the hook asks again until listening ends)
+const HOLD_GAP_MS = 20_000; // between rounds the hook is gone this long at most; longer and it's not coming back
+const WAITING_TASK = "Waiting for your reply";
 const LISTEN_MAX_MIN = 120;
 const IMAGES_KEPT = 8; // pictures kept per session
 const MACHINE_GONE_MS = 3 * 60 * 1000; // a runner that hasn't checked in for this long is offline
@@ -622,13 +624,20 @@ export class Hub extends DurableObject<Record<string, unknown>> {
             reason: `The user sent ${queued.length > 1 ? "these messages" : "this message"} from their Deskling desk screen. Treat it like a new prompt from them:\n${queued.map((m) => `- ${m}`).join("\n")}`,
           });
         }
-        this.setAgent(agent, "done", summary || "Finished");
-        this.addFeed("good", "Claude finished", `${name}${summary ? " · " + summary : ""}`, sid);
+        // "Wait for my reply" is on (and the hook can hold): Claude waits here for you, it hasn't stopped.
+        const holds = round === 0 && (agent.listenUntil ?? 0) > Date.now();
+        if (holds) {
+          agent.heldAt = Date.now();
+          this.setAgent(agent, "waiting", WAITING_TASK);
+          this.addFeed("good", "Claude is waiting for your reply", `${name}${summary ? " · " + summary : ""}`, sid);
+        } else {
+          this.setAgent(agent, "done", summary || "Finished");
+          this.addFeed("good", "Claude finished", `${name}${summary ? " · " + summary : ""}`, sid);
+        }
         const ping = this.state.pingWhenDone;
         this.state.pingWhenDone = false;
         await this.commit({ kind: ping ? "ping" : "done", id: sid });
-        // Listening (and a hook that can hold): wait here for the next message from the screen.
-        if (round === 0 && (agent.listenUntil ?? 0) > Date.now()) return this.listen(agent, sid);
+        if (holds) return this.listen(agent, sid);
         return empty();
       }
 
@@ -1146,9 +1155,12 @@ export class Hub extends DurableObject<Record<string, unknown>> {
    */
   private async listen(agent: Agent, sid: string): Promise<Response> {
     const until = agent.listenUntil ?? 0;
-    if (until <= Date.now()) return empty();
+    if (until <= Date.now()) return this.stopWaiting(agent, sid);
     this.listeners.get(sid)?.("cancel"); // only one hold per session
-    const why = await new Promise<"message" | "cancel" | "timeout">((resolve) => {
+    agent.heldAt = Date.now();
+    // A reply sent between two rounds of holding is already waiting: don't sit on it.
+    const early = (this.state.chats[sid] ?? []).some((c) => c.status === "queued");
+    const why = early ? "message" : await new Promise<"message" | "cancel" | "timeout">((resolve) => {
       const timer = setTimeout(() => {
         this.listeners.delete(sid);
         resolve("timeout");
@@ -1159,8 +1171,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         resolve(w);
       });
     });
-    // You typed on the computer instead: let go without taking anything from the screen.
-    if (why === "cancel") return empty();
+    // You typed on the computer instead (or turned waiting off): let go without taking anything.
+    if (why === "cancel") return this.stopWaiting(agent, sid);
     const woke = why === "message";
     const queued = this.takeQueued(sid);
     if (queued.length) {
@@ -1171,8 +1183,26 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         reason: `The user sent ${queued.length > 1 ? "these messages" : "this message"} from their Deskling desk screen. Treat it like a new prompt from them:\n${queued.map((m) => `- ${m}`).join("\n")}`,
       });
     }
-    if (!woke && (agent.listenUntil ?? 0) > Date.now()) return json({ again: true });
+    if (!woke && (agent.listenUntil ?? 0) > Date.now()) {
+      agent.heldAt = Date.now();
+      return json({ again: true });
+    }
+    return this.stopWaiting(agent, sid);
+  }
+
+  /** The hold is over without a reply from the screen: the session has finished after all. */
+  private async stopWaiting(agent: Agent, sid: string): Promise<Response> {
+    agent.heldAt = 0;
+    if (agent.state === "waiting" && agent.task === WAITING_TASK) {
+      this.setAgent(agent, "done", "Finished");
+      await this.commit({ kind: "agent", id: sid });
+    }
     return empty();
+  }
+
+  /** Its Stop hook is held right now (or between two rounds of holding). */
+  private holding(a: Agent): boolean {
+    return this.listeners.has(a.id) || ((a.listenUntil ?? 0) > Date.now() && Date.now() - (a.heldAt ?? 0) < HOLD_GAP_MS);
   }
 
   /** Put a request on the screen and wait for an answer, a decision, or the timeout. */
@@ -1499,12 +1529,15 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       return;
     }
     if (type === "listen") {
-      // "Keep listening": when the session finishes, its Stop hook waits for messages from here.
+      // "Wait for my reply": when the session finishes, its Stop hook waits for messages from here.
       const a = this.state.agents[String(msg.agentId ?? "")];
       if (!a) return;
       const minutes = Math.max(0, Math.min(LISTEN_MAX_MIN, Number(msg.minutes ?? 30) || 0));
       a.listenUntil = minutes ? Date.now() + minutes * 60 * 1000 : 0;
-      if (!minutes) this.listeners.get(a.id)?.("cancel");
+      if (!minutes) {
+        if (this.listeners.has(a.id)) this.listeners.get(a.id)?.("cancel");
+        else await this.stopWaiting(a, a.id); // between two rounds of holding
+      }
       await this.commit({ kind: "agent", id: a.id });
       return;
     }
@@ -1802,6 +1835,9 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       .slice(0, 12)
       .map((a) => ({
         ...a,
+        // Waiting for a reply whose hook has gone (the terminal was closed): it has finished.
+        ...(a.state === "waiting" && a.task === WAITING_TASK && !this.holding(a) ? { state: "done" as const, task: "Finished" } : {}),
+        heldAt: undefined,
         lastMessage: clip(a.lastMessage, 280),
         lastPrompt: clip(a.lastPrompt, 160),
         channel: this.channelLive(a.id) || this.bridgeLive(a),
@@ -1811,7 +1847,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         helperNames: undefined,
         listening: (a.listenUntil ?? 0) > Date.now(),
         listenUntil: a.listenUntil ?? 0,
-        holding: this.listeners.has(a.id),
+        holding: this.holding(a),
       }));
     const reminders = [...s.reminders].sort((a, b) => Number(a.done) - Number(b.done) || (a.due ?? Infinity) - (b.due ?? Infinity));
     return JSON.stringify({

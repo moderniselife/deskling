@@ -68,7 +68,7 @@ function Send-Transcript([switch]$Background) {
   } catch { }
 }
 
-# Keep listening: true once you've typed something in the terminal or app since $from (Claude Code
+# Wait for my reply: true once you've typed something in the terminal or app since $from (Claude Code
 # queues it), so the hook lets go and your message runs.
 function Test-Typed([string]$path, [int64]$from) {
   try {
@@ -91,7 +91,7 @@ try {
     if ($res.Content) { [Console]::Out.Write($res.Content) }
   } elseif ($Mode -eq "stop") {
     Send-Transcript
-    # Stop: if "Keep listening" is on, the relay holds this until a message arrives from the screen.
+    # Stop: if "Wait for my reply" is on, the relay holds this until a message arrives from the screen.
     # The relay answers {"again":true} every ~85 s so no connection stays open too long. If you
     # type in the terminal or app meanwhile, we let go at once so your message runs.
     $tp = ""

@@ -717,7 +717,7 @@ async function startOpenCode(job) {
 }
 
 /* Headless fallback when background sessions aren't available: `claude -p` in its own process.
-   It still reports to Deskling, and with Keep listening on (sessions you start from Deskling
+   It still reports to Deskling, and with Wait for my reply on (sessions you start from Deskling
    listen straight away) it carries on with each message you send from the screen. */
 function startHeadless(job) {
   const logFile = join(HOME, ".deskling", "sessions.log");

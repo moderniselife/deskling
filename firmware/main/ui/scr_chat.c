@@ -16,6 +16,8 @@ static struct {
     bool keep_place; // the next redraw stays where you are (you opened or closed something)
     lv_obj_t *reader, *reader_title, *reader_body;
     lv_timer_t *reader_timer;
+    lv_timer_t *wait_timer; // keeps "28 min" current
+    lv_obj_t *wait_note;    // "Up to 28 min" in the waiting card
     char reader_line[24];
 } c;
 
@@ -32,6 +34,8 @@ static int s_open_n;
 static md_style_t MD_REPLY; // set in scr_chat_create (the colours aren't compile-time constants)
 
 static void rebuild(bool animate_new);
+static void wait_texts(const dk_agent_t *a);
+static void wait_tick(lv_timer_t *t);
 static uint32_t s_head_sig, s_chat_sig;
 
 static const char *QUICK[] = {"Yes please", "Continue", "Run the tests", "Wrap up and summarise"};
@@ -170,13 +174,14 @@ lv_obj_t *scr_chat_create(void)
     c.delivery = dk_label(info, DK_FONT_S, DK_INK, "");
     lv_obj_set_width(c.delivery, lv_pct(100));
     lv_label_set_long_mode(c.delivery, LV_LABEL_LONG_MODE_WRAP);
-    // "Keep listening": when it finishes, it waits for your next message from here.
-    c.listen = dk_button(info, "Keep listening", false, DK_FONT_S);
+    // "Wait for my reply": when it finishes, it waits for your next message from here.
+    c.listen = dk_button(info, "Wait for my reply", false, DK_FONT_S);
     lv_obj_set_width(c.listen, lv_pct(100));
     lv_obj_set_style_min_height(c.listen, 48, 0);
     lv_obj_set_style_margin_top(c.listen, 8, 0);
     c.listen_label = lv_obj_get_child(c.listen, 0);
     lv_obj_add_event_cb(c.listen, listen_cb, LV_EVENT_CLICKED, NULL);
+    c.wait_timer = lv_timer_create(wait_tick, 15000, NULL);
 
     // Helpers: the subagents this session has handed work to.
     c.helpers = dk_card(left, DK_CARD, 22);
@@ -615,6 +620,34 @@ void scr_chat_detail(dk_detail_t *d)
     redraw_here();
 }
 
+/* Claude is waiting for your reply: say so where you're looking, above the box you'd type in. */
+static void waiting_card(void)
+{
+    lv_obj_t *b = dk_card(c.bubbles, DK_BUTTER_BG, 24);
+    lv_obj_set_width(b, lv_pct(100));
+    lv_obj_set_style_pad_hor(b, 20, 0);
+    lv_obj_set_style_pad_ver(b, 14, 0);
+    dk_row(b, 14);
+    lv_obj_set_flex_align(b, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *dot = dk_box(b);
+    lv_obj_set_size(dot, 14, 14);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(dot, DK_SPARK, 0);
+    dk_anim_breathe_opa(dot, LV_OPA_40, LV_OPA_COVER, 1600, 0);
+    lv_obj_t *col = dk_box(b);
+    lv_obj_set_flex_grow(col, 1);
+    dk_col(col, 2);
+    const dk_agent_t *a = dk_model_find_agent(g_model, c.agent_id);
+    char t[64];
+    snprintf(t, sizeof(t), "%s is waiting for your reply", a && a->source != DK_SRC_CLAUDE ? dk_source_label(a->source) : "Claude");
+    dk_label(col, DK_FONT_M, DK_BUTTER_INK, t);
+    c.wait_note = dk_label(col, DK_FONT_S, DK_BUTTER_INK, "");
+    lv_obj_set_width(c.wait_note, lv_pct(100));
+    lv_label_set_long_mode(c.wait_note, LV_LABEL_LONG_MODE_WRAP);
+    if (a) wait_texts(a);
+}
+
 static void typing(void)
 {
     lv_obj_t *b = dk_card(c.bubbles, DK_LINE, 24);
@@ -654,6 +687,7 @@ static void rebuild_head(const dk_agent_t *a)
         sig = dk_hash(sig, a->helpers, sizeof(a->helpers[0]) * a->helpers_n);
         sig = dk_hash(sig, &a->helpers_n, sizeof(a->helpers_n));
         sig = dk_hash(sig, &a->listening, sizeof(a->listening));
+        sig = dk_hash(sig, &a->holding, sizeof(a->holding));
         sig = dk_hash_str(sig, a->model);
         sig = dk_hash(sig, &a->context, sizeof(a->context));
     }
@@ -697,16 +731,12 @@ static void rebuild_head(const dk_agent_t *a)
     dk_set_text(c.usage, mc);
     c.listening = a->listening;
     c.can_message = a->can_message;
-    dk_set_text(c.delivery, a->channel ? "Live channel: messages arrive straight away."
-                            : a->listening ? "Listening: when Claude finishes, it waits for your next message from here."
-                            : a->can_message ? "Messages arrive when Claude finishes its current step, or with your next prompt."
-                                             : "This tool can't take messages from Deskling yet.");
-    if (a->can_message && !a->channel) {
+    wait_texts(a);
+    if (a->can_message && !a->channel && a->source == DK_SRC_CLAUDE) {
         lv_obj_remove_flag(c.listen, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_bg_color(c.listen, a->listening ? DK_INK : DK_CARD, 0);
         lv_obj_set_style_border_width(c.listen, a->listening ? 0 : 3, 0);
         lv_obj_set_style_text_color(c.listen_label, a->listening ? DK_GROUND : DK_INK, 0);
-        dk_set_text(c.listen_label, a->listening ? "Listening (tap to stop)" : "Keep listening");
     } else {
         lv_obj_add_flag(c.listen, LV_OBJ_FLAG_HIDDEN);
     }
@@ -752,6 +782,48 @@ static void rebuild_head(const dk_agent_t *a)
     }
 }
 
+/* Minutes of "Wait for my reply" left, rounded up. */
+static int wait_minutes(const dk_agent_t *a)
+{
+    int64_t left = a->listen_until - (ui_now_ms() + ui_relay_offset_ms());
+    return left > 0 ? (int)((left + 59999) / 60000) : 0;
+}
+
+/* The words for "Wait for my reply": the button, what it means right now, and the card in the chat. */
+static void wait_texts(const dk_agent_t *a)
+{
+    int min = wait_minutes(a);
+    char btn[48], del[200];
+    const char *who = a->source == DK_SRC_CLAUDE ? "Claude" : dk_source_label(a->source);
+    if (!a->listening || !min) {
+        snprintf(btn, sizeof(btn), "Wait for my reply");
+        snprintf(del, sizeof(del), "Messages arrive when %s finishes its current step, or with your next prompt. \"Wait for my reply\" keeps it open for you when it finishes.", who);
+    } else if (a->holding) {
+        snprintf(btn, sizeof(btn), "Stop waiting");
+        snprintf(del, sizeof(del), "%s is waiting for your reply. Anything you send goes straight in.", who);
+    } else if (a->state == DK_WORKING || a->state == DK_NEEDS_YOU) {
+        snprintf(btn, sizeof(btn), "On for %d min · tap to stop", min);
+        snprintf(del, sizeof(del), "When %s finishes, it waits for your reply here instead of stopping.", who);
+    } else {
+        snprintf(btn, sizeof(btn), "On for %d min · tap to stop", min);
+        snprintf(del, sizeof(del), "%s has already stopped, so this starts the next time it finishes. A message now reaches it with your next prompt.", who);
+    }
+    dk_set_text(c.listen_label, btn);
+    dk_set_text(c.delivery, a->channel ? "Live channel: messages arrive straight away." : a->can_message ? del : "This tool can't take messages from Deskling yet.");
+    if (c.wait_note) {
+        char note[96];
+        snprintf(note, sizeof(note), "Type below or tap a quick reply. It waits up to %d min more.", min);
+        dk_set_text(c.wait_note, note);
+    }
+}
+
+static void wait_tick(lv_timer_t *t)
+{
+    (void)t;
+    const dk_agent_t *a = dk_model_find_agent(g_model, c.agent_id);
+    if (a && a->listening && lv_screen_active() == c.scr) wait_texts(a);
+}
+
 static const char *chat_meta(const dk_agent_t *a, const dk_chat_t *line)
 {
     if (line->from_you) {
@@ -785,6 +857,8 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
             sig = dk_hash_str(sig, a->last_message);
         }
         sig = dk_hash(sig, &typing_on, sizeof(typing_on));
+        bool waiting = a->holding && a->listening;
+        sig = dk_hash(sig, &waiting, sizeof(waiting));
     }
     if (sig == s_chat_sig) return;
     s_chat_sig = sig;
@@ -797,6 +871,7 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
     c.keep_place = false;
     lv_coord_t keep = lv_obj_get_scroll_y(c.bubbles);
     lv_obj_clean(c.bubbles);
+    c.wait_note = NULL;
     lv_obj_t *spacer = dk_box(c.bubbles);
     lv_obj_set_size(spacer, 1, 0);
     lv_obj_set_flex_grow(spacer, 1);
@@ -819,6 +894,7 @@ static void rebuild_chat(const dk_agent_t *a, bool animate_new)
         else last = bubble(line->text, line->from_you, chat_meta(a, line), line->image, line->quote, line->more && !line->from_you ? line->id : NULL);
     }
     if (typing_on) typing();
+    else if (a->holding && a->listening) waiting_card();
     if (animate_new && last && new_line) dk_anim_pop(lv_obj_get_child(last, 0), 0);
     snprintf(c.last_line, sizeof(c.last_line), "%s", tail ? tail->id : "");
     lv_obj_update_layout(c.bubbles);

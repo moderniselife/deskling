@@ -16,7 +16,8 @@ export interface Agent {
   since: number; // ms epoch when the current state started
   updated: number;
   helpers?: Helper[]; // subagents it has handed work to
-  listenUntil?: number; // "Keep listening" from the screen: when it finishes, it waits for you until then
+  listenUntil?: number; // "Wait for my reply" from the screen: when it finishes, it waits for you until then
+  heldAt?: number; // its Stop hook was last held (waiting for your reply) at this time
   streaming?: boolean; // its transcript reaches the relay, so words, thoughts and steps come from there
   model?: string; // the model of its latest reply, e.g. "claude-opus-5-5"
   context?: number; // tokens in its context window as of its latest reply

@@ -39,9 +39,9 @@ What you get:
 - **Messages to a session:** type or quick-reply on Deskling. A busy session gets the message when it finishes its current step. An idle session gets it with your next prompt, or straight away with channels (below).
 - **Tools for Claude:** `deskling_remind` ("remind me at 3pm to…"), `deskling_notify`, `deskling_reply`. These need Node 18+ on the machine. Without Node, everything else still works.
 
-### Keep listening (any session, including Cowork and cloud)
+### Wait for my reply (any session, including Cowork and cloud)
 
-On a session's screen on Deskling, tap **Keep listening**. When Claude next finishes, it doesn't stop: it waits (for up to 30 minutes) for a message from Deskling, and that message becomes its next prompt. Tap it again to stop listening. While it's listening, the session counts as still running on your computer, so turn it off before you go back to typing there.
+On a session's screen on Deskling, tap **Wait for my reply**. When Claude next finishes, it doesn't stop: it waits (for up to 30 minutes) for a message from Deskling, and that message becomes its next prompt. While it waits, the session shows **Your turn · Waiting for your reply** on the screen, in `/app` and in a notification, with the minutes left. Tap **Stop waiting** to let it finish. If Claude had already finished when you tapped it, it starts the next time Claude finishes, and the screen says so. While it's waiting, the session counts as still running on your computer, so stop it before you go back to typing there (typing there also lets it go).
 
 ### Talking to idle sessions (channels, research preview)
 

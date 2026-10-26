@@ -132,6 +132,10 @@ h2 { font-size: 13px; letter-spacing: .06em; color: var(--muted); margin: 14px 8
 .b.agent th, .b.agent td { text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .b.agent tr:last-child td { border-bottom: 0; }
 .b .more { margin-top: 6px; min-height: 36px; padding: 2px 14px; border-width: 2px; font-size: 14px; color: var(--purple); border-color: var(--purple); background: var(--card); }
+.waitcard { display: flex; gap: 12px; align-items: center; background: var(--tint-butter); color: var(--ink); border-radius: 20px; padding: 10px 16px; margin-top: 6px; }
+.waitcard b { display: block; font-weight: 900; }
+.waitcard i { width: 12px; height: 12px; border-radius: 50%; background: #F5C64B; flex: none; animation: pulse 1.6s ease-in-out infinite; }
+.waitnote { font-size: 13px; color: var(--muted); margin: 0 4px 6px; }
 .steps { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 14px; border: 0; background: var(--sunk); color: var(--ink-2); font-size: 15px; }
 .steps::before { content: ""; width: 7px; height: 7px; border-right: 2.5px solid var(--purple); border-bottom: 2.5px solid var(--purple); transform: rotate(-45deg); transition: transform .15s ease; }
 .steps[aria-expanded="true"]::before { transform: rotate(45deg) translate(-2px, -2px); }
@@ -238,7 +242,7 @@ function connect() {
   ws.onopen = function () { retry = 1000; $("conn").className = "conn ok"; $("conn").title = "Connected"; send({ type: "view", agentId: open }); };
   ws.onmessage = function (e) {
     var m = JSON.parse(e.data);
-    if (m.type === "snapshot") { S = m; render(); }
+    if (m.type === "snapshot") { S = m; if (m.now) clockSkew = m.now - Date.now(); render(); }
     if (m.type === "detail" && m.agentId === open) {
       if (m.steps && m.lineId in openSteps) openSteps[m.lineId] = m.steps;
       if (typeof m.text === "string" && m.lineId in fullText) { if (m.text) fullText[m.lineId] = m.text; else delete fullText[m.lineId]; }
@@ -406,6 +410,14 @@ function md(text) {
   }
   return out;
 }
+var clockSkew = 0; // relay clock minus ours
+function minutesLeft() {
+  document.querySelectorAll("[data-until]").forEach(function (n) {
+    var m = Math.max(0, Math.ceil((Number(n.dataset.until) - (Date.now() + clockSkew)) / 60000));
+    n.textContent = n.dataset.fmt.replace("{m}", m);
+  });
+}
+setInterval(minutesLeft, 15000);
 function askDetail(agentId, lineId) { send({ type: "detail", agentId: agentId, lineId: lineId }); }
 function rerender() { keepPlace = true; renderChat(true); }
 function render(force) {
@@ -439,7 +451,7 @@ function renderChat(force) {
   var a = S.agents.find(function (x) { return x.id === open; });
   var main = $("main");
   if (!a) { if (open && !force) { /* the session ended: keep what's shown */ return; } main.replaceChildren(el("div", { class: "nochat", text: "Pick a session to see its conversation." })); lastSig = ""; return; }
-  var sig = JSON.stringify([a.chat, a.state, a.task, a.helpers, a.model, a.context, a.listening, a.canMessage, S.pending.filter(function (p) { return p.agentId === a.id; }).map(function (p) { return p.id; })]);
+  var sig = JSON.stringify([a.chat, a.state, a.task, a.helpers, a.model, a.context, a.listening, a.holding, a.canMessage, S.pending.filter(function (p) { return p.agentId === a.id; }).map(function (p) { return p.id; })]);
   if (sig === lastSig && !force) return;
   lastSig = sig;
   var lines = main.querySelector(".lines");
@@ -486,6 +498,7 @@ function renderChat(force) {
   });
   var tail = chat[chat.length - 1];
   if (a.state === "working" && tail && (tail.from !== "agent")) list.append(el("div", { class: "typing", "aria-label": "Working" }, "•••"));
+  else if (a.holding && a.listening) list.append(el("div", { class: "waitcard", role: "status" }, el("i"), el("span", null, el("b", { text: who(a) + " is waiting for your reply" }), el("span", { "data-until": a.listenUntil, "data-fmt": "Type below or tap a quick reply. It waits up to {m} min more." }))));
   S.pending.filter(function (p) { return p.agentId === a.id; }).forEach(function (p) { list.append(askCard(p)); });
 
   var compose;
@@ -496,14 +509,24 @@ function renderChat(force) {
     ta.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
     var form = el("form", { onsubmit: function (e) { e.preventDefault(); var t = ta.value.trim(); if (!t) return; send({ type: "message", agentId: a.id, text: t }); ta.value = ""; drafts[a.id] = ""; } }, ta, el("button", { class: "solid" }, "Send"));
     var quick = el("div", { class: "quick" }, ["Continue", "Yes please", "Run the tests", "Wrap up and summarise"].map(function (t) { return el("button", { type: "button", onclick: function () { send({ type: "message", agentId: a.id, text: t }); } }, t); }));
-    if (a.source === "claude-code" && !a.channel) quick.prepend(el("button", { type: "button", class: a.listening ? "on" : "", title: "When it finishes, it waits for your next message from here", onclick: function () { send({ type: "listen", agentId: a.id, minutes: a.listening ? 0 : 30 }); } }, a.listening ? "Listening" : "Keep listening"));
-    compose = el("div", { class: "compose" }, quick, form);
+    var note = null;
+    if (a.source === "claude-code" && !a.channel) {
+      // "Wait for my reply": when Claude finishes, it waits here for your next message instead of stopping.
+      var wbtn = el("button", { type: "button", class: a.listening ? "on" : "", title: "When Claude finishes, it waits for your reply from here instead of stopping", onclick: function () { send({ type: "listen", agentId: a.id, minutes: a.listening ? 0 : 30 }); } });
+      if (!a.listening) wbtn.textContent = "Wait for my reply";
+      else if (a.holding) wbtn.textContent = "Stop waiting";
+      else { wbtn.dataset.until = a.listenUntil; wbtn.dataset.fmt = "On for {m} min · stop"; }
+      quick.prepend(wbtn);
+      if (a.listening && !a.holding && a.state !== "working" && a.state !== "needs_you") note = el("div", { class: "waitnote", text: who(a) + " has already stopped, so waiting starts the next time it finishes." });
+    }
+    compose = el("div", { class: "compose" }, note, quick, form);
   } else {
     compose = el("div", { class: "compose muted", text: who(a) + " can't take messages from here." });
   }
   var focused = document.activeElement && document.activeElement.tagName === "TEXTAREA" && main.contains(document.activeElement);
   main.replaceChildren(head, list, compose);
   if (focused) { var t2 = main.querySelector("textarea"); if (t2) { t2.focus(); t2.setSelectionRange(t2.value.length, t2.value.length); } }
+  minutesLeft();
   list.scrollTop = atBottom && !keepPlace ? list.scrollHeight : keep;
   keepPlace = false;
   list.dataset.follow = atBottom ? "1" : "0";

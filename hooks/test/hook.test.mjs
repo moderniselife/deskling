@@ -129,7 +129,7 @@ const line = (o) => JSON.stringify(o) + "\n";
   check("with screen approvals off, wait mode asks nothing", r.out === "" && !requests.some((x) => x.url.startsWith("/hook")));
 }
 
-// 6. Keep listening: the hook asks again until a message comes.
+// 6. Wait for my reply: the hook asks again until a message comes.
 {
   const h = home();
   requests = [];

@@ -116,6 +116,7 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
         a->can_message = get_bool(it, "canMessage");
         a->listening = get_bool(it, "listening");
         a->listen_until = get_i64(it, "listenUntil");
+        a->holding = get_bool(it, "holding");
         copy_str(a->model, sizeof(a->model), it, "model");
         a->context = (int32_t)get_i64(it, "context");
         const cJSON *c;

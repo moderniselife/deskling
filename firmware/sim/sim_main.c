@@ -1134,7 +1134,7 @@ int main(int argc, char **argv)
         printf("%s  live activity keeps your place in the chat\n", kept ? "PASS" : "FAIL");
         if (!kept) s_failures++;
         expect_text("Working · Running the sim tests");
-        tap("Keep listening");
+        tap("Wait for my reply");
         run(300);
         expect_sent("\"type\":\"listen\"");
     }
@@ -1165,6 +1165,8 @@ int main(int argc, char **argv)
     tap("9 earlier steps");
     run(300);
     check(!find_label(lv_screen_active(), "Reading net.c"), "tapping the steps again folds them away");
+    expect_text("On for 24 min");
+    expect_text("Claude has already stopped, so this starts the next time it finishes.");
     ui_open_chat("s-web"); /* from the top: opening a chat starts at its newest line */
     run(600);
     shot("08d2_chat_markdown_end");
@@ -1187,6 +1189,18 @@ int main(int argc, char **argv)
     check(ui_back() && ui_current() == SCR_CHAT, "back closes the reader first");
     run(300);
     check(!find_label(lv_screen_active(), "Back to the chat"), "the reader is closed");
+
+    /* Wait for my reply: while Claude is held waiting, the chat says so. */
+    apply("chat_waiting");
+    run(900);
+    shot("08g_chat_waiting");
+    expect_text("Claude is waiting for your reply");
+    expect_text("Stop waiting");
+    expect_text("Type below or tap a quick reply. It waits up to 24 min more.");
+    expect_text("Your turn");
+    tap("Stop waiting");
+    run(200);
+    expect_sent("\"type\":\"listen\",\"agentId\":\"s-web\",\"minutes\":0");
 
     // OpenCode: its own badge, model and helpers, and its permission prompts.
     apply("opencode");
