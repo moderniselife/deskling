@@ -90,7 +90,7 @@ $('go').onclick = async () => {
   if (!manifest) return status('No firmware to install yet.', 'bad');
   const lcd = document.querySelector('input[name=lcd]:checked').value;
   $('go').disabled = true;
-  let transport;
+  let transport, timer = null;
   try {
     const { ESPLoader, Transport } = await import('https://cdn.jsdelivr.net/npm/esptool-js@0.7.0/+esm');
     const port = await navigator.serial.requestPort();
@@ -116,12 +116,17 @@ $('go').onclick = async () => {
     log('Image: ' + (data.length / 1048576).toFixed(1) + ' MB');
 
     $('prog').hidden = false;
-    status($('erase').checked ? 'Erasing (about 30 s)\u2026' : 'Installing\u2026');
+    $('prog').removeAttribute('value'); // indeterminate: the browser animates it
+    const t0 = Date.now();
+    const what = $('erase').checked ? 'Erasing the old firmware' : 'Getting ready';
+    const tick = () => status(what + '\u2026 ' + Math.round((Date.now() - t0) / 1000) + ' s (this part can take up to 2 minutes, with no progress bar)');
+    tick();
+    timer = setInterval(tick, 1000);
     await loader.writeFlash({
       fileArray: [{ data, address: 0 }],
       flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep',
       eraseAll: $('erase').checked, compress: true,
-      reportProgress: (_i, written, total) => { $('prog').value = (written / total) * 100; status('Installing\u2026 ' + Math.round((written / total) * 100) + '%'); },
+      reportProgress: (_i, written, total) => { if (timer) { clearInterval(timer); timer = null; } $('prog').value = (written / total) * 100; status('Installing\u2026 ' + Math.round((written / total) * 100) + '%'); },
     });
     await loader.after('hard_reset');
     status('Done! Deskling is starting up.', 'ok');
@@ -131,6 +136,7 @@ $('go').onclick = async () => {
     status(e && e.message ? e.message : String(e), 'bad');
     log(String(e && e.stack || e));
   } finally {
+    if (timer) clearInterval(timer);
     try { await transport?.disconnect(); } catch {}
     $('go').disabled = false;
   }
