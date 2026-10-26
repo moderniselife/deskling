@@ -3,6 +3,7 @@
 ## Commits
 
 - Do not add `Co-Authored-By` trailers (or any other AI attribution line) to commit messages.
+- Commits are authored by the repo owner: `git config user.name "Joseph Shenton"` and `git config user.email "joe@mojos.email"`. Never commit as Claude.
 - Keep commit messages short and descriptive.
 
 ## Project shape
