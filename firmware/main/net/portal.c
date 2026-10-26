@@ -133,6 +133,7 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddNumberToObject(o, "brightness", st->brightness);
     cJSON_AddNumberToObject(o, "volume", st->volume);
     cJSON_AddBoolToObject(o, "quiet_night", st->quiet_night);
+    cJSON_AddBoolToObject(o, "rotate_180", st->rotate_180);
     cJSON *w = cJSON_AddObjectToObject(o, "wifi");
     cJSON_AddStringToObject(w, "ssid", st->wifi_ssid);
     cJSON_AddBoolToObject(w, "connected", net_wifi_connected());
@@ -254,6 +255,20 @@ static esp_err_t set_brightness(httpd_req_t *req)
     cJSON *b = read_json(req);
     const cJSON *v = cJSON_GetObjectItem(b, "value");
     if (cJSON_IsNumber(v)) device_set_brightness((uint8_t)v->valueint);
+    cJSON_Delete(b);
+    return ok(req);
+}
+
+static esp_err_t set_rotate(httpd_req_t *req)
+{
+    if (!authorised(req)) return ESP_OK;
+    cJSON *b = read_json(req);
+    const cJSON *v = cJSON_GetObjectItem(b, "on");
+    if (cJSON_IsBool(v)) {
+        bool on = cJSON_IsTrue(v);
+        device_set_rotate_180(on);
+        net_push_info(); // the Settings screen shows it too
+    }
     cJSON_Delete(b);
     return ok(req);
 }
@@ -405,6 +420,7 @@ void portal_start(void)
         {.uri = "/api/scan", .method = HTTP_GET, .handler = scan_results},
         {.uri = "/api/tz", .method = HTTP_POST, .handler = set_tz},
         {.uri = "/api/brightness", .method = HTTP_POST, .handler = set_brightness},
+        {.uri = "/api/rotate", .method = HTTP_POST, .handler = set_rotate},
         {.uri = "/api/sound", .method = HTTP_POST, .handler = set_sound},
         {.uri = "/api/touch/calibrate", .method = HTTP_POST, .handler = touch_calibrate},
         {.uri = "/api/restart", .method = HTTP_POST, .handler = restart},

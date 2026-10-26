@@ -40,6 +40,8 @@ void settings_init(void)
     s.brightness = (h && nvs_get_u8(h, "bright", &b) == ESP_OK && b >= 10 && b <= 100) ? b : CONFIG_DESKLING_BRIGHTNESS;
     s.volume = (h && nvs_get_u8(h, "vol", &b) == ESP_OK && b <= 100) ? b : CONFIG_DESKLING_VOLUME;
     s.quiet_night = (h && nvs_get_u8(h, "quiet", &b) == ESP_OK) ? b != 0 : true;
+    // Right way up in the Deskling case unless you've turned it around.
+    s.rotate_180 = (h && nvs_get_u8(h, "rot180", &b) == ESP_OK) ? b != 0 : true;
     if (h) nvs_close(h);
     apply_tz();
     ESP_LOGI(TAG, "wifi %s, relay %s", s.wifi_ssid[0] ? s.wifi_ssid : "(none)", s.relay_url[0] ? s.relay_url : "(none)");
@@ -122,6 +124,18 @@ esp_err_t settings_set_sound(uint8_t volume, bool quiet_night)
     if (err != ESP_OK) return err;
     err = nvs_set_u8(h, "vol", volume);
     if (err == ESP_OK) err = nvs_set_u8(h, "quiet", quiet_night ? 1 : 0);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+esp_err_t settings_set_rotate_180(bool on)
+{
+    s.rotate_180 = on;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u8(h, "rot180", on ? 1 : 0);
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     return err;

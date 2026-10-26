@@ -19,7 +19,10 @@
 #define BOARD_LCD_V_RES 1280
 
 /** Bring up the panel, backlight, touch and LVGL. Returns the (landscape) display. */
-lv_display_t *board_init(void);
+/** rotate_180: the picture turned around, which is right way up in the Deskling case. */
+lv_display_t *board_init(bool rotate_180);
+/** Turn the picture (and touch) around now. */
+void board_set_rotate_180(bool on);
 /** 0..100 */
 void board_set_backlight(uint8_t percent);
 /** The I2C bus the touch controller and audio codec share (NULL if it failed). */

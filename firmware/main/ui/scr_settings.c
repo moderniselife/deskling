@@ -9,7 +9,7 @@ static struct {
     lv_obj_t *wifi_name, *wifi_detail;
     lv_obj_t *relay_url, *relay_state, *portal_url, *portal_code, *qr_slot;
     lv_obj_t *fw_version, *fw_status, *fw_bar, *fw_button;
-    lv_obj_t *bright, *volume, *quiet;
+    lv_obj_t *bright, *volume, *quiet, *rotate;
     char qr_for[64];
 } st;
 
@@ -54,6 +54,32 @@ static void sound_cb(lv_event_t *e)
     g_info.volume = vol;
     g_info.quiet_night = quiet;
     if (lv_event_get_target(e) == st.volume && g_platform && g_platform->play_sound && vol > 0) g_platform->play_sound(DK_SND_DONE);
+}
+
+static void rotate_cb(lv_event_t *e)
+{
+    (void)e;
+    bool on = lv_obj_has_state(st.rotate, LV_STATE_CHECKED);
+    g_info.rotate_180 = on;
+    if (g_platform && g_platform->set_rotate_180) g_platform->set_rotate_180(on);
+}
+
+static lv_obj_t *switch_row(lv_obj_t *parent, const char *label, lv_event_cb_t cb)
+{
+    lv_obj_t *row = dk_box(parent);
+    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+    dk_row(row, 12);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *l = dk_label(row, DK_FONT_S, DK_INK_SOFT, label);
+    lv_obj_set_flex_grow(l, 1);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_t *sw = lv_switch_create(row);
+    lv_obj_set_size(sw, 64, 34);
+    lv_obj_set_style_bg_color(sw, DK_LINE, 0);
+    lv_obj_set_style_bg_color(sw, DK_PURPLE, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(sw, lv_color_white(), LV_PART_KNOB);
+    lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, NULL);
+    return sw;
 }
 
 static lv_obj_t *slider_row(lv_obj_t *parent, const char *label, int32_t lo, int32_t hi)
@@ -197,6 +223,7 @@ lv_obj_t *scr_settings_create(void)
     lv_obj_set_style_bg_color(st.quiet, DK_PURPLE, LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(st.quiet, lv_color_white(), LV_PART_KNOB);
     lv_obj_add_event_cb(st.quiet, sound_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    st.rotate = switch_row(s, "Right way up in the case (USB ports on the left). Off: the other way up", rotate_cb);
 
     lv_obj_t *brow = dk_box(c2);
     lv_obj_set_size(brow, lv_pct(100), LV_SIZE_CONTENT);
@@ -271,4 +298,6 @@ void scr_settings_refresh(void)
     if (!lv_slider_is_dragged(st.volume)) lv_slider_set_value(st.volume, g_info.volume, LV_ANIM_OFF);
     if (g_info.quiet_night) lv_obj_add_state(st.quiet, LV_STATE_CHECKED);
     else lv_obj_remove_state(st.quiet, LV_STATE_CHECKED);
+    if (g_info.rotate_180) lv_obj_add_state(st.rotate, LV_STATE_CHECKED);
+    else lv_obj_remove_state(st.rotate, LV_STATE_CHECKED);
 }

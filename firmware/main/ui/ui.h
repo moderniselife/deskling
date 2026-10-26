@@ -50,6 +50,7 @@ typedef struct {
     uint8_t brightness; // 10..100
     uint8_t volume;     // 0..100
     bool quiet_night;
+    bool rotate_180;    // picture turned around (right way up in the case)
 } ui_device_info_t;
 
 typedef enum {
@@ -73,6 +74,7 @@ typedef struct {
     void (*restart)(void);
     void (*play_sound)(dk_sound_t s);
     void (*set_sound)(uint8_t volume, bool quiet_night); // also saves it
+    void (*set_rotate_180)(bool on);                      // turns the picture around, and saves it
     // Touch calibration. touch_raw returns true while a finger is down; NULL = no calibration support.
     bool (*touch_raw)(int32_t *a, int32_t *b);
     bool (*touch_calibrated)(void);

@@ -79,8 +79,4 @@ config DESKLING_VOLUME
         bool "Touch: mirror Y"
         default n
 
-    config DESKLING_ROTATE_180
-        bool "Turn the picture upside down (USB ports on the other side)"
-        default n
-
 endmenu

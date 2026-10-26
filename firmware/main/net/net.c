@@ -208,6 +208,7 @@ void net_push_info(void)
     info.brightness = st->brightness;
     info.volume = st->volume;
     info.quiet_night = st->quiet_night;
+    info.rotate_180 = st->rotate_180;
     if (lvgl_port_lock(1000)) {
         ui_set_device_info(&info);
         lvgl_port_unlock();

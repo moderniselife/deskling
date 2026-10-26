@@ -40,11 +40,9 @@ static const char *TAG = "board";
 #else
 #define TOUCH_MIRROR_Y 0
 #endif
-#ifdef CONFIG_DESKLING_ROTATE_180
-#define ROTATE_180 1
-#else
-#define ROTATE_180 0
-#endif
+// The picture's way up: turned around (270) is right way up in the case. board_init's argument,
+// changed later with board_set_rotate_180.
+static bool s_rotate_180 = true;
 
 #define BL_TIMER LEDC_TIMER_1
 #define BL_CHANNEL LEDC_CHANNEL_1
@@ -268,7 +266,7 @@ static esp_lcd_touch_handle_t touch_init(void)
     };
     esp_lcd_touch_handle_t tp = NULL;
     if (dk_gsl3680_new(io, &cfg, &tp) != ESP_OK) return NULL;
-    dk_gsl3680_set_mapping(NULL, ROTATE_180 ? 270 : 90);
+    dk_gsl3680_set_mapping(NULL, s_rotate_180 ? 270 : 90);
     return tp;
 }
 
@@ -407,7 +405,7 @@ static lv_display_t *display_init(esp_lcd_panel_handle_t panel)
     lv_display_set_buffers(disp, b1, b2, bytes, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, band_flush);
     lv_display_set_flush_wait_cb(disp, band_wait);
-    lv_display_set_rotation(disp, ROTATE_180 ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_90);
+    lv_display_set_rotation(disp, s_rotate_180 ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_90);
     lvgl_port_unlock();
     return disp;
 }
@@ -457,13 +455,27 @@ static lv_display_t *display_init_port(esp_lcd_panel_io_handle_t io, esp_lcd_pan
     // Copy rotated bands into the framebuffer with DMA2D instead of a CPU memcpy.
     if (esp_lcd_dpi_panel_enable_dma2d(panel) != ESP_OK) ESP_LOGW(TAG, "DMA2D unavailable, copying bands with the CPU");
     lvgl_port_lock(0);
-    lv_display_set_rotation(disp, ROTATE_180 ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_90);
+    lv_display_set_rotation(disp, s_rotate_180 ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_90);
     lvgl_port_unlock();
     return disp;
 }
 
-lv_display_t *board_init(void)
+static lv_display_t *s_display;
+
+void board_set_rotate_180(bool on)
 {
+    s_rotate_180 = on;
+    dk_gsl3680_set_rotation(on ? 270 : 90); // touch follows the picture
+    if (!s_display) return;
+    lvgl_port_lock(0);
+    lv_display_set_rotation(s_display, on ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_90);
+    lv_obj_invalidate(lv_screen_active());
+    lvgl_port_unlock();
+}
+
+lv_display_t *board_init(bool rotate_180)
+{
+    s_rotate_180 = rotate_180;
     backlight_init();
     board_set_backlight(0);
 
@@ -494,5 +506,6 @@ lv_display_t *board_init(void)
         const lvgl_port_touch_cfg_t touch_cfg = {.disp = disp, .handle = tp};
         lvgl_port_add_touch(&touch_cfg);
     }
+    s_display = disp;
     return disp;
 }

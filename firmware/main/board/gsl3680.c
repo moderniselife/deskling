@@ -129,12 +129,20 @@ static esp_err_t init_with_retry(esp_lcd_touch_handle_t tp)
 // applies the display rotation to touch points itself.
 
 static portMUX_TYPE s_map_lock = portMUX_INITIALIZER_UNLOCKED;
-// landscape_x = m[0]*a + m[1]*b + m[2]; landscape_y = m[3]*a + m[4]*b + m[5]
+// landscape_x = m[0]*a + m[1]*b + m[2]; landscape_y = m[3]*a + m[4]*b + m[5], for the picture at
+// 90 (the calibration is kept that way whichever way up the picture is).
 // The default is a rough guess from the bundled controller firmware; calibration replaces it.
 static float s_map[6] = {0.0f, -0.769f, 1279.0f, 0.893f, 0.0f, 0.0f};
 static int s_rotation = 90; // the LVGL display rotation: 90 or 270
 static volatile int32_t s_raw_a, s_raw_b;
 static volatile bool s_raw_down;
+
+void dk_gsl3680_set_rotation(int rotation)
+{
+    portENTER_CRITICAL(&s_map_lock);
+    s_rotation = rotation;
+    portEXIT_CRITICAL(&s_map_lock);
+}
 
 void dk_gsl3680_set_mapping(const float m[6], int rotation)
 {
@@ -164,6 +172,12 @@ static void to_panel(esp_lcd_touch_handle_t tp, int32_t a, int32_t b, uint16_t *
     int32_t ly = (int32_t)(m[3] * a + m[4] * b + m[5] + 0.5f);
     lx = lx < 0 ? 0 : lx >= lw ? lw - 1 : lx;
     ly = ly < 0 ? 0 : ly >= lh ? lh - 1 : ly;
+    // The calibration is for the picture at 90. Turned around (270), the same spot on the glass
+    // is the opposite corner of the screen.
+    if (rot == 270) {
+        lx = lw - 1 - lx;
+        ly = lh - 1 - ly;
+    }
     // Inverse of lv_display_rotate_point(): 90 maps panel (x,y) to (H-1-y, x).
     if (rot == 270) {
         *px = (uint16_t)(lh - 1 - ly);

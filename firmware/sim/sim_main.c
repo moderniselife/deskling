@@ -337,6 +337,12 @@ static void fake_sound(dk_sound_t snd)
     printf("  -> sound %s\n", s_last_sound);
 }
 static void fake_set_sound(uint8_t vol, bool quiet) { printf("  -> sound settings %u quiet=%d\n", vol, quiet); }
+static bool s_rotated;
+static void fake_rotate(bool on)
+{
+    s_rotated = on;
+    printf("  -> turn the screen around %d\n", on);
+}
 // Raw touch = screen position, so a good calibration comes out as the identity map.
 static bool s_calibrated;
 static float s_cal[6];
@@ -353,8 +359,22 @@ static void fake_touch_save(const float m[6])
     s_calibrated = true;
     printf("  -> touch calibration %.3f %.3f %.1f | %.3f %.3f %.1f\n", m[0], m[1], m[2], m[3], m[4], m[5]);
 }
-static const ui_platform_t s_fake = {fake_scan, fake_connect, fake_relay_set, fake_check, fake_start, fake_bright, fake_restart, fake_sound, fake_set_sound,
-                                     fake_touch_raw, fake_touch_calibrated, fake_touch_save, fake_fetch_image};
+static const ui_platform_t s_fake = {
+    .wifi_scan = fake_scan,
+    .wifi_connect = fake_connect,
+    .relay_set = fake_relay_set,
+    .check_update = fake_check,
+    .start_update = fake_start,
+    .set_brightness = fake_bright,
+    .restart = fake_restart,
+    .play_sound = fake_sound,
+    .set_sound = fake_set_sound,
+    .set_rotate_180 = fake_rotate,
+    .touch_raw = fake_touch_raw,
+    .touch_calibrated = fake_touch_calibrated,
+    .touch_save_calibration = fake_touch_save,
+    .fetch_image = fake_fetch_image,
+};
 
 static void expect_sound(const char *name)
 {
@@ -1144,6 +1164,18 @@ int main(int argc, char **argv)
     shot("16_settings");
     expect_text("Settings");
     expect_text("Quiet at night (10pm-7am), except reminders");
+    {
+        lv_obj_t *l = find_label(lv_screen_active(), "Right way up in the case");
+        lv_obj_t *sw = l ? lv_obj_get_child(lv_obj_get_parent(l), 1) : NULL;
+        if (sw) {
+            lv_obj_scroll_to_view_recursive(sw, LV_ANIM_OFF);
+            run(100);
+            tap_obj(sw, "the turn-around switch");
+            run(300);
+        }
+        printf("%s  the screen can be turned around from Settings\n", s_rotated ? "PASS" : "FAIL");
+        if (!s_rotated) s_failures++;
+    }
     tap("Check for updates");
     run(300);
     expect_text("Version v0.3.0 is available.");

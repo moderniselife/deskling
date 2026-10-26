@@ -1,13 +1,10 @@
 // Deskling: a cute animated desk screen for your AI agents.
+#include <string.h>
+
 #include "audio.h"
 #include "board.h"
 #include "gsl3680.h"
 
-#ifdef CONFIG_DESKLING_ROTATE_180
-#define DK_ROTATION 270
-#else
-#define DK_ROTATION 90
-#endif
 #include "device.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -21,6 +18,12 @@
 #include "ui.h"
 
 static const char *TAG = "deskling";
+
+void device_set_rotate_180(bool on)
+{
+    settings_set_rotate_180(on);
+    board_set_rotate_180(on);
+}
 
 void device_set_brightness(uint8_t percent)
 {
@@ -39,10 +42,24 @@ static bool touch_calibrated(void)
     return settings_get_touch_cal(m);
 }
 
-static void touch_save_calibration(const float m[6])
+static int rotation(void)
 {
+    return settings()->rotate_180 ? 270 : 90;
+}
+
+static void touch_save_calibration(const float m_now[6])
+{
+    // The five taps map to the screen as it is now. The calibration is kept for the picture at
+    // 90, so turned around (270) flip it first: x -> W-1-x, y -> H-1-y.
+    float m[6];
+    memcpy(m, m_now, sizeof(m));
+    if (settings()->rotate_180) {
+        const float W = BOARD_LCD_V_RES, H = BOARD_LCD_H_RES; // the landscape screen
+        m[0] = -m_now[0], m[1] = -m_now[1], m[2] = (W - 1) - m_now[2];
+        m[3] = -m_now[3], m[4] = -m_now[4], m[5] = (H - 1) - m_now[5];
+    }
     settings_set_touch_cal(m);
-    dk_gsl3680_set_mapping(m, DK_ROTATION);
+    dk_gsl3680_set_mapping(m, rotation());
 }
 
 void device_set_sound(uint8_t volume, bool quiet_night)
@@ -60,6 +77,7 @@ static const ui_platform_t s_platform = {
     .check_update = ota_request_check,
     .start_update = ota_request_install,
     .set_brightness = device_set_brightness,
+    .set_rotate_180 = device_set_rotate_180,
     .restart = restart,
     .play_sound = audio_play,
     .set_sound = device_set_sound,
@@ -81,9 +99,9 @@ void app_main(void)
     settings_init();
     ota_init();
 
-    board_init();
+    board_init(settings()->rotate_180);
     float cal[6];
-    if (settings_get_touch_cal(cal)) dk_gsl3680_set_mapping(cal, DK_ROTATION);
+    if (settings_get_touch_cal(cal)) dk_gsl3680_set_mapping(cal, rotation());
     audio_init(board_i2c_bus());
     audio_set_volume(settings()->volume);
 

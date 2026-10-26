@@ -16,6 +16,7 @@ typedef struct {
     uint8_t brightness; // 10..100
     uint8_t volume;     // 0..100, 0 = silent
     bool quiet_night;   // between 10pm and 7am only reminders make a sound
+    bool rotate_180;    // picture turned around: right way up in the case (USB ports on the left)
 } dk_settings_t;
 
 /** Load once at boot (after nvs_flash_init). */
@@ -27,6 +28,7 @@ esp_err_t settings_set_relay(const char *url, const char *token);
 esp_err_t settings_set_tz(const char *tz);
 esp_err_t settings_set_brightness(uint8_t percent);
 esp_err_t settings_set_sound(uint8_t volume, bool quiet_night);
+esp_err_t settings_set_rotate_180(bool on);
 /** Touch calibration (raw sensor -> landscape affine map). False if never calibrated. */
 bool settings_get_touch_cal(float m[6]);
 esp_err_t settings_set_touch_cal(const float m[6]);

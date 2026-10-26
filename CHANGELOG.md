@@ -15,6 +15,7 @@ Being tested as the `v0.3.2-testN` builds. Install the newest one over the air o
 - Boot animation, touch calibration (five taps, redo it from Settings or the board's page), and sounds with volume and quiet hours.
 - Faster drawing, and screens only redraw when something changed.
 - Snapshots are smaller: only the chat that's open is sent in full.
+- Right way up in the Deskling case out of the box (USB ports on the left). "Right way up in the case" in Settings, or on the board's page, turns it the other way; touch follows, and your touch calibration carries over.
 
 ### Deskling in your browser
 
