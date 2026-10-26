@@ -176,8 +176,11 @@ $('go').onclick = async () => {
     if (localFile) {
       data = new Uint8Array(await localFile.arrayBuffer());
       log('Using ' + localFile.name);
-      if (data[0] !== 0xff && data[0] !== 0xe9) throw new Error('That doesn\u2019t look like a Deskling flash image.');
-      if (data.length < 0x30000) throw new Error('That\u2019s too small for a full image. Pick the -full.bin file.');
+      // A full image is blank up to 0x2000, where the ESP32-P4's bootloader starts. The plain
+      // app .bin (for updates over Wi-Fi) starts with an image header instead, and writing it
+      // at 0 would overwrite the bootloader and partition table.
+      if (data[0] === 0xe9) throw new Error('That\u2019s the app file, for updating over Wi-Fi from Deskling\u2019s page. Here you need the one ending in -full.bin.');
+      if (data.length < 0x30000 || data[0] !== 0xff || data[0x2000] !== 0xe9) throw new Error('That doesn\u2019t look like a Deskling flash image. Pick the file ending in -full.bin.');
     } else {
       const res = await fetch(FIRMWARE + build.full);
       if (!res.ok) throw new Error('Download failed (' + res.status + ')');
