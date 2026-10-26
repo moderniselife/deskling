@@ -654,7 +654,13 @@ void ui_apply_model(const dk_model_t *m)
     case DK_CAUSE_CHAT: {
         // Only a reply from the agent, not the echo of what you just sent.
         const dk_agent_t *a = dk_model_find_agent(m, m->cause_id);
-        if (a && a->chat_n > 0 && !a->chat[a->chat_n - 1].from_you && !a->chat[a->chat_n - 1].step) ui_sound(DK_SND_MESSAGE);
+        // At most one chirp every 8 s: a chatty session shouldn't chirp on every line.
+        static uint32_t last_chirp;
+        bool reply = a && a->chat_n > 0 && !a->chat[a->chat_n - 1].from_you && !a->chat[a->chat_n - 1].step;
+        if (reply && (last_chirp == 0 || lv_tick_elaps(last_chirp) > 8000)) {
+            last_chirp = lv_tick_get();
+            ui_sound(DK_SND_MESSAGE);
+        }
         break;
     }
     case DK_CAUSE_REMINDER_DUE: {
