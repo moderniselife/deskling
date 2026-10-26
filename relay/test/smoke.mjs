@@ -194,6 +194,25 @@ s = await waitFor((m) => m.pending.some((p) => p.tool === "Write" && p.summary =
 ws.send(JSON.stringify({ type: "decision", id: s.pending.find((p) => p.tool === "Write").id, decision: "allow" }));
 check("a channel's permission dialog is answered on the screen", (await perm).behavior === "allow");
 
+// Views: a screen that says which chat is open gets that one in full and the others' latest lines.
+{
+  const ws2 = new WebSocket(wsUrl);
+  const got = [];
+  ws2.onmessage = (e) => got.push(JSON.parse(e.data));
+  await new Promise((r) => (ws2.onopen = r));
+  const next = async (n) => {
+    for (let i = 0; i < 40 && got.length < n; i++) await new Promise((r) => setTimeout(r, 50));
+    return got[n - 1];
+  };
+  const full = (await next(1)).agents.find((a) => a.id === "s-smoke").chat.length;
+  ws2.send(JSON.stringify({ type: "view", agentId: "" }));
+  const tail = (await next(2)).agents.find((a) => a.id === "s-smoke").chat.length;
+  ws2.send(JSON.stringify({ type: "view", agentId: "s-smoke" }));
+  const open = (await next(3)).agents.find((a) => a.id === "s-smoke").chat.length;
+  check("a screen gets only the open chat in full", full > 2 && tail === 2 && open === full, `${full} ${tail} ${open}`);
+  ws2.close();
+}
+
 // Starting sessions: a runner on a computer picks up the job; a bad routine is refused.
 await fetch(`${URL_BASE}/runner/register`, { method: "POST", headers: auth, body: JSON.stringify({ machine: "test-mac", os: "mac", projects: [{ name: "web-app", path: "/Users/joe/code/web-app" }] }) });
 s = await waitFor((m) => m.targets?.some((t) => t.id === "test-mac" && t.projects.includes("web-app")));

@@ -204,6 +204,10 @@ void dk_send_action(const char *name); // "focus" | "snooze_all" | "ping_when_do
 void dk_send_feed_dismiss(const char *feed_id);
 void dk_send_dismiss(const char *agent_id);
 void dk_send_hello(void);
+/* Which chat is open ("" for none): the relay sends that one in full and only the latest lines of
+   the others, which keeps snapshots small. dk_resend_view repeats it after a reconnect. */
+void dk_send_view(const char *agent_id);
+void dk_resend_view(void);
 
 const char *dk_state_label(dk_state_t s);
 const char *dk_source_label(dk_source_t s);

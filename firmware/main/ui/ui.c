@@ -385,6 +385,7 @@ void ui_go(scr_id_t id)
     else if (s_cur == SCR_CHAT || s_cur == SCR_NEW) how = LV_SCREEN_LOAD_ANIM_MOVE_RIGHT, ms = 320;
     else if (id == SCR_NIGHT || s_cur == SCR_NIGHT) how = LV_SCREEN_LOAD_ANIM_FADE_IN, ms = 700;
     s_cur = id;
+    dk_send_view(id == SCR_CHAT ? scr_chat_agent() : "");
     set_backlight(id == SCR_NIGHT ? 25 : 100);
     if (id == SCR_SESSIONS) scr_sessions_refresh();
     if (id == SCR_NIGHT) scr_night_refresh();
@@ -427,6 +428,7 @@ void ui_open_chat(const char *agent_id)
 {
     if (s_cur != SCR_CHAT) s_chat_from = s_cur;
     scr_chat_show(agent_id);
+    if (s_cur == SCR_CHAT) dk_send_view(agent_id);
     ui_go(SCR_CHAT);
 }
 

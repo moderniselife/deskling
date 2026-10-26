@@ -360,6 +360,31 @@ void dk_send_feed_dismiss(const char *feed_id)
     send_obj(o);
 }
 
+static char s_view[72];
+static bool s_view_sent;
+
+static void send_view(void)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "view");
+    cJSON_AddStringToObject(o, "agentId", s_view);
+    send_obj(o);
+    s_view_sent = true;
+}
+
+void dk_send_view(const char *agent_id)
+{
+    if (!agent_id) agent_id = "";
+    if (s_view_sent && strcmp(s_view, agent_id) == 0) return;
+    snprintf(s_view, sizeof(s_view), "%s", agent_id);
+    send_view();
+}
+
+void dk_resend_view(void)
+{
+    send_view();
+}
+
 void dk_send_hello(void)
 {
     cJSON *o = cJSON_CreateObject();

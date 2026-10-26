@@ -236,6 +236,7 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         s_ws_up = true;
         s_relay_err[0] = '\0';
         set_conn(DK_CONN_ONLINE, NULL);
+        dk_resend_view(); // the relay starts every connection with full chats until told otherwise
         ota_mark_healthy();
         break;
     case WEBSOCKET_EVENT_DISCONNECTED:

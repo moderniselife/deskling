@@ -529,6 +529,11 @@ static void rebuild(bool animate_new)
     rebuild_chat(a, animate_new);
 }
 
+const char *scr_chat_agent(void)
+{
+    return c.agent_id;
+}
+
 void scr_chat_show(const char *agent_id)
 {
     snprintf(c.agent_id, sizeof(c.agent_id), "%s", agent_id ? agent_id : "");

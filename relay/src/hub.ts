@@ -24,6 +24,7 @@ const FEED_MAX = 40;
 const CHAT_MAX = 80; // messages and tool steps kept per session
 const CHAT_TEXT_MAX = 1200; // the screen keeps this much of each chat line
 const SNAPSHOT_CHAT = 30; // chat lines per session sent to the screen
+const TAIL_CHAT = 2; // for sessions that aren't open on the screen
 const STEPS_SHOWN = 3; // tool steps shown in a row before they collapse into a count
 const HELPER_MAX = 4; // helpers per session the screen shows
 const HELPER_KEEP_MS = 10 * 60 * 1000; // finished helpers stay listed this long
@@ -232,6 +233,16 @@ function parseDue(at: unknown): number | null {
     if (!Number.isNaN(t)) return t;
   }
   return null;
+}
+
+/** The chat open on a screen (null: a screen from before views, which gets every chat). */
+function viewOf(ws: WebSocket): string | null {
+  try {
+    const a = ws.deserializeAttachment() as { view?: string } | null;
+    return typeof a?.view === "string" ? a.view : null;
+  } catch {
+    return null;
+  }
 }
 
 function json(data: unknown, status = 200): Response {
@@ -1369,7 +1380,14 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       return;
     }
     if (msg.type === "hello") {
-      ws.send(this.snapshot({ kind: "hello" }));
+      ws.send(this.snapshot({ kind: "hello" }, viewOf(ws)));
+      return;
+    }
+    if (msg.type === "view") {
+      // The chat open on that screen: it gets that one in full, the rest as their latest lines.
+      const view = oneLine(msg.agentId, 72);
+      ws.serializeAttachment({ view });
+      ws.send(this.snapshot({ kind: "agent", id: view }, view));
       return;
     }
     await this.onClientMessage(msg);
@@ -1630,7 +1648,11 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     if (this.state.jobs?.length) this.state.jobs = this.state.jobs.filter((j) => now - j.ts < 10 * 60 * 1000);
   }
 
-  private snapshot(cause: Cause): string {
+  /**
+   * `view`: the chat open on the screen it's for. That one gets its full chat; the others get
+   * their latest lines (enough for notifications). null (screens from before views) gets all.
+   */
+  private snapshot(cause: Cause, view: string | null = null): string {
     const s = this.state;
     const rank: Record<AgentState, number> = { needs_you: 0, waiting: 1, working: 2, done: 3, idle: 4 };
     const agents = Object.values(s.agents)
@@ -1642,7 +1664,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         lastPrompt: clip(a.lastPrompt, 160),
         channel: this.channelLive(a.id) || this.bridgeLive(a),
         canMessage: a.source === "claude-code" || this.bridgeLive(a),
-        chat: chatView(s.chats[a.id] ?? []),
+        chat: view === null || view === a.id ? chatView(s.chats[a.id] ?? []) : chatView(s.chats[a.id] ?? []).slice(-TAIL_CHAT),
         helpers: (a.helpers ?? []).map(({ id, name, task, done }) => ({ id, name, task, done })),
         helperNames: undefined,
         listening: (a.listenUntil ?? 0) > Date.now(),
@@ -1699,8 +1721,11 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     this.prune();
     await this.save();
     await this.scheduleAlarm();
-    const msg = this.snapshot(cause);
+    const byView = new Map<string | null, string>();
     for (const ws of this.ctx.getWebSockets()) {
+      const view = viewOf(ws);
+      let msg = byView.get(view);
+      if (msg === undefined) byView.set(view, (msg = this.snapshot(cause, view)));
       try {
         ws.send(msg);
       } catch {

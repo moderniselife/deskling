@@ -69,6 +69,7 @@ void scr_sessions_refresh(void);
 
 lv_obj_t *scr_chat_create(void);
 void scr_chat_show(const char *agent_id);
+const char *scr_chat_agent(void);
 void scr_chat_refresh(dk_cause_t cause);
 
 lv_obj_t *scr_alert_create(void);

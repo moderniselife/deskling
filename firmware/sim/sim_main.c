@@ -814,6 +814,7 @@ int main(int argc, char **argv)
     tap("web-app");
     run(900);
     shot("07_chat");
+    expect_sent("\"type\":\"view\",\"agentId\":\"s-web\"");
     tap("Run the tests");
     run(400);
     expect_sent("\"text\":\"Run the tests\"");
