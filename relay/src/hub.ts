@@ -55,6 +55,11 @@ function emptyState(): State {
   return { agents: {}, feed: [], reminders: [], pending: [], chats: {}, focus: false, pingWhenDone: false };
 }
 
+/** What the screen calls each kind of agent in its notifications. */
+function agentLabel(source: Source): string {
+  return ({ "claude-code": "Claude", cowork: "Claude", opencode: "OpenCode", codex: "Codex", gemini: "Gemini", cursor: "Cursor" } as Record<string, string>)[source] ?? "Your agent";
+}
+
 function shortId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 10);
 }
@@ -241,6 +246,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
   private listeners = new Map<string, (why: "message" | "cancel") => void>();
   /** Transcript lines already handled, per session (uploads can overlap after a retry). */
   private seenLines = new Map<string, Set<string>>();
+  /** Bridges (OpenCode…) waiting for messages from the screen: poll id → wake(agentId). */
+  private bridgePolls = new Map<string, (agentId: string) => void>();
   /** Runners waiting for a job, by machine. */
   private runnerPolls = new Map<string, () => void>();
   private channels = new Map<string, Channel>();
@@ -268,6 +275,12 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     };
 
     if (req.method === "POST" && path === "/transcript") return this.onTranscript(url.searchParams.get("sid") ?? "", await req.text());
+    // ---- bridges: other agents (OpenCode, …) reporting through a small adapter on your computer
+    if (req.method === "POST" && path === "/agent/update") return this.onAgentUpdate((await readJson()) ?? {});
+    if (req.method === "POST" && path === "/agent/ask") return this.onAgentAsk((await readJson()) ?? {});
+    if (req.method === "GET" && path === "/agent/poll") return this.onAgentPoll(url);
+    if (req.method === "POST" && path === "/agent/resolve") return this.onAgentResolve((await readJson()) ?? {});
+
     // ---- starting sessions: the runner on your computers, and a cloud routine
     if (req.method === "POST" && path === "/runner/register") return this.onRunnerRegister((await readJson()) ?? {});
     if (req.method === "GET" && path === "/runner/poll") return this.onRunnerPoll(url.searchParams.get("machine") ?? "");
@@ -677,7 +690,134 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     return empty(); // timed out or "on my computer": the normal dialog appears
   }
 
-  /** Put a request on the screen and wait for an answer, a decision, or the timeout. */
+  // ------------------------------------------------------------ bridges (any agent)
+
+  /**
+   * A bridge reports a session: who it is, what it's doing, and new or changed chat lines (a line
+   * with a `key` it sent before is updated in place, so streaming text grows rather than repeats).
+   */
+  private async onAgentUpdate(b: Record<string, unknown>): Promise<Response> {
+    const id = oneLine(b.id, 72);
+    if (!id) return json({ error: "id required" }, 400);
+    if (b.end === true) {
+      this.removeAgent(id);
+      await this.commit({ kind: "agent", id });
+      return json({ ok: true });
+    }
+    const source = (["opencode", "codex", "gemini", "cursor", "custom"].includes(String(b.source)) ? b.source : "custom") as Source;
+    const isNew = !this.state.agents[id];
+    const agent = this.upsertAgent(id, source, oneLine(b.name, 48) || "session", oneLine(b.host, 40) || "computer", oneLine(b.os, 20) || "unknown");
+    if (b.name) agent.name = oneLine(b.name, 48);
+    const states: AgentState[] = ["idle", "working", "waiting", "needs_you", "done"];
+    const st = states.includes(b.state as AgentState) ? (b.state as AgentState) : null;
+    const open = this.state.pending.some((p) => p.agentId === id);
+    const was = agent.state;
+    if (st && !(open && st !== "needs_you")) this.setAgent(agent, st, b.task !== undefined ? oneLine(b.task, 90) : agent.task);
+    if (st === "done" && was === "working") this.addFeed("good", `${agentLabel(source)} finished`, `${agent.name}${agent.lastMessage ? " · " + oneLine(agent.lastMessage, 60) : ""}`, id);
+    else if (b.task !== undefined && !open) agent.task = oneLine(b.task, 90);
+    if (typeof b.model === "string") agent.model = oneLine(b.model, 60);
+    if (typeof b.context === "number") agent.context = b.context;
+    if (Array.isArray(b.helpers)) {
+      agent.helpers = (b.helpers as Record<string, unknown>[]).slice(0, HELPER_MAX).map((h) => ({
+        id: oneLine(h.id, 40),
+        name: oneLine(h.name, 60) || "Helper",
+        task: oneLine(h.task, 90),
+        done: h.done === true,
+        updated: Date.now(),
+      }));
+    }
+    let message = false;
+    const chat = (this.state.chats[id] ??= []);
+    for (const l of Array.isArray(b.lines) ? (b.lines as Record<string, unknown>[]).slice(0, 40) : []) {
+      const from = (["you", "agent", "tool", "thought"].includes(String(l.from)) ? l.from : "agent") as ChatLine["from"];
+      const text = from === "thought" ? oneLine(readable(l.text), 140) : clip(readable(l.text), CHAT_TEXT_MAX);
+      if (!text) continue;
+      const key = l.key ? oneLine(l.key, 80) : "";
+      const same = key ? chat.find((c) => c.key === key) : undefined;
+      if (same) {
+        if (same.text !== text) {
+          same.text = text;
+          if (from === "agent") message = true;
+        }
+        continue;
+      }
+      // Your message from the screen comes back from the agent as its prompt: don't show it twice.
+      if (from === "you" && chat.slice(-6).some((c) => c.from === "you" && c.text === text)) continue;
+      chat.push({ id: shortId(), from, text, status: from === "you" ? "typed" : "sent", ts: Date.now(), ...(key ? { key } : {}) });
+      if (from === "agent") {
+        agent.lastMessage = text;
+        message = true;
+      }
+      if (from === "you") agent.lastPrompt = clip(text, 400);
+    }
+    if (chat.length > CHAT_MAX) chat.splice(0, chat.length - CHAT_MAX);
+    agent.updated = Date.now();
+    if (isNew || message || st === "done" || st === "needs_you") await this.commit({ kind: message ? "chat" : st === "done" ? "done" : "agent", id });
+    else await this.commitLive(id);
+    return json({ ok: true });
+  }
+
+  /** A bridge asks on the screen (a permission or a question) and waits for the answer. */
+  private async onAgentAsk(b: Record<string, unknown>): Promise<Response> {
+    const agent = this.state.agents[oneLine(b.id, 72)];
+    if (!agent) return json({ error: "unknown session" }, 404);
+    const kind = b.kind === "question" ? "question" : "permission";
+    const wait = Math.min(MAX_WAIT_S, Math.max(5, Number(b.wait ?? MAX_WAIT_S) || MAX_WAIT_S));
+    const questions = kind === "question" ? parseQuestions({ questions: b.questions }) : [];
+    const r = await this.ask(agent, kind, oneLine(b.tool, 40) || (kind === "question" ? "Question" : "Tool"), clip(b.summary, 200), oneLine(b.detail, 120), questions, wait, oneLine(b.key, 80));
+    return json(r);
+  }
+
+  /** A bridge's request was answered on the computer: take it off the screen. */
+  private async onAgentResolve(b: Record<string, unknown>): Promise<Response> {
+    const id = oneLine(b.id, 72);
+    const key = oneLine(b.key, 80);
+    const p = this.state.pending.find((x) => x.agentId === id && key && x.key === key);
+    if (!p) return json({ ok: false });
+    this.waiters.get(p.id)?.({ decision: "computer" });
+    const agent = this.state.agents[id];
+    if (agent?.state === "needs_you") {
+      this.setAgent(agent, "working", "Working");
+      await this.commit({ kind: "agent", id });
+    }
+    return json({ ok: true });
+  }
+
+  /** A bridge collects the messages you typed on the screen for its sessions (long poll). */
+  private async onAgentPoll(url: URL): Promise<Response> {
+    const ids = (url.searchParams.get("ids") ?? "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 50);
+    const wait = Math.min(50, Math.max(0, Number(url.searchParams.get("wait") ?? 25) || 0));
+    const now = Date.now();
+    for (const id of ids) {
+      const a = this.state.agents[id];
+      if (a) a.polledAt = now;
+    }
+    const take = () => {
+      const out: { id: string; text: string }[] = [];
+      for (const id of ids) for (const text of this.takeQueued(id)) out.push({ id, text });
+      return out;
+    };
+    let got = take();
+    if (!got.length && wait) {
+      const pid = shortId();
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(() => {
+          this.bridgePolls.delete(pid);
+          resolve();
+        }, wait * 1000);
+        this.bridgePolls.set(pid, (agentId) => {
+          if (!ids.includes(agentId)) return;
+          clearTimeout(t);
+          this.bridgePolls.delete(pid);
+          resolve();
+        });
+      });
+      got = take();
+    }
+    if (got.length) await this.commit({ kind: "chat", id: got[0].id });
+    return json({ messages: got });
+  }
+
   // ------------------------------------------------------------ starting sessions
 
   private machinesOnline(): Machine[] {
@@ -951,10 +1091,12 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     return empty();
   }
 
-  private async ask(agent: Agent, kind: Pending["kind"], tool: string, summary: string, detail: string, questions: Question[], wait: number): Promise<Resolution> {
+  /** Put a request on the screen and wait for an answer, a decision, or the timeout. */
+  private async ask(agent: Agent, kind: Pending["kind"], tool: string, summary: string, detail: string, questions: Question[], wait: number, key = ""): Promise<Resolution> {
     const now = Date.now();
     const p: Pending = {
       id: shortId(),
+      ...(key ? { key } : {}),
       kind,
       agentId: agent.id,
       source: agent.source,
@@ -971,7 +1113,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     this.state.pending.push(p);
     const previous = { state: agent.state, task: agent.task };
     this.setAgent(agent, "needs_you", kind === "question" ? "Has a question for you" : `Wants to use ${tool}`);
-    this.addFeed("alert", kind === "question" ? "Claude has a question" : "Permission needed", kind === "question" ? `${agent.name} · ${oneLine(summary, 60)}` : `${agent.name} wants to use ${tool}`, agent.id);
+    this.addFeed("alert", kind === "question" ? `${agentLabel(agent.source)} has a question` : "Permission needed", kind === "question" ? `${agent.name} · ${oneLine(summary, 60)}` : `${agent.name} wants to use ${tool}`, agent.id);
 
     // Register the waiter before committing: prune() drops requests nobody waits on.
     const answered = new Promise<Resolution>((resolve) => {
@@ -1135,6 +1277,10 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     if (match) ch.agentId = match.id;
   }
 
+  private bridgeLive(a: Agent): boolean {
+    return !!a.polledAt && Date.now() - a.polledAt < CHANNEL_LIVE_MS;
+  }
+
   private channelLive(agentId: string): boolean {
     const now = Date.now();
     for (const ch of this.channels.values()) if (ch.agentId === agentId && now - ch.lastPoll < CHANNEL_LIVE_MS) return true;
@@ -1242,7 +1388,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       const text = clip(msg.text, 600);
       const agent = this.state.agents[agentId];
       if (!agent || !text) return;
-      if (agent.source !== "claude-code") {
+      if (agent.source !== "claude-code" && !this.bridgeLive(agent)) {
         this.addFeed("info", "Can't message that one", `${agent.name} doesn't accept messages from Deskling`, agentId);
         await this.commit({ kind: "feed" });
         return;
@@ -1250,6 +1396,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       this.pushChat(agentId, "you", text, "queued");
       await this.commit({ kind: "chat", id: agentId });
       this.listeners.get(agentId)?.("message");
+      for (const wake of this.bridgePolls.values()) wake(agentId);
       for (const ch of this.channels.values()) if (ch.agentId === agentId) this.channelPolls.get(ch.id)?.();
       return;
     }
@@ -1476,8 +1623,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         ...a,
         lastMessage: clip(a.lastMessage, 280),
         lastPrompt: clip(a.lastPrompt, 160),
-        channel: this.channelLive(a.id),
-        canMessage: a.source === "claude-code",
+        channel: this.channelLive(a.id) || this.bridgeLive(a),
+        canMessage: a.source === "claude-code" || this.bridgeLive(a),
         chat: chatView(s.chats[a.id] ?? []),
         helpers: (a.helpers ?? []).map(({ id, name, task, done }) => ({ id, name, task, done })),
         helperNames: undefined,

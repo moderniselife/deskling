@@ -1,0 +1,194 @@
+// The Deskling plugin inside a real OpenCode, end to end: a mock model (no API keys, no network),
+// a fake relay, and `opencode serve`. Skips when OpenCode isn't installed.
+//   node hooks/opencode/test/opencode.test.mjs            (finds `opencode` on PATH)
+//   OPENCODE_BIN=/path/to/opencode node hooks/opencode/test/opencode.test.mjs
+import { spawn, execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { startMockModel } from "./mock-model.mjs";
+
+const here = dirname(fileURLToPath(import.meta.url));
+let failures = 0;
+const check = (name, cond, extra = "") => {
+  console.log(`${cond ? "PASS" : "FAIL"}  ${name}${extra ? "  " + extra : ""}`);
+  if (!cond) failures++;
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+let BIN = process.env.OPENCODE_BIN || "opencode";
+try {
+  execFileSync(BIN, ["--version"], { stdio: "ignore" });
+} catch {
+  console.log("SKIP  OpenCode isn't installed (set OPENCODE_BIN)");
+  process.exit(0);
+}
+
+// ---- a fake relay that records what the plugin sends
+const relay = { updates: [], asks: [], outbox: [], resolved: [], answer: { decision: "allow" } };
+const relayServer = createServer((req, res) => {
+  let body = "";
+  req.on("data", (d) => (body += d));
+  req.on("end", async () => {
+    const ok = req.headers.authorization === "Bearer test-token";
+    const send = (o) => {
+      res.writeHead(ok ? 200 : 401, { "content-type": "application/json" });
+      res.end(JSON.stringify(o));
+    };
+    if (!ok) return send({});
+    if (req.url === "/agent/update") {
+      relay.updates.push(JSON.parse(body));
+      return send({ ok: true });
+    }
+    if (req.url === "/agent/ask") {
+      relay.asks.push(JSON.parse(body));
+      return send(relay.answer);
+    }
+    if (req.url === "/agent/resolve") {
+      relay.resolved.push(JSON.parse(body));
+      return send({ ok: true });
+    }
+    if (req.url.startsWith("/agent/poll")) {
+      for (let i = 0; i < 10 && !relay.outbox.length; i++) await sleep(100);
+      const messages = relay.outbox.splice(0);
+      return send({ messages });
+    }
+    send({});
+  });
+});
+await new Promise((r) => relayServer.listen(0, "127.0.0.1", r));
+const RELAY = `http://127.0.0.1:${relayServer.address().port}`;
+
+// ---- OpenCode with its own config, data and project folders
+const model = await startMockModel();
+const T = mkdtempSync(join(tmpdir(), "deskling-oc-"));
+const cfg = join(T, "config", "opencode");
+mkdirSync(join(cfg, "plugins"), { recursive: true });
+copyFileSync(join(here, "..", "deskling.js"), join(cfg, "plugins", "deskling.js"));
+writeFileSync(
+  join(cfg, "opencode.json"),
+  JSON.stringify({
+    model: "mock/mock-coder",
+    small_model: "mock/mock-coder",
+    autoupdate: false,
+    share: "disabled",
+    permission: { bash: "ask" },
+    provider: { mock: { npm: "@ai-sdk/openai-compatible", name: "Mock", options: { baseURL: model.url, apiKey: "x" }, models: { "mock-coder": { name: "Mock coder", tool_call: true, reasoning: true } } } },
+  }),
+);
+const proj = join(T, "web-app");
+mkdirSync(proj);
+mkdirSync(join(T, "home"));
+const port = 30000 + Math.floor(Math.random() * 20000);
+const env = {
+  ...process.env,
+  HOME: join(T, "home"),
+  XDG_CONFIG_HOME: join(T, "config"),
+  XDG_DATA_HOME: join(T, "data"),
+  XDG_STATE_HOME: join(T, "state"),
+  XDG_CACHE_HOME: join(T, "cache"),
+  OPENCODE_DISABLE_AUTOUPDATE: "1",
+  OPENCODE_DISABLE_LSP_DOWNLOAD: "1",
+  OPENCODE_DISABLE_CLAUDE_CODE: "1",
+  DESKLING_URL: RELAY,
+  DESKLING_TOKEN: "test-token",
+  DESKLING_NAME: "test-mac",
+};
+let log = "";
+const oc = spawn(BIN, ["serve", "--port", String(port), "--hostname", "127.0.0.1"], { cwd: proj, env, stdio: ["ignore", "pipe", "pipe"] });
+oc.stdout.on("data", (d) => (log += d));
+oc.stderr.on("data", (d) => (log += d));
+const OC = `http://127.0.0.1:${port}`;
+const api = async (method, path, body) => {
+  const r = await fetch(OC + path, { signal: AbortSignal.timeout(20000), method, headers: { "content-type": "application/json", "x-opencode-directory": proj }, body: body ? JSON.stringify(body) : undefined });
+  const t = await r.text();
+  try {
+    return JSON.parse(t);
+  } catch {
+    return t;
+  }
+};
+const until = async (what, pred, ms = 30000) => {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    const v = await pred();
+    if (v) return v;
+    await sleep(200);
+  }
+  throw new Error("timed out waiting for " + what);
+};
+const lines = (sid) => {
+  const out = new Map();
+  for (const u of relay.updates) if (u.id === `oc-${sid}`) for (const l of u.lines || []) out.set(l.key, l);
+  return [...out.values()];
+};
+const last = (sid, f) => [...relay.updates].reverse().find((u) => u.id === `oc-${sid}` && u[f] !== undefined)?.[f];
+
+try {
+  await until("OpenCode to start", async () => (await fetch(OC + "/session?directory=" + encodeURIComponent(proj), { signal: AbortSignal.timeout(5000) }).catch(() => null))?.ok);
+  const session = await api("POST", `/session?directory=${encodeURIComponent(proj)}`, {});
+  const sid = session.id;
+  check("OpenCode makes a session", !!sid, JSON.stringify(session).slice(0, 200));
+  await until("the session to reach the relay", () => relay.updates.some((u) => u.id === `oc-${sid}`), 15000);
+  const first = relay.updates.find((u) => u.id === `oc-${sid}`);
+  check("the session shows up on the relay, named after its folder", first.source === "opencode" && first.name === "web-app" && first.host === "test-mac");
+
+  await api("POST", `/session/${sid}/prompt_async?directory=${encodeURIComponent(proj)}`, { parts: [{ type: "text", text: "please run echo hi" }] });
+  await until("a permission ask", () => relay.asks.length > 0, 30000);
+  check("its permission prompt is asked on the screen", relay.asks[0].kind === "permission" && relay.asks[0].tool === "Bash" && /echo hi/.test(relay.asks[0].summary), JSON.stringify(relay.asks[0]));
+  await until("the reply after the tool", () => lines(sid).some((l) => l.from === "agent" && /shell works/.test(l.text)), 30000);
+  const ls = lines(sid);
+  check("your prompt is in the chat", ls.some((l) => l.from === "you" && l.text === "please run echo hi"));
+  check("its thinking is in the chat", ls.some((l) => l.from === "thought" && /command run/.test(l.text)), JSON.stringify(ls.filter((l) => l.from === "thought")));
+  check("the tool step is in the chat", ls.some((l) => l.from === "tool" && l.text === "Say hi"), JSON.stringify(ls.filter((l) => l.from === "tool")));
+  check("allowing on the screen lets the command run", ls.some((l) => l.from === "agent" && /printed hi/.test(l.text)));
+  await until("done", () => last(sid, "state") === "done", 15000);
+  check("it's marked done when the turn ends", true);
+  check("the model is reported", last(sid, "model") === "mock/mock-coder", String(last(sid, "model")));
+  check("the context size is reported", last(sid, "context") > 0, String(last(sid, "context")));
+
+  // A message typed on the screen starts the next turn straight away.
+  relay.outbox.push({ id: `oc-${sid}`, text: "say hello" });
+  await until("the reply to the screen message", () => lines(sid).some((l) => l.from === "agent" && /local model\. say hello/.test(l.text)), 30000);
+  check("a message from the screen starts a turn", true);
+
+  // Denied on the screen: the command doesn't run.
+  relay.answer = { decision: "deny" };
+  const before = relay.asks.length;
+  await api("POST", `/session/${sid}/prompt_async?directory=${encodeURIComponent(proj)}`, { parts: [{ type: "text", text: "run it again" }] });
+  await until("the second ask", () => relay.asks.length > before, 30000);
+  await until("the turn to end", async () => (await api("GET", `/session/status?directory=${encodeURIComponent(proj)}`))[sid] === undefined || (await api("GET", `/session/status?directory=${encodeURIComponent(proj)}`))[sid]?.type === "idle", 30000);
+  await sleep(800);
+  const tools = lines(sid).filter((l) => l.from === "tool");
+  check("each tool step is its own line", tools.length === 2, JSON.stringify(tools));
+  check("denying on the screen stops the command", /failed/.test(tools[tools.length - 1]?.text), JSON.stringify(tools));
+
+  // Answered on the computer: the request comes off the screen.
+  relay.answer = {};
+  relay.resolved = [];
+  const before2 = relay.asks.length;
+  await api("POST", `/session/${sid}/prompt_async?directory=${encodeURIComponent(proj)}`, { parts: [{ type: "text", text: "run once more" }] });
+  await until("the third ask", () => relay.asks.length > before2, 30000);
+  const pending = await until("OpenCode's own prompt", async () => (await api("GET", `/permission?directory=${encodeURIComponent(proj)}`))?.[0], 10000);
+  await api("POST", `/permission/${pending.id}/reply?directory=${encodeURIComponent(proj)}`, { reply: "once" });
+  await until("the resolve", () => relay.resolved.some((r) => r.key === relay.asks[relay.asks.length - 1].key), 10000);
+  check("answering on the computer takes it off the screen", true);
+  await until("the turn to end", () => lines(sid).filter((l) => l.from === "agent" && /printed hi/.test(l.text)).length >= 2, 30000);
+
+  await api("DELETE", `/session/${sid}?directory=${encodeURIComponent(proj)}`);
+  await until("the end", () => relay.updates.some((u) => u.id === `oc-${sid}` && u.end), 10000);
+  check("deleting the session removes it from the screen", true);
+} catch (e) {
+  check(String(e.message || e), false);
+  console.log(log.split("\n").slice(-40).join("\n"));
+  console.log(JSON.stringify(relay.updates.slice(-8), null, 1).slice(0, 3000));
+} finally {
+  oc.kill();
+  model.close();
+  relayServer.close();
+  rmSync(T, { recursive: true, force: true });
+}
+console.log(failures ? `\n${failures} failed` : "\nall passed");
+process.exit(failures ? 1 : 0);

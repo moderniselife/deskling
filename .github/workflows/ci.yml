@@ -32,6 +32,8 @@ jobs:
       - name: Playwright with Chromium
         run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
         working-directory: tests/web
+      - name: OpenCode (for the plugin test)
+        run: npm install -g opencode-ai@1.19.4
       - name: Simulator dependencies (cached)
         uses: actions/cache@v4
         with:

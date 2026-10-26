@@ -1,7 +1,7 @@
 export type AgentState = "idle" | "working" | "waiting" | "needs_you" | "done";
 
 /** Which tool the session lives in, so the screen can badge it. */
-export type Source = "claude-code" | "cursor" | "codex" | "gemini" | "custom";
+export type Source = "claude-code" | "cursor" | "codex" | "gemini" | "opencode" | "custom";
 
 export interface Agent {
   id: string; // Claude Code session_id, Cursor conversation_id, or a custom id
@@ -21,6 +21,7 @@ export interface Agent {
   model?: string; // the model of its latest reply, e.g. "claude-opus-5-5"
   context?: number; // tokens in its context window as of its latest reply
   quotes?: Record<string, string>; // excerpts you replied to, by their file name
+  polledAt?: number; // a bridge (OpenCode…) is collecting messages for it right now: they arrive straight away
   helperNames?: string[]; // descriptions from Agent tool calls, waiting for their SubagentStart
 }
 
@@ -68,6 +69,8 @@ export interface Question {
 
 export interface Pending {
   id: string;
+  /** A bridge's own id for the request, so it can say when it was answered on the computer. */
+  key?: string;
   kind: "permission" | "question";
   agentId: string;
   source: Source;
@@ -86,6 +89,7 @@ export interface ChatLine {
   id: string;
   from: "you" | "agent" | "tool" | "thought"; // "tool" = a step it took, "thought" = a line of its thinking
   image?: string; // id of a picture in the chat (GET /img/<id>)
+  key?: string; // set by bridges: the same key again updates this line (text that's still streaming)
   quote?: string; // the bit of Claude's message you were replying to
   text: string;
   status: "queued" | "delivered" | "sent" | "typed"; // "sent" = an agent reply, "typed" = you, on the computer

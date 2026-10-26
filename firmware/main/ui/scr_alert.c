@@ -137,7 +137,7 @@ static lv_obj_t *fresh_body(void)
 
 static const char *who(void)
 {
-    return a.cur.source == DK_SRC_CURSOR ? "Cursor" : a.cur.source == DK_SRC_CLAUDE ? "Claude" : a.cur.name;
+    return a.cur.source == DK_SRC_CLAUDE ? "Claude" : a.cur.source == DK_SRC_CUSTOM ? a.cur.name : dk_source_label(a.cur.source);
 }
 
 static void build_permission(void)

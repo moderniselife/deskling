@@ -225,6 +225,44 @@ const rel = await held;
 check("typing on the computer releases it", rel.status === 204 || (await rel.text()) === "");
 ws.send(JSON.stringify({ type: "listen", agentId: "s-smoke", minutes: 0 }));
 
+// Bridges (OpenCode and others): report a session, stream a reply, ask, and collect screen messages.
+const agentPost = (path, body) => fetch(`${URL_BASE}${path}`, { method: "POST", headers: auth, body: JSON.stringify(body) });
+const base = { id: "oc-smoke", source: "opencode", name: "api", host: "test-mac", os: "mac" };
+await agentPost("/agent/update", { ...base, state: "working", task: "Working", model: "ollama/qwen3", lines: [{ key: "u1", from: "you", text: "fix the tests" }] });
+s = await waitFor((m) => m.agents.some((a) => a.id === "oc-smoke"));
+let oc = s.agents.find((a) => a.id === "oc-smoke");
+check("a bridged session shows up", oc.source === "opencode" && oc.state === "working" && oc.model === "ollama/qwen3");
+await agentPost("/agent/update", { ...base, lines: [{ key: "p1", from: "agent", text: "Looking at" }] });
+await agentPost("/agent/update", { ...base, lines: [{ key: "p1", from: "agent", text: "Looking at the failing test now." }, { key: "c1", from: "tool", text: "Reading app.test.ts" }] });
+s = await waitFor((m) => m.agents.find((a) => a.id === "oc-smoke")?.chat.some((c) => c.text === "Looking at the failing test now."));
+oc = s.agents.find((a) => a.id === "oc-smoke");
+check("streamed text grows in place", oc.chat.filter((c) => c.from === "agent").length === 1 && oc.chat.some((c) => c.from === "tool"));
+check("a bridge that isn't polling can't be messaged", oc.canMessage === false);
+const bridgeAsk = agentPost("/agent/ask", { id: "oc-smoke", kind: "permission", tool: "Bash", summary: "rm -rf dist", wait: 10 });
+s = await waitFor((m) => m.pending.some((p) => p.agentId === "oc-smoke"));
+ws.send(JSON.stringify({ type: "decision", id: s.pending.find((p) => p.agentId === "oc-smoke").id, decision: "deny" }));
+check("a bridge's permission is answered on the screen", (await (await bridgeAsk).json()).decision === "deny");
+const bridgeQ = agentPost("/agent/ask", { id: "oc-smoke", kind: "question", tool: "Question", summary: "Which?", questions: [{ question: "Which?", header: "", multiSelect: false, options: [{ label: "A" }, { label: "B" }] }], wait: 10 });
+s = await waitFor((m) => m.pending.some((p) => p.agentId === "oc-smoke" && p.kind === "question"));
+check("a bridge's question says who asks", s.feed.some((f) => f.title === "OpenCode has a question"));
+ws.send(JSON.stringify({ type: "answer", id: s.pending.find((p) => p.agentId === "oc-smoke").id, answers: { "Which?": "B" } }));
+check("a bridge's question gets the answer", (await (await bridgeQ).json()).answers?.["Which?"] === "B");
+const bridgePoll = fetch(`${URL_BASE}/agent/poll?ids=oc-smoke&wait=10`, { headers: auth }).then((r) => r.json());
+
+await new Promise((r) => setTimeout(r, 500));
+ws.send(JSON.stringify({ type: "message", agentId: "oc-smoke", text: "also update the docs" }));
+const polledMsgs = await bridgePoll;
+check("a polling bridge receives screen messages", polledMsgs.messages?.[0]?.text === "also update the docs", JSON.stringify(polledMsgs));
+await agentPost("/agent/update", { ...base, lines: [{ key: "u2", from: "you", text: "also update the docs" }] });
+await agentPost("/agent/update", { ...base, state: "done", task: "Finished" });
+s = await waitFor((m) => m.agents.find((a) => a.id === "oc-smoke")?.state === "done");
+oc = s.agents.find((a) => a.id === "oc-smoke");
+check("your screen message isn't shown twice when the agent echoes it", oc.chat.filter((c) => c.text === "also update the docs").length === 1);
+check("a bridged session finishing notifies", s.feed.some((f) => f.title === "OpenCode finished"));
+await agentPost("/agent/update", { id: "oc-smoke", end: true });
+s = await waitFor((m) => !m.agents.some((a) => a.id === "oc-smoke"));
+check("a bridge can end its session", true);
+
 await hook({ hook_event_name: "SessionEnd", reason: "other" });
 s = await waitFor((m) => !m.agents.some((a) => a.id === "s-smoke"));
 check("session end removes the agent", true);

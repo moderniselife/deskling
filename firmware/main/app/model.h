@@ -21,7 +21,7 @@ extern "C" {
 #define DK_MAX_OPTIONS 6
 
 typedef enum { DK_IDLE, DK_WORKING, DK_WAITING, DK_NEEDS_YOU, DK_DONE } dk_state_t;
-typedef enum { DK_SRC_CLAUDE, DK_SRC_CURSOR, DK_SRC_CODEX, DK_SRC_GEMINI, DK_SRC_CUSTOM } dk_source_t;
+typedef enum { DK_SRC_CLAUDE, DK_SRC_CURSOR, DK_SRC_CODEX, DK_SRC_GEMINI, DK_SRC_OPENCODE, DK_SRC_CUSTOM } dk_source_t;
 typedef enum { DK_FEED_INFO, DK_FEED_GOOD, DK_FEED_ALERT, DK_FEED_REMINDER } dk_level_t;
 typedef enum { DK_CHAT_QUEUED, DK_CHAT_DELIVERED, DK_CHAT_SENT, DK_CHAT_TYPED } dk_chat_status_t;
 

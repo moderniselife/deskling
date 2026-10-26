@@ -165,11 +165,11 @@ lv_obj_t *ui_source_badge(lv_obj_t *parent, dk_source_t src)
     lv_obj_set_style_pad_right(pill, 12, 0);
     lv_obj_set_style_pad_ver(pill, 5, 0);
     dk_row(pill, 8);
-    lv_obj_t *sq = dk_card(pill, src == DK_SRC_CURSOR ? DK_INK : (src == DK_SRC_CLAUDE ? lv_color_hex(0xF4C7AE) : DK_LILAC), 8);
+    lv_obj_t *sq = dk_card(pill, src == DK_SRC_CURSOR || src == DK_SRC_OPENCODE ? DK_INK : (src == DK_SRC_CLAUDE ? lv_color_hex(0xF4C7AE) : DK_LILAC), 8);
     lv_obj_set_size(sq, 26, 26);
     lv_obj_set_style_pad_all(sq, 0, 0);
-    const char *init = src == DK_SRC_CURSOR ? "Cu" : src == DK_SRC_CODEX ? "Cx" : src == DK_SRC_GEMINI ? "G" : src == DK_SRC_CUSTOM ? "A" : "C";
-    lv_obj_t *l = dk_label(sq, DK_FONT_XS, src == DK_SRC_CURSOR ? DK_GROUND : DK_INK, init);
+    const char *init = src == DK_SRC_CURSOR ? "Cu" : src == DK_SRC_CODEX ? "Cx" : src == DK_SRC_GEMINI ? "G" : src == DK_SRC_OPENCODE ? "Oc" : src == DK_SRC_CUSTOM ? "A" : "C";
+    lv_obj_t *l = dk_label(sq, DK_FONT_XS, src == DK_SRC_CURSOR || src == DK_SRC_OPENCODE ? DK_GROUND : DK_INK, init);
     lv_obj_center(l);
     dk_label(pill, DK_FONT_XS, DK_INK, dk_source_label(src));
     return pill;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Every automated check in the repo, in one go. Run from anywhere:
-#   scripts/test-all.sh            relay, hooks, runner, simulator (+ AddressSanitizer), pictures, web pages
+#   scripts/test-all.sh            relay, hooks, runner, OpenCode plugin, simulator (+ AddressSanitizer), pictures, web pages
 #   scripts/test-all.sh --quick    skip the slow AddressSanitizer simulator run
 #   scripts/test-all.sh --firmware also build the firmware for every board (needs ESP-IDF in the shell)
 #
@@ -76,6 +76,7 @@ firmware_all() {
 step relay relay
 step hooks node "$ROOT/hooks/test/hook.test.mjs"
 step runner node "$ROOT/hooks/runner/test/runner.test.mjs"
+step opencode node "$ROOT/hooks/opencode/test/opencode.test.mjs"
 step simulator sim
 [ $QUICK = 1 ] || step simulator-asan sim_asan
 step pictures pictures

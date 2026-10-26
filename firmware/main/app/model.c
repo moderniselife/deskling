@@ -58,6 +58,7 @@ static dk_source_t parse_source(const cJSON *o)
     if (str_is(o, "source", "cursor")) return DK_SRC_CURSOR;
     if (str_is(o, "source", "codex")) return DK_SRC_CODEX;
     if (str_is(o, "source", "gemini")) return DK_SRC_GEMINI;
+    if (str_is(o, "source", "opencode")) return DK_SRC_OPENCODE;
     if (str_is(o, "source", "custom")) return DK_SRC_CUSTOM;
     return DK_SRC_CLAUDE;
 }
@@ -364,6 +365,7 @@ const char *dk_source_label(dk_source_t s)
     case DK_SRC_CURSOR: return "Cursor";
     case DK_SRC_CODEX: return "Codex";
     case DK_SRC_GEMINI: return "Gemini";
+    case DK_SRC_OPENCODE: return "OpenCode";
     case DK_SRC_CUSTOM: return "Agent";
     default: return "Claude Code";
     }
