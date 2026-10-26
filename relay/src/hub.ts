@@ -503,7 +503,8 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         const open = this.state.pending.some((p) => p.agentId === sid);
         if (agent.state !== "working" && !open) this.setAgent(agent, "working", task);
         else if (agent.state === "working") agent.task = task;
-        if (tool !== "SendUserMessage") this.pushChat(sid, "tool", task, "sent");
+        // Helpers get their own "Started a helper" line, and messages to you are messages.
+        if (!["SendUserMessage", "Agent", "Task"].includes(tool)) this.pushChat(sid, "tool", task, "sent");
         await this.commitLive(sid);
         return empty();
       }
