@@ -20,6 +20,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "lwip/apps/netbiosns.h"
+#include "lwip/tcpip.h"
 #include "mdns.h"
 #include "model.h"
 #include "ota.h"
@@ -38,6 +40,22 @@ typedef struct {
 
 static QueueHandle_t s_cmds, s_outbox;
 static esp_netif_t *s_sta, *s_ap;
+static esp_timer_handle_t s_announce;
+
+static void netbios_start(void *arg)
+{
+    (void)arg;
+    netbiosns_init();
+    netbiosns_set_name("deskling");
+}
+
+/** Re-announce deskling.local now and then: phones and laptops that missed the first
+ *  announcement (or flushed their cache) pick it up again without needing a query. */
+static void mdns_announce(void *arg)
+{
+    (void)arg;
+    if (s_sta) mdns_netif_action(s_sta, MDNS_EVENT_ANNOUNCE_IP4);
+}
 static esp_websocket_client_handle_t s_ws;
 static esp_timer_handle_t s_wifi_retry;
 static uint32_t s_backoff_ms = 1000;
@@ -356,6 +374,10 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         ESP_LOGI(TAG, "Wi-Fi up: %s", s_ip);
         s_wifi_up = true;
         s_backoff_ms = 1000;
+        // mDNS also hooks GOT_IP itself; doing it here too makes sure the STA side is on and
+        // announced even if its handler raced ours.
+        mdns_netif_action(s_sta, MDNS_EVENT_ENABLE_IP4 | MDNS_EVENT_ANNOUNCE_IP4);
+        if (s_announce && !esp_timer_is_active(s_announce)) esp_timer_start_periodic(s_announce, 60 * 1000000ULL);
         if (s_trial.active) trial_finish(true, NULL);
         if (!settings_relay_configured()) ota_mark_healthy(); // nothing more to prove yet
         if (!s_services) {
@@ -443,7 +465,11 @@ void net_start(void)
         mdns_hostname_set("deskling");
         mdns_instance_name_set("Deskling");
         mdns_service_add("Deskling", "_http", "_tcp", 80, NULL, 0);
+        const esp_timer_create_args_t at = {.callback = mdns_announce, .name = "mdns_announce"};
+        esp_timer_create(&at, &s_announce);
     }
+    // Windows also finds http://deskling through NetBIOS, which doesn't depend on multicast.
+    tcpip_callback(netbios_start, NULL);
 
     if (settings_wifi_configured()) {
         sta_config(settings()->wifi_ssid, settings()->wifi_pass);
@@ -452,6 +478,9 @@ void net_start(void)
         set_conn(DK_CONN_SETUP, "Wi-Fi not set up yet");
     }
     ESP_ERROR_CHECK(esp_wifi_start());
+    // Deskling is always plugged in, so keep the radio awake: in power save it sleeps through
+    // most multicast, which is exactly what deskling.local lookups are.
+    esp_wifi_set_ps(WIFI_PS_NONE);
     if (!settings_wifi_configured()) start_hotspot();
     portal_start();
     net_push_info();
