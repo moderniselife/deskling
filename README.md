@@ -22,6 +22,7 @@ From across the room you can:
 | ![Permission](docs/media/permission.gif) | ![Question](docs/media/question.gif) |
 | ![Sessions](docs/media/sessions.png) | ![Chat](docs/media/chat.png) |
 | ![New session](docs/media/new-session.png) | ![Night clock](docs/media/night.gif) |
+| ![Quests](docs/media/quests.png) | ![Focus](docs/media/focus.png) |
 | ![Case](docs/media/case.png) | |
 
 ## How it fits together

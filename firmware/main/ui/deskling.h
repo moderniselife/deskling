@@ -19,3 +19,7 @@ void deskling_set_mood(lv_obj_t *d, dk_mood_t mood);
 dk_mood_t deskling_get_mood(lv_obj_t *d);
 /** Play the happy mood for `ms`, then go back to whatever mood was set before. */
 void deskling_celebrate(lv_obj_t *d, uint32_t ms);
+
+/** What Deskling wears: DK_OUTFIT_* bits from model.h (one hat at a time: crown, party hat, then
+    headphones). Cheap: the pieces are made once and shown or hidden. */
+void deskling_set_outfit(lv_obj_t *d, uint32_t outfit);

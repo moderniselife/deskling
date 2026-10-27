@@ -1,6 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { makeZip, type ZipEntry } from "./zip";
 import { makeVapid, sendPush, validEndpoint, type Vapid } from "./push";
+import { emptyQuests, endFocus, ensurePlan, merge, moved, questsView, reorder, setPlanned, snooze, startFocus } from "./quests/book";
+import { levelFor, UNLOCKS } from "./quests/game";
+import { keyUrlOk, provider, SOURCE_NAME } from "./quests/providers";
+import type { Credentials, Source as QuestSource, TaskStatus } from "./quests/types";
 import type {
   Helper,
   Machine,
@@ -39,6 +43,8 @@ const MAX_WAIT_S = 110;
 const HOLD_S = 85; // one round of a listening Stop hook (the hook asks again until listening ends)
 const HOLD_GAP_MS = 20_000; // between rounds the hook is gone this long at most; longer and it's not coming back
 const WAITING_TASK = "Waiting for your reply";
+const QUEST_SYNC_MS = 3 * 60 * 1000; // how often tickets are fetched from the services
+const QUEST_SOURCES: QuestSource[] = ["mojo", "linear", "jira"];
 const LISTEN_MAX_MIN = 120;
 const IMAGES_KEPT = 8; // pictures kept per session
 const MACHINE_GONE_MS = 3 * 60 * 1000; // a runner that hasn't checked in for this long is offline
@@ -445,6 +451,21 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     }
 
     if (req.method === "GET" && path === "/plugin.zip") return this.personalPlugin(url);
+
+    // ---- quests: connect Mojo Desk, Linear and Jira (keys go in, never come back out)
+    if (path === "/api/integrations") {
+      if (req.method === "GET") {
+        const q = this.quests();
+        return json({ tz: q.tz, connections: q.connections });
+      }
+      if (req.method === "POST") return this.connectIntegration((await readJson()) ?? {});
+      if (req.method === "DELETE") return this.disconnectIntegration(String(url.searchParams.get("kind") ?? ""));
+    }
+    if (req.method === "POST" && path === "/api/quests/sync") {
+      await this.syncQuests();
+      await this.commit({ kind: "quests" });
+      return json(questsView(this.quests(), Date.now()));
+    }
 
     if (req.method === "GET" && path === "/api/state") {
       this.prune();
@@ -1467,6 +1488,12 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       ws.send(this.snapshot({ kind: "hello" }, viewOf(ws)));
       return;
     }
+    if (msg.type === "ping") {
+      // The screen checks the relay is really there (a WebSocket can keep answering its own pings
+      // while the relay has lost it): answer from the relay itself.
+      ws.send(JSON.stringify({ type: "pong", now: Date.now() }));
+      return;
+    }
     if (msg.type === "view") {
       // The chat open on that screen: it gets that one in full, the rest as their latest lines.
       const view = oneLine(msg.agentId, 72);
@@ -1526,6 +1553,10 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     }
     if (type === "start") {
       await this.startSession(String(msg.target ?? ""), String(msg.project ?? ""), clip(msg.prompt, 2000), oneLine(msg.engine, 16), oneLine(msg.model, 60));
+      return;
+    }
+    if (typeof type === "string" && type.startsWith("quest_")) {
+      await this.onQuestMessage(type, msg);
       return;
     }
     if (type === "listen") {
@@ -1600,10 +1631,179 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     }
   }
 
+  // ------------------------------------------------------------- quests
+
+  private credsCache: Credentials | null = null;
+
+  private quests() {
+    return (this.state.quests ??= emptyQuests());
+  }
+
+  private async creds(): Promise<Credentials> {
+    return (this.credsCache ??= (await this.ctx.storage.get<Credentials>("integrations")) ?? {});
+  }
+
+  private async connectIntegration(b: Record<string, unknown>): Promise<Response> {
+    const kind = String(b.kind ?? "") as QuestSource;
+    if (!QUEST_SOURCES.includes(kind)) return json({ error: "kind must be mojo, linear or jira" }, 400);
+    const field = (k: string, max = 500) => (typeof b[k] === "string" ? (b[k] as string).trim().slice(0, max) : "");
+    const httpsUrl = (u: string) => (!u ? "" : /^https?:\/\//.test(u) ? u : `https://${u}`);
+    const creds = { ...(await this.creds()) };
+    if (kind === "mojo") {
+      if (!field("token")) return json({ error: "A Mojo Desk API token is needed (Settings, API tokens)." }, 400);
+      creds.mojo = { url: httpsUrl(field("url", 200)) || "https://desk.mojolayers.com", token: field("token") };
+    } else if (kind === "linear") {
+      if (!field("token")) return json({ error: "A Linear personal API key is needed (Settings, Security & access)." }, 400);
+      creds.linear = { token: field("token"), ...(field("url", 200) ? { url: httpsUrl(field("url", 200)) } : {}) };
+    } else {
+      if (!field("site", 200) || !field("email", 200) || !field("token")) return json({ error: "Jira needs your site (you.atlassian.net), your email and an API token." }, 400);
+      creds.jira = { site: httpsUrl(field("site", 200)), email: field("email", 200), token: field("token") };
+    }
+    const target = kind === "mojo" ? creds.mojo?.url : kind === "linear" ? creds.linear?.url : creds.jira?.site;
+    if (target && !keyUrlOk(target)) return json({ error: "Use an https:// address (plain http only for this machine)." }, 400);
+    const p = provider(kind, creds);
+    let account = "";
+    try {
+      account = await p!.whoami();
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : "Couldn't check the key." }, 400);
+    }
+    // Others may have connected or disconnected while we checked: change only this one.
+    const latest: Credentials = { ...(await this.creds()) };
+    (latest as Record<string, unknown>)[kind] = creds[kind];
+    await this.ctx.storage.put("integrations", latest);
+    this.credsCache = latest;
+    const q = this.quests();
+    if (field("tz", 64)) q.tz = field("tz", 64);
+    q.connections = [...q.connections.filter((c) => c.kind !== kind), { kind, account, error: "", syncedAt: 0, since: Date.now() }];
+    await this.syncQuests([kind]);
+    this.addFeed("good", `${SOURCE_NAME[kind]} connected`, `Your tickets are quests now · ${account}`, null);
+    await this.commit({ kind: "quests" });
+    return json({ ok: true, account, connections: q.connections });
+  }
+
+  private async disconnectIntegration(kind: string): Promise<Response> {
+    if (!QUEST_SOURCES.includes(kind as QuestSource)) return json({ error: "kind must be mojo, linear or jira" }, 400);
+    const creds: Credentials = { ...(await this.creds()) };
+    delete creds[kind as QuestSource];
+    await this.ctx.storage.put("integrations", creds);
+    this.credsCache = creds;
+    const q = this.quests();
+    q.connections = q.connections.filter((c) => c.kind !== kind);
+    q.tasks = q.tasks.filter((t) => t.src !== kind);
+    if (q.focus && !q.tasks.some((t) => t.id === q.focus!.id)) q.focus = null;
+    await this.commit({ kind: "quests" });
+    return json({ ok: true, connections: q.connections });
+  }
+
+  private questSyncing: Promise<void> | null = null;
+
+  /** Fetch every connected service's tickets (one sync at a time). */
+  private async syncQuests(only?: QuestSource[]): Promise<void> {
+    // A sync for a service just connected waits for one already running, then runs itself.
+    if (only) while (this.questSyncing) await this.questSyncing;
+    if (this.questSyncing) return this.questSyncing;
+    this.questSyncing = (async () => {
+      const q = this.quests();
+      const creds = await this.creds();
+      const levelBefore = levelFor(q.game.xp);
+      await Promise.all(
+        q.connections
+          .filter((c) => !only || only.includes(c.kind))
+          .map(async (c) => {
+            const p = provider(c.kind, creds);
+            if (!p) {
+              c.error = "The key for this is missing. Connect it again.";
+              return;
+            }
+            const key = JSON.stringify(creds[c.kind]);
+            try {
+              const tasks = await p.list();
+              // Disconnected (or connected with another key) while we fetched: drop this answer.
+              const now = await this.creds();
+              if (!q.connections.includes(c) || JSON.stringify(now[c.kind]) !== key) return;
+              merge(q, c.kind, tasks, Date.now(), !c.syncedAt, c.since ?? 0);
+              c.error = "";
+              c.syncedAt = Date.now();
+            } catch (e) {
+              c.error = e instanceof Error ? e.message.slice(0, 200) : "Sync failed.";
+            }
+          }),
+      );
+      q.syncAt = Date.now() + QUEST_SYNC_MS;
+      this.questNews(levelBefore);
+    })().finally(() => {
+      this.questSyncing = null;
+    });
+    return this.questSyncing;
+  }
+
+  /** Level-ups go to the feed too (and so to notifications). */
+  private questNews(levelBefore: number): void {
+    const q = this.quests();
+    const now = levelFor(q.game.xp);
+    if (now <= levelBefore) return;
+    const unlocked = UNLOCKS.filter((u) => u.level > levelBefore && u.level <= now).map((u) => u.label);
+    this.addFeed("good", `Level ${now}!`, unlocked.length ? `Deskling unlocked ${unlocked.join(" and ")}` : `${q.game.xp} XP so far`, null);
+  }
+
+  private async finishFocus(now: number): Promise<void> {
+    const q = this.quests();
+    const levelBefore = levelFor(q.game.xp);
+    const { minutes, task, startedAt } = endFocus(q, now);
+    this.questNews(levelBefore);
+    if (!task || minutes < 5) return;
+    const p = provider(task.src, await this.creds());
+    if (p?.logTime) {
+      try {
+        await p.logTime(task, minutes, startedAt);
+      } catch (e) {
+        this.addFeed("alert", `Couldn't log time on ${task.key}`, e instanceof Error ? e.message.slice(0, 120) : "", null);
+      }
+    }
+  }
+
+  private async onQuestMessage(type: string, msg: Record<string, unknown>): Promise<void> {
+    const q = this.quests();
+    const now = Date.now();
+    const id = oneLine(msg.id, 120);
+    const levelBefore = levelFor(q.game.xp);
+    if (type === "quest_status") {
+      const to = String(msg.to ?? "") as TaskStatus;
+      const t = q.tasks.find((x) => x.id === id);
+      if (!t || !["todo", "progress", "review", "done"].includes(to) || t.status === to) return;
+      const p = provider(t.src, await this.creds());
+      if (!p) return;
+      try {
+        await p.setStatus(t, to);
+        moved(q, id, to, now);
+        if (to === "done" && q.focus?.id === id) await this.finishFocus(now);
+      } catch (e) {
+        this.addFeed("alert", `Couldn't move ${t.key}`, e instanceof Error ? e.message.slice(0, 140) : SOURCE_NAME[t.src], null);
+      }
+    } else if (type === "quest_plan") setPlanned(q, id, msg.on !== false, now);
+    else if (type === "quest_move") reorder(q, id, Math.max(-20, Math.min(20, Number(msg.by) || 0)), now);
+    else if (type === "quest_snooze") snooze(q, id, now);
+    else if (type === "quest_focus") {
+      if (msg.stop) await this.finishFocus(now);
+      else {
+        if (q.focus) await this.finishFocus(now);
+        startFocus(q, id, Number(msg.minutes) || 25, now);
+      }
+    } else if (type === "quest_sync") await this.syncQuests();
+    else return;
+    ensurePlan(q, now);
+    this.questNews(levelBefore);
+    await this.commit({ kind: "quests", id });
+  }
+
   // ------------------------------------------------------------- alarms
 
   async alarm(): Promise<void> {
     const now = Date.now();
+    const q = this.state.quests;
+    if (q?.focus && q.focus.endsAt <= now) await this.finishFocus(now);
+    if (q?.connections.length && q.syncAt <= now) await this.syncQuests();
     let fired: Reminder | null = null;
     for (const r of this.state.reminders) {
       if (!r.done && !r.notified && r.due !== null && r.due <= now) {
@@ -1612,13 +1812,15 @@ export class Hub extends DurableObject<Record<string, unknown>> {
         fired = r;
       }
     }
-    await this.commit(fired ? { kind: "reminder_due", id: fired.id } : { kind: "reminder" });
+    await this.commit(fired ? { kind: "reminder_due", id: fired.id } : q?.connections.length ? { kind: "quests" } : { kind: "reminder" });
   }
 
   private async scheduleAlarm(): Promise<void> {
-    const next = this.state.reminders
+    let next = this.state.reminders
       .filter((r) => !r.done && !r.notified && r.due !== null)
       .reduce<number | null>((min, r) => (min === null || (r.due as number) < min ? (r.due as number) : min), null);
+    const q = this.state.quests;
+    for (const t of [q?.focus?.endsAt, q?.connections.length ? q.syncAt : undefined]) if (t && (next === null || t < next)) next = t;
     if (next === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(Math.max(next, Date.now() + 100));
   }
@@ -1860,6 +2062,7 @@ export class Hub extends DurableObject<Record<string, unknown>> {
       pending: s.pending,
       focus: s.focus,
       pingWhenDone: s.pingWhenDone,
+      ...(s.quests && (s.quests.connections.length || s.quests.game.xp) ? { quests: questsView(s.quests, Date.now()) } : {}),
       // Where the screen can start a new session.
       targets: [
         ...(s.routine ? [{ id: "cloud", name: s.routine.name || "Cloud", kind: "cloud", projects: [] as string[] }] : []),

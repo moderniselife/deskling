@@ -11,7 +11,7 @@
 #include "theme.h"
 #include "ui.h"
 
-typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_BOOT, SCR_CALIB, SCR_UPDATE, SCR_NEW, SCR_COUNT } scr_id_t;
+typedef enum { SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_ALERT, SCR_NIGHT, SCR_SETUP, SCR_SETTINGS, SCR_BOOT, SCR_CALIB, SCR_UPDATE, SCR_NEW, SCR_QUESTS, SCR_COUNT } scr_id_t;
 
 /** The latest snapshot (never NULL after ui_init). */
 extern const dk_model_t *g_model;
@@ -127,3 +127,16 @@ int ui_image_state(const char *id);
 /* New session (scr_new.c) */
 lv_obj_t *scr_new_create(void);
 void scr_new_refresh(void);
+/** Start the next New session with this prompt typed in (Hand to Claude from a quest). */
+void scr_new_prefill(const char *prompt);
+
+/* Quests (scr_quests.c) */
+lv_obj_t *scr_quests_create(void);
+void scr_quests_refresh(void);
+/** Back closes an open quest's actions first. */
+bool scr_quests_back(void);
+
+/* Game celebrations (celebrate.c): plays each new event once, over any screen. */
+void ui_celebrate_model(const dk_quests_t *q);
+void ui_celebrate_resume(void);
+uint32_t ui_celebrations_played(void);

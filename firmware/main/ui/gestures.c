@@ -44,7 +44,7 @@ static bool allowed(gkind_t k)
 {
     scr_id_t s = ui_current();
     if (s == SCR_ALERT || s == SCR_SETUP || s == SCR_BOOT || s == SCR_CALIB || s == SCR_UPDATE) return false;
-    if (k == G_LEFT) return s == SCR_CHAT || s == SCR_NEW || s == SCR_SESSIONS || s == SCR_SETTINGS || s == SCR_NIGHT;
+    if (k == G_LEFT) return s == SCR_CHAT || s == SCR_NEW || s == SCR_SESSIONS || s == SCR_SETTINGS || s == SCR_NIGHT || s == SCR_QUESTS;
     return true;
 }
 

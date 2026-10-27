@@ -1,0 +1,469 @@
+{
+ "type": "snapshot",
+ "now": "@0",
+ "cause": {
+  "kind": "quests"
+ },
+ "focus": false,
+ "pingWhenDone": false,
+ "agents": [
+  {
+   "id": "s-docs",
+   "source": "claude-code",
+   "name": "docs-site",
+   "host": "Windows PC",
+   "os": "windows",
+   "state": "needs_you",
+   "task": "Wants to use Bash",
+   "lastPrompt": "Update the getting started guide and deploy it",
+   "lastMessage": "",
+   "since": "@-60",
+   "updated": "@-60",
+   "channel": false,
+   "canMessage": true,
+   "chat": []
+  },
+  {
+   "id": "s-web",
+   "source": "claude-code",
+   "name": "web-app",
+   "host": "MacBook",
+   "os": "mac",
+   "state": "working",
+   "task": "Refactoring the login flow",
+   "lastPrompt": "Refactor the login flow and add a forgot-password link",
+   "lastMessage": "Done. The link sits under the password field and goes to /reset. Want me to write the email template too?",
+   "since": "@-720",
+   "updated": "@-30",
+   "channel": true,
+   "canMessage": true,
+   "chat": [
+    {
+     "id": "c1",
+     "from": "you",
+     "text": "Can you also add a forgot-password link?",
+     "status": "delivered",
+     "ts": "@-400"
+    },
+    {
+     "id": "c2",
+     "from": "agent",
+     "text": "Done. The link sits under the password field and goes to /reset. Want me to write the email template too?",
+     "status": "sent",
+     "ts": "@-300"
+    }
+   ]
+  },
+  {
+   "id": "cursor-1",
+   "source": "cursor",
+   "name": "styles",
+   "host": "Windows PC",
+   "os": "windows",
+   "state": "working",
+   "task": "Fixing the navbar on mobile",
+   "lastPrompt": "fix the navbar on mobile",
+   "lastMessage": "",
+   "since": "@-180",
+   "updated": "@-20",
+   "channel": false,
+   "canMessage": false,
+   "chat": []
+  },
+  {
+   "id": "s-api",
+   "source": "claude-code",
+   "name": "api-server",
+   "host": "MacBook",
+   "os": "mac",
+   "state": "waiting",
+   "task": "Waiting for your reply",
+   "lastPrompt": "Run the migration",
+   "lastMessage": "Migration finished: 3 tables changed, all tests pass. What next?",
+   "since": "@-1500",
+   "updated": "@-1500",
+   "channel": false,
+   "canMessage": true,
+   "chat": []
+  },
+  {
+   "id": "nightly",
+   "source": "custom",
+   "name": "Nightly digest",
+   "host": "Cloud",
+   "os": "cloud",
+   "state": "done",
+   "task": "Digest sent: 12 new emails, 2 need replies",
+   "lastPrompt": "",
+   "lastMessage": "",
+   "since": "@-3600",
+   "updated": "@-3600",
+   "channel": false,
+   "canMessage": false,
+   "chat": []
+  }
+ ],
+ "feed": [
+  {
+   "id": "f5",
+   "level": "alert",
+   "title": "Permission needed",
+   "body": "docs-site wants to use Bash",
+   "agentId": "s-docs",
+   "ts": "@-60"
+  },
+  {
+   "id": "f4",
+   "level": "good",
+   "title": "Tests passed",
+   "body": "web-app \u00b7 all green",
+   "agentId": "s-web",
+   "ts": "@-480"
+  },
+  {
+   "id": "f3",
+   "level": "info",
+   "title": "Daily digest is ready",
+   "body": "Scheduled task \u00b7 Cloud",
+   "agentId": null,
+   "ts": "@-3600"
+  },
+  {
+   "id": "f2",
+   "level": "good",
+   "title": "Deploy finished",
+   "body": "web-app \u00b7 preview is live",
+   "agentId": null,
+   "ts": "@-7200"
+  }
+ ],
+ "reminders": [
+  {
+   "id": "r1",
+   "title": "Review the PR on web-app",
+   "due": "@1800",
+   "from": "Claude",
+   "done": false
+  },
+  {
+   "id": "r2",
+   "title": "Stand up and stretch",
+   "due": "@4200",
+   "from": "you",
+   "done": false
+  },
+  {
+   "id": "r3",
+   "title": "Reply to the hosting email",
+   "due": "@12000",
+   "from": "scheduled task",
+   "done": false
+  },
+  {
+   "id": "r4",
+   "title": "Take your vitamins",
+   "due": "@-18000",
+   "from": "you",
+   "done": true
+  }
+ ],
+ "pending": [],
+ "targets": [
+  {
+   "id": "cloud",
+   "name": "Cloud",
+   "kind": "cloud",
+   "projects": []
+  },
+  {
+   "id": "MacBook",
+   "name": "MacBook",
+   "kind": "computer",
+   "projects": [
+    "deskling",
+    "web-app",
+    "mojostyles",
+    "api-server"
+   ],
+   "engines": [
+    {
+     "id": "claude",
+     "name": "Claude Code",
+     "models": []
+    },
+    {
+     "id": "opencode",
+     "name": "OpenCode",
+     "models": [
+      {
+       "id": "ollama/qwen3-coder:30b",
+       "name": "Qwen3 Coder 30B"
+      },
+      {
+       "id": "lmstudio/devstral-small",
+       "name": "Devstral Small"
+      },
+      {
+       "id": "opencode/big-pickle",
+       "name": "Big Pickle"
+      }
+     ]
+    },
+    {
+     "id": "gemini",
+     "name": "Gemini CLI",
+     "models": []
+    }
+   ]
+  }
+ ],
+ "quests": {
+  "connected": [
+   {
+    "kind": "mojo",
+    "account": "Joe",
+    "error": "",
+    "syncedAt": "@-60"
+   },
+   {
+    "kind": "linear",
+    "account": "Joe",
+    "error": "",
+    "syncedAt": "@-60"
+   },
+   {
+    "kind": "jira",
+    "account": "Joe S",
+    "error": "Jira didn't accept the key (HTTP 401). Check it and connect again.",
+    "syncedAt": "@-60"
+   }
+  ],
+  "date": "2026-10-27",
+  "tasks": [
+   {
+    "id": "mojo:DKL-30",
+    "src": "mojo",
+    "key": "DKL-30",
+    "title": "Integrations: Jira, Mojo Desk, Linear as quests",
+    "status": "done",
+    "prio": 2,
+    "est": 960,
+    "due": "",
+    "overdue": false,
+    "planned": true,
+    "snoozed": false,
+    "boss": true,
+    "hp": 900,
+    "hpMax": 960,
+    "url": "https://desk.mojolayers.com/issues/DKL-30"
+   },
+   {
+    "id": "mojo:DKL-31",
+    "src": "mojo",
+    "key": "DKL-31",
+    "title": "Feed rows overflow into each other",
+    "status": "done",
+    "prio": 3,
+    "est": 60,
+    "due": "",
+    "overdue": false,
+    "planned": true,
+    "snoozed": false,
+    "boss": false,
+    "hp": 0,
+    "hpMax": 0,
+    "url": "https://desk.mojolayers.com/issues/DKL-31"
+   },
+   {
+    "id": "linear:lin-1",
+    "src": "linear",
+    "key": "ENG-12",
+    "title": "Rate limit the login endpoint",
+    "status": "done",
+    "prio": 3,
+    "est": 120,
+    "due": "",
+    "overdue": false,
+    "planned": true,
+    "snoozed": false,
+    "boss": false,
+    "hp": 0,
+    "hpMax": 0,
+    "url": "https://desk.mojolayers.com/issues/ENG-12"
+   },
+   {
+    "id": "jira:ABC-7",
+    "src": "jira",
+    "key": "ABC-7",
+    "title": "Checkout button misaligned on Safari",
+    "status": "done",
+    "prio": 4,
+    "est": 90,
+    "due": "2026-10-24",
+    "overdue": true,
+    "planned": true,
+    "snoozed": false,
+    "boss": true,
+    "hp": 60,
+    "hpMax": 90,
+    "url": "https://desk.mojolayers.com/issues/ABC-7"
+   },
+   {
+    "id": "mojo:DKL-26",
+    "src": "mojo",
+    "key": "DKL-26",
+    "title": "Wait for my reply: clearer name",
+    "status": "review",
+    "prio": 2,
+    "est": 120,
+    "due": "",
+    "overdue": false,
+    "planned": false,
+    "snoozed": false,
+    "boss": false,
+    "hp": 0,
+    "hpMax": 0,
+    "url": "https://desk.mojolayers.com/issues/DKL-26"
+   },
+   {
+    "id": "linear:lin-2",
+    "src": "linear",
+    "key": "ENG-15",
+    "title": "Write the onboarding email",
+    "status": "todo",
+    "prio": 1,
+    "est": 30,
+    "due": "",
+    "overdue": false,
+    "planned": false,
+    "snoozed": false,
+    "boss": false,
+    "hp": 0,
+    "hpMax": 0,
+    "url": "https://desk.mojolayers.com/issues/ENG-15"
+   },
+   {
+    "id": "jira:ABC-9",
+    "src": "jira",
+    "key": "ABC-9",
+    "title": "Upgrade the payment SDK",
+    "status": "todo",
+    "prio": 2,
+    "est": 240,
+    "due": "",
+    "overdue": false,
+    "planned": false,
+    "snoozed": true,
+    "boss": true,
+    "hp": 240,
+    "hpMax": 240,
+    "url": "https://desk.mojolayers.com/issues/ABC-9"
+   }
+  ],
+  "planDone": 4,
+  "planTotal": 4,
+  "focus": null,
+  "game": {
+   "xp": 1010,
+   "level": 5,
+   "levelXp": 10,
+   "nextXp": 500,
+   "streak": 5,
+   "best": 7,
+   "combo": 3,
+   "comboUntil": "@1800",
+   "todayXp": 210,
+   "todayDone": 2,
+   "cleared": true,
+   "bosses": 3,
+   "focusMin": 310,
+   "unlocks": [
+    "scarf",
+    "glasses",
+    "headphones"
+   ],
+   "week": [
+    {
+     "id": "finish",
+     "label": "Finish 10 quests",
+     "goal": 10,
+     "have": 6,
+     "done": false
+    },
+    {
+     "id": "boss",
+     "label": "Defeat 2 bosses",
+     "goal": 2,
+     "have": 2,
+     "done": true
+    },
+    {
+     "id": "focus",
+     "label": "Focus for 5 hours",
+     "goal": 300,
+     "have": 180,
+     "done": false
+    },
+    {
+     "id": "clear",
+     "label": "Clear 3 days",
+     "goal": 3,
+     "have": 1,
+     "done": false
+    }
+   ],
+   "events": [
+    {
+     "seq": 40,
+     "kind": "xp",
+     "amount": 44,
+     "label": "DKL-31",
+     "ts": "@-600"
+    },
+    {
+     "seq": 41,
+     "kind": "boss",
+     "amount": 178,
+     "label": "Defeated ABC-7",
+     "ts": "@0"
+    },
+    {
+     "seq": 42,
+     "kind": "combo",
+     "amount": 3,
+     "label": "Combo x3",
+     "ts": "@0"
+    },
+    {
+     "seq": 43,
+     "kind": "level",
+     "amount": 5,
+     "label": "Level 5",
+     "ts": "@0"
+    },
+    {
+     "seq": 44,
+     "kind": "unlock",
+     "amount": 5,
+     "label": "Unlocked focus headphones",
+     "ts": "@0"
+    },
+    {
+     "seq": 45,
+     "kind": "cleared",
+     "amount": 100,
+     "label": "Day cleared",
+     "ts": "@0"
+    },
+    {
+     "seq": 46,
+     "kind": "challenge",
+     "amount": 150,
+     "label": "Finish 10 quests",
+     "ts": "@0"
+    }
+   ],
+   "seq": 46
+  }
+ }
+}

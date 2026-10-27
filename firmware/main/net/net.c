@@ -65,6 +65,9 @@ static uint32_t s_backoff_ms = 1000;
 static bool s_wifi_up, s_ws_up, s_services, s_ap_on;
 static int64_t s_ws_since;   // when the relay client was (re)started or last connected, µs
 static int64_t s_ws_last_rx; // anything heard from the relay (a pong counts), µs
+static int64_t s_ws_last_app; // a message from the relay itself (snapshot, answer, pong), µs
+static int64_t s_ws_pinged;   // when we last asked the relay for a pong, µs
+static bool s_pong_seen;      // this relay answers our pings (older ones don't)
 static uint32_t s_ws_restarts;
 static char s_ip[16], s_code[8], s_ap_ssid[33];
 static ui_wifi_ap_t s_scan[16];
@@ -220,6 +223,10 @@ void net_push_info(void)
 
 static void deliver_snapshot(const char *json, size_t len)
 {
+    if (len > 14 && strncmp(json, "{\"type\":\"pong\"", 15) == 0) {
+        s_pong_seen = true; // the relay is really there; nothing for the screen
+        return;
+    }
     // Never wait for the screen here: the screen picks it up on its own task (ui/inbox.c).
     inbox_push(json, len);
 }
@@ -235,7 +242,8 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     case WEBSOCKET_EVENT_CONNECTED:
         ESP_LOGI(TAG, "relay connected");
         s_ws_up = true;
-        s_ws_since = s_ws_last_rx = esp_timer_get_time();
+        s_ws_since = s_ws_last_rx = s_ws_last_app = s_ws_pinged = esp_timer_get_time();
+        s_pong_seen = false;
         s_relay_err[0] = '\0';
         set_conn(DK_CONN_ONLINE, NULL);
         dk_resend_view(); // the relay starts every connection with full chats until told otherwise
@@ -250,6 +258,7 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         break;
     case WEBSOCKET_EVENT_DATA: {
         s_ws_last_rx = esp_timer_get_time();
+        if (ev->op_code == 0x1 || ev->op_code == 0x0) s_ws_last_app = s_ws_last_rx;
         if (ev->op_code != 0x1 && ev->op_code != 0x0) break;
         size_t total = ev->payload_len ? (size_t)ev->payload_len : (size_t)ev->data_len;
         if (total + 1 > s_rx_cap) {
@@ -534,7 +543,14 @@ static void net_task(void *arg)
             if (!s_wifi_up || !s_ws || !settings_relay_configured()) break;
             int64_t now = esp_timer_get_time();
             bool stuck = !s_ws_up && now - s_ws_since > 45LL * 1000000;
-            bool silent = s_ws_up && now - s_ws_last_rx > 75LL * 1000000; // pings go every 20 s
+            // Ask the relay itself every 30 s. A link can keep answering WebSocket pings while the
+            // relay has lost it (then no updates arrive until a restart), so once the relay has
+            // answered one of ours, its silence is what counts.
+            if (s_ws_up && now - s_ws_pinged > 30LL * 1000000) {
+                s_ws_pinged = now;
+                net_send("{\"type\":\"ping\"}");
+            }
+            bool silent = s_ws_up && (s_pong_seen ? now - s_ws_last_app > 75LL * 1000000 : now - s_ws_last_rx > 75LL * 1000000);
             if (stuck || silent) {
                 ESP_LOGW(TAG, "relay connection %s: starting it again", stuck ? "stuck" : "silent");
                 s_ws_restarts++;

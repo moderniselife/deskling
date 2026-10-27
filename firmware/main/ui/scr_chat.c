@@ -792,6 +792,7 @@ static void rebuild_head(const dk_agent_t *a)
     } else {
         lv_obj_add_flag(c.listen, LV_OBJ_FLAG_HIDDEN);
     }
+    deskling_set_outfit(c.face, g_model->quests.outfits);
     dk_mood_t mood = ui_mood_for(a);
     if (deskling_get_mood(c.face) != mood && deskling_get_mood(c.face) != DK_MOOD_HAPPY) deskling_set_mood(c.face, mood);
 

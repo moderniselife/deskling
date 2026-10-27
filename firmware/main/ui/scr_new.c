@@ -357,6 +357,11 @@ lv_obj_t *scr_new_create(void)
     return n.scr;
 }
 
+void scr_new_prefill(const char *prompt)
+{
+    if (n.ta) lv_textarea_set_text(n.ta, prompt ? prompt : "");
+}
+
 void scr_new_refresh(void)
 {
     if (n.scr) build();

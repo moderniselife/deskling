@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "anim.h"
+#include "model.h"
 #include "theme.h"
 
 // All geometry is in the 200-unit space of the design's SVG, scaled to `s`.
@@ -17,6 +18,8 @@ typedef struct {
     lv_obj_t *smile, *ooh, *snore, *grin, *flat, *brow[2];
     lv_obj_t *think, *think_dot[3], *sweat, *qbubble, *z[3], *spark[3];
     int32_t eye_h;
+    lv_obj_t *wear[5]; // scarf, glasses, headphones, party hat, crown (made the first time they're worn)
+    uint32_t outfit;
 } face_t;
 
 static face_t *get(lv_obj_t *d)
@@ -412,4 +415,80 @@ void deskling_celebrate(lv_obj_t *d, uint32_t ms)
     if (f->timer) lv_timer_delete(f->timer);
     f->timer = lv_timer_create(celebrate_done, ms, f);
     lv_timer_set_repeat_count(f->timer, 1);
+}
+
+// ------------------------------------------------------------- outfits
+
+static lv_obj_t *piece(face_t *f)
+{
+    lv_obj_t *g = dk_box(f->body_g);
+    lv_obj_set_size(g, f->s, f->s);
+    lv_obj_remove_flag(g, LV_OBJ_FLAG_CLICKABLE);
+    return g;
+}
+
+static lv_obj_t *rect(lv_obj_t *p, face_t *f, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, lv_color_t c)
+{
+    lv_obj_t *o = dk_box(p);
+    lv_obj_set_pos(o, K(x), K(y));
+    lv_obj_set_size(o, K(w), K(h));
+    lv_obj_set_style_radius(o, r < 0 ? LV_RADIUS_CIRCLE : K(r), 0);
+    lv_obj_set_style_bg_color(o, c, 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+    return o;
+}
+
+static lv_obj_t *make_wear(face_t *f, int i)
+{
+    lv_obj_t *g = piece(f);
+    switch (i) {
+    case 0: // scarf: a coral band round the bottom, with a tail
+        rect(g, f, 34, 150, 132, 20, -1, DK_ALERT_RING);
+        rect(g, f, 128, 156, 20, 34, 8, DK_ALERT_RING);
+        rect(g, f, 128, 176, 20, 6, 3, DK_PEACH);
+        break;
+    case 1: // glasses: two round frames and a bridge
+        for (int k = 0; k < 2; k++) {
+            lv_obj_t *o = rect(g, f, k ? 106 : 54, 78, 40, 40, -1, DK_INK);
+            lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(o, K(5), 0);
+            lv_obj_set_style_border_color(o, DK_INK, 0);
+        }
+        rect(g, f, 92, 94, 16, 5, 2, DK_INK);
+        break;
+    case 2: { // headphones: a band over the top and two purple ear pads
+        lv_obj_t *a = arc(g, K(100), K(104), K(186), K(10), 200, 340);
+        lv_obj_set_style_arc_color(a, DK_INK, LV_PART_INDICATOR);
+        rect(g, f, 4, 84, 26, 48, 12, DK_PURPLE);
+        rect(g, f, 170, 84, 26, 48, 12, DK_PURPLE);
+        break;
+    }
+    case 3: // party hat: stacked stripes narrowing to a pom-pom
+        rect(g, f, 72, 22, 56, 13, 6, DK_PEACH);
+        rect(g, f, 81, 13, 38, 12, 6, DK_BUTTER);
+        rect(g, f, 89, 5, 22, 11, 5, DK_PEACH);
+        rect(g, f, 94, 0, 12, 12, -1, DK_SPARK);
+        break;
+    default: // crown: a gold band, three points and a jewel
+        rect(g, f, 64, 16, 72, 16, 4, DK_SPARK);
+        for (int k = 0; k < 3; k++) rect(g, f, 66 + k * 27, 2, 14, 18, 4, DK_SPARK);
+        rect(g, f, 94, 20, 12, 8, -1, DK_ALERT_INK);
+        break;
+    }
+    return g;
+}
+
+void deskling_set_outfit(lv_obj_t *d, uint32_t outfit)
+{
+    face_t *f = get(d);
+    if (!f || f->outfit == outfit) return;
+    f->outfit = outfit;
+    // One hat at a time: the best one wins.
+    uint32_t head = outfit & DK_OUTFIT_CROWN ? DK_OUTFIT_CROWN : outfit & DK_OUTFIT_PARTY_HAT ? DK_OUTFIT_PARTY_HAT : outfit & DK_OUTFIT_HEADPHONES;
+    uint32_t want = (outfit & (DK_OUTFIT_SCARF | DK_OUTFIT_GLASSES)) | head;
+    for (int i = 0; i < 5; i++) {
+        bool on = want & (1u << i);
+        if (on && !f->wear[i]) f->wear[i] = make_wear(f, i);
+        if (f->wear[i]) show(f->wear[i], on);
+    }
 }

@@ -126,6 +126,67 @@ check("and it shows as done", await page.getByText("Done · Finished").first().i
 await ccHook({ hook_event_name: "SessionEnd", reason: "other" });
 await page.getByText("api-server", { exact: true }).first().click();
 
+// Quests: connect a (fake) Mojo Desk in the page, then play.
+{
+  const { createServer } = await import("node:http");
+  const issues = [
+    { key: "WEB-1", title: "Ship the pricing page", status: "todo", priority: "urgent", estDevMin: 120, project: "web" },
+    { key: "WEB-2", title: "Fix the footer links", status: "progress", priority: "medium", estDevMin: 30, project: "web" },
+  ];
+  const fake = createServer((req, res) => {
+    let b = "";
+    req.on("data", (c) => (b += c));
+    req.on("end", () => {
+      const send = (code, d) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(d)); };
+      if (req.headers.authorization !== "Bearer fake-desk-key") return send(401, {});
+      if (req.url.startsWith("/api/v1/me/queue")) return send(200, { progress: issues.filter((i) => i.status === "progress"), todo: issues.filter((i) => i.status === "todo"), waiting: [], done: issues.filter((i) => i.status === "done") });
+      if (req.url === "/api/v1/me") return send(200, { name: "Joe" });
+      const m = /^\/api\/v1\/issues\/([^/]+)$/.exec(req.url);
+      if (m && req.method === "PATCH") { const i = issues.find((x) => x.key === m[1]); Object.assign(i, JSON.parse(b)); return send(200, i); }
+      send(404, {});
+    });
+  });
+  await new Promise((r) => fake.listen(0, "127.0.0.1", r));
+  const deskUrl = `http://127.0.0.1:${fake.address().port}`;
+  await page.getByRole("button", { name: /^Quests/ }).first().click();
+  await page.getByText("Turn your tickets into quests").waitFor({ timeout: 5000 });
+  check("Quests says how to start when nothing is connected", true);
+  await page.getByRole("button", { name: "Connect a service" }).click();
+  await page.locator("#q-url").fill(deskUrl);
+  await page.locator("#q-token").fill("wrong-key");
+  await page.locator("#qsave").click();
+  await page.locator("#qerr:not(.hide)").waitFor({ timeout: 8000 });
+  check("a wrong key says so in the dialog", /didn't accept the key/.test(await page.locator("#qerr").innerText()));
+  await page.locator("#q-token").fill("fake-desk-key");
+  await page.locator("#qsave").click();
+  await page.getByText("Disconnect").waitFor({ timeout: 8000 });
+  check("the key is accepted and shows who it belongs to", await page.locator("#qconns").innerText().then((t) => t.includes("Joe")));
+  check("the key isn't left in the form", (await page.locator("#q-token").inputValue()) === "");
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByText("Ship the pricing page").waitFor({ timeout: 8000 });
+  check("tickets show as today's quests, the urgent one as a boss", (await page.locator(".quest.boss").count()) === 1 && (await page.getByText("Fix the footer links").isVisible()));
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-quests.png` });
+  await page.getByRole("button", { name: "Finish WEB-1", exact: true }).click();
+  await page.getByRole("button", { name: "Tap again to finish WEB-1", exact: true }).click();
+  await page.locator(".cele .pop.boss").waitFor({ timeout: 8000 });
+  check("finishing a boss celebrates", await page.getByText("Boss defeated!").isVisible());
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-boss.png` });
+  check("and moved the ticket in Mojo Desk", issues[0].status === "done");
+  await page.locator(".cele").click();
+  await page.locator(".cele").waitFor({ state: "detached", timeout: 8000 }).catch(() => {});
+  await page.getByText("Fix the footer links").click();
+  await page.getByRole("button", { name: "Focus 25 min" }).click();
+  await page.locator(".focusbar").waitFor({ timeout: 5000 });
+  check("a focus block shows its countdown", /^2[45]:\d\d$/.test(await page.locator("#ftime").innerText()));
+  await page.locator(".focusbar").getByRole("button", { name: "Stop" }).click();
+  await page.locator(".focusbar").waitFor({ state: "detached", timeout: 5000 });
+  check("and stops", true);
+  await fetch(URL_BASE + "/api/integrations?kind=mojo", { method: "DELETE", headers: auth });
+  fake.close();
+  await page.getByText("api-server", { exact: true }).first().click();
+  await page.getByText("I'll allow 5 attempts").waitFor({ timeout: 5000 });
+}
+
 // Phone: the list first, then the chat with a way back.
 const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
 await phone.addInitScript((t) => localStorage.setItem("deskling-token", t), TOKEN);

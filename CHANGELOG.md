@@ -6,6 +6,8 @@ Being tested as the `v0.3.2-testN` builds. Install the newest one over the air o
 
 ### On the screen
 
+- **Quests.** Your tickets from Mojo Desk, Linear and Jira as a game: today's quests, bosses with HP, a focus timer, XP, levels, streaks, combos, weekly challenges and outfits Deskling unlocks, with celebrations for each. Start, finish, plan, focus or hand a ticket to Claude from the board or `/app`; changes go back to the service. See [docs/quests.md](docs/quests.md).
+
 - **Whole conversations.** A session's chat shows your messages, Claude's replies as it writes them, its thinking, each step it takes, its helpers, pictures and the passages you quoted. It scrolls, and keeps your place when new lines arrive.
 - **Formatted replies.** Replies show their Markdown: headings, bold, `code`, lists, quotes, code blocks, tables and links.
 - **Show all.** A long reply has a Show all button that opens the whole of it in a reader.

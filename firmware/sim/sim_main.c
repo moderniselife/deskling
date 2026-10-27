@@ -663,6 +663,13 @@ static int bench(void)
         SCENE("scroll the chat up and down", 1600, (drag(800, 150, 800, 560, 500, 0), run(300), drag(800, 560, 800, 150, 500, 0), run(300)));
     }
     SCENE("chat -> sessions (slide)", 700, (ui_go(SCR_SESSIONS), run(700)));
+    SCENE("sessions -> quests (fade)", 600, (apply("quests"), ui_go(SCR_QUESTS), run(600)));
+    SCENE("quests, idle 2 s", 2000, run(2000));
+    SCENE("scroll the quests", 1600, (drag(820, 600, 820, 200, 500, 0), run(300), drag(820, 200, 820, 600, 500, 0), run(300)));
+    SCENE("boss, combo, level-up celebrations", 9000, (apply("quests_win"), run(9000)));
+    SCENE("focus timer, idle 3 s", 3000, (apply("quests_focus"), run(3000)));
+    if (getenv("DK_AREAS")) { puts("  focus idle, one frame:"); s_dump_areas = 1; run(17); s_dump_areas = 0; }
+    SCENE("quests -> home (fade)", 600, (ui_go(SCR_HOME), run(600)));
     SCENE("sessions -> home (fade)", 600, (ui_go(SCR_HOME), run(600)));
     SCENE("pull down notifications", 900, (drag(640, 4, 640, 620, 300, 200), run(500)));
     SCENE("notifications open, idle", 1500, run(1500));
@@ -1355,6 +1362,105 @@ int main(int argc, char **argv)
     tap("Stop waiting");
     run(200);
     expect_sent("\"type\":\"listen\",\"agentId\":\"s-web\",\"minutes\":0");
+
+    /* Quests: tickets from Mojo Desk, Linear and Jira as a game. */
+    {
+        uint32_t played0 = ui_celebrations_played();
+        apply("quests");
+        ui_go(SCR_HOME);
+        run(900);
+        expect_text("Lv 4");
+        shot("19_home_quests_chip");
+        check(ui_celebrations_played() == played0, "old news isn't replayed when the score is first seen");
+        tap("Lv 4");
+        run(800);
+        expect_screen(SCR_QUESTS, "quests");
+        shot("20_quests");
+        expect_text("Today's quests");
+        expect_text("1 of 4 done");
+        expect_text("Level 4");
+        expect_text("5 day streak");
+        expect_text("Combo x2");
+        expect_text("MORE QUESTS");
+        expect_one_line("quests");
+        tap("Rate limit the login endpoint");
+        run(500);
+        shot("20b_quest_open");
+        expect_text("Focus 25 min");
+        tap("Start");
+        run(200);
+        expect_sent("\"type\":\"quest_status\",\"id\":\"linear:lin-1\",\"to\":\"progress\"");
+        tap("Hand to Claude");
+        run(600);
+        expect_screen(SCR_NEW, "new session, from a quest");
+        {
+            lv_obj_t *ta = find_class(lv_screen_active(), &lv_textarea_class);
+            check(ta && strncmp(lv_textarea_get_text(ta), "Work on ENG-12 (Linear)", 23) == 0, "Hand to Claude starts a session with the ticket");
+            if (ta) lv_textarea_set_text(ta, "");
+        }
+        ui_go(SCR_QUESTS);
+        run(700);
+        {
+            // The first quest's check (the last thing on its top row): once arms it...
+            lv_obj_t *t = find_label(lv_screen_active(), "Integrations");
+            lv_obj_t *row = t ? lv_obj_get_parent(lv_obj_get_parent(t)) : NULL;
+            tap_obj(row ? lv_obj_get_child(row, -1) : NULL, "the quest's check");
+        }
+        run(200);
+        expect_text("Tap: done");
+        s_last_sent[0] = 0;
+        tap("Tap: done"); // ...twice finishes it
+        run(200);
+        expect_sent("\"type\":\"quest_status\",\"id\":\"mojo:DKL-30\",\"to\":\"done\"");
+        tap("Add " LV_SYMBOL_PLUS);
+        run(200);
+        expect_sent("\"type\":\"quest_plan\"");
+
+        // A boss falls, a combo, and a level-up with an unlock: they play one after another.
+        apply("quests_win");
+        run(500);
+        shot("21_boss_defeated");
+        expect_text("Boss defeated!");
+        run(2400);
+        shot("21b_combo");
+        run(1900);
+        shot("22_level_up");
+        expect_text("Level 5!");
+        expect_text("Unlocked focus headphones");
+        run(3600);
+        check(ui_celebrations_played() - played0 >= 3, "the boss, the combo and the level-up all play");
+        shot("22b_quests_after");
+
+        apply("quests_focus");
+        run(800);
+        shot("23_focus");
+        expect_text("Focusing on");
+        expect_text("Boss HP");
+        tap("Stop focusing");
+        run(200);
+        expect_sent("\"type\":\"quest_focus\",\"stop\":true");
+
+        apply("quests_cleared");
+        run(600);
+        shot("24_day_cleared");
+        expect_text("Day cleared!");
+        run(3200);
+        shot("24b_challenge");
+        expect_text("Weekly challenge complete");
+        run(2600);
+
+        apply("quests_error");
+        run(500);
+        expect_text("Jira didn't accept the key");
+        shot("25_quests_error");
+        apply("quests_empty");
+        run(500);
+        expect_text("Turn your tickets into quests");
+        shot("26_quests_empty");
+        check(ui_back() && ui_current() == SCR_QUESTS, "back first closes the open quest's actions");
+        check(ui_back() && ui_current() == SCR_HOME, "then goes home");
+        run(400);
+    }
 
     // OpenCode: its own badge, model and helpers, and its permission prompts.
     apply("opencode");

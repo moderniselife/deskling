@@ -39,6 +39,7 @@ typedef enum {
     DK_CAUSE_REMINDER_DUE,
     DK_CAUSE_REMINDER_DONE,
     DK_CAUSE_FOCUS,
+    DK_CAUSE_QUESTS,
 } dk_cause_t;
 
 typedef struct {
@@ -165,6 +166,70 @@ typedef struct {
     int engines_n;
 } dk_target_t;
 
+/* ---- Quests: your tickets from Mojo Desk, Linear and Jira, and the game around them. */
+#define DK_MAX_QUESTS 30
+#define DK_MAX_GAME_EVENTS 8
+
+typedef enum { DK_QSRC_MOJO, DK_QSRC_LINEAR, DK_QSRC_JIRA } dk_qsrc_t;
+typedef enum { DK_Q_TODO, DK_Q_PROGRESS, DK_Q_REVIEW, DK_Q_DONE } dk_qstatus_t;
+typedef enum { DK_EV_XP, DK_EV_LEVEL, DK_EV_COMBO, DK_EV_BOSS, DK_EV_CLEARED, DK_EV_CHALLENGE, DK_EV_UNLOCK, DK_EV_STREAK, DK_EV_FOCUS } dk_event_kind_t;
+
+/* Unlocked Deskling outfits (bits). */
+#define DK_OUTFIT_SCARF (1u << 0)
+#define DK_OUTFIT_GLASSES (1u << 1)
+#define DK_OUTFIT_HEADPHONES (1u << 2)
+#define DK_OUTFIT_PARTY_HAT (1u << 3)
+#define DK_OUTFIT_CROWN (1u << 4)
+
+typedef struct {
+    char id[56];
+    dk_qsrc_t src;
+    char key[24];
+    char title[124];
+    dk_qstatus_t status;
+    uint8_t prio; // 0 none … 4 urgent
+    uint16_t est; // minutes
+    char due[12];
+    bool overdue, planned, snoozed, boss;
+    uint16_t hp, hp_max;
+    char url[160];
+} dk_quest_t;
+
+typedef struct {
+    dk_event_kind_t kind;
+    int32_t amount;
+    char label[48];
+    uint32_t seq;
+} dk_game_event_t;
+
+typedef struct {
+    char label[32];
+    int32_t goal, have;
+    bool done;
+} dk_challenge_t;
+
+typedef struct {
+    bool on;            // there's something to show (a service connected, or a score)
+    uint8_t connected;  // bits: 1 << dk_qsrc_t
+    uint8_t failing;    // ...whose last sync failed
+    char error[96];     // the first failure's reason
+    dk_quest_t tasks[DK_MAX_QUESTS]; // today's quests first (in plan order), then the rest
+    int task_n;
+    int plan_done, plan_total;
+    char focus_id[56]; // a focus block on this quest ("" = none)
+    int64_t focus_started, focus_ends;
+    int focus_minutes;
+    int32_t xp, level, level_xp, next_xp, streak, best, combo, today_xp, today_done, bosses, focus_min;
+    int64_t combo_until;
+    bool cleared;
+    uint32_t outfits; // DK_OUTFIT_* unlocked
+    dk_challenge_t week[4];
+    int week_n;
+    dk_game_event_t events[DK_MAX_GAME_EVENTS];
+    int event_n;
+    uint32_t seq;
+} dk_quests_t;
+
 typedef struct {
     int64_t now; // relay clock at snapshot time (ms)
     dk_cause_t cause;
@@ -181,6 +246,7 @@ typedef struct {
     bool ping_when_done;
     dk_target_t targets[DK_MAX_TARGETS];
     int targets_n;
+    dk_quests_t quests;
 } dk_model_t;
 
 /** Parse a relay snapshot. Returns false if it isn't a snapshot (out is untouched then). */
@@ -214,6 +280,16 @@ void dk_resend_view(void);
 /* Ask for the whole of a long reply, or the steps behind an "N earlier steps" line. The answer
    arrives as a "detail" message (dk_detail_parse). */
 void dk_send_detail(const char *agent_id, const char *line_id);
+
+/* Quests. */
+void dk_send_quest_status(const char *id, dk_qstatus_t to);
+void dk_send_quest_plan(const char *id, bool on);
+void dk_send_quest_move(const char *id, int by);
+void dk_send_quest_snooze(const char *id);
+void dk_send_quest_focus(const char *id, int minutes); // minutes 0 = stop the current block
+void dk_send_quest_sync(void);
+const char *dk_qsrc_label(dk_qsrc_t s);
+const dk_quest_t *dk_quest_find(const dk_model_t *m, const char *id);
 
 typedef struct {
     bool thought;

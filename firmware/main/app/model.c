@@ -72,12 +72,126 @@ static dk_cause_t parse_cause(const cJSON *c)
         {"agent", DK_CAUSE_AGENT}, {"feed", DK_CAUSE_FEED}, {"permission", DK_CAUSE_PERMISSION},
         {"question", DK_CAUSE_QUESTION}, {"permission_closed", DK_CAUSE_PERMISSION_CLOSED}, {"done", DK_CAUSE_DONE},
         {"ping", DK_CAUSE_PING}, {"chat", DK_CAUSE_CHAT}, {"reminder", DK_CAUSE_REMINDER},
-        {"reminder_due", DK_CAUSE_REMINDER_DUE}, {"reminder_done", DK_CAUSE_REMINDER_DONE}, {"focus", DK_CAUSE_FOCUS},
+        {"reminder_due", DK_CAUSE_REMINDER_DUE}, {"reminder_done", DK_CAUSE_REMINDER_DONE}, {"focus", DK_CAUSE_FOCUS}, {"quests", DK_CAUSE_QUESTS},
     };
     for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); i++) {
         if (str_is(c, "kind", map[i].name)) return map[i].cause;
     }
     return DK_CAUSE_HELLO;
+}
+
+static int src_of(const cJSON *o, const char *key)
+{
+    return str_is(o, key, "linear") ? DK_QSRC_LINEAR : str_is(o, key, "jira") ? DK_QSRC_JIRA : str_is(o, key, "mojo") ? DK_QSRC_MOJO : -1;
+}
+
+static void parse_quests(const cJSON *q, dk_quests_t *out)
+{
+    if (!cJSON_IsObject(q)) return;
+    out->on = true;
+    const cJSON *it;
+    cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(q, "connected"))
+    {
+        int s = src_of(it, "kind");
+        if (s < 0) continue;
+        out->connected |= (uint8_t)(1u << s);
+        const cJSON *err = cJSON_GetObjectItemCaseSensitive(it, "error");
+        if (cJSON_IsString(err) && err->valuestring[0]) {
+            out->failing |= (uint8_t)(1u << s);
+            if (!out->error[0]) copy_str(out->error, sizeof(out->error), it, "error");
+        }
+    }
+    cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(q, "tasks"))
+    {
+        if (out->task_n >= DK_MAX_QUESTS) break;
+        dk_quest_t *t = &out->tasks[out->task_n++];
+        copy_str(t->id, sizeof(t->id), it, "id");
+        int s = src_of(it, "src");
+        t->src = s < 0 ? DK_QSRC_MOJO : (dk_qsrc_t)s;
+        copy_str(t->key, sizeof(t->key), it, "key");
+        copy_str(t->title, sizeof(t->title), it, "title");
+        t->status = str_is(it, "status", "progress") ? DK_Q_PROGRESS : str_is(it, "status", "review") ? DK_Q_REVIEW : str_is(it, "status", "done") ? DK_Q_DONE : DK_Q_TODO;
+        int64_t p = get_i64(it, "prio");
+        t->prio = (uint8_t)(p < 0 ? 0 : p > 4 ? 4 : p);
+        int64_t est = get_i64(it, "est");
+        t->est = (uint16_t)(est < 0 ? 0 : est > 60000 ? 60000 : est);
+        copy_str(t->due, sizeof(t->due), it, "due");
+        t->overdue = get_bool(it, "overdue");
+        t->planned = get_bool(it, "planned");
+        t->snoozed = get_bool(it, "snoozed");
+        t->boss = get_bool(it, "boss");
+        int64_t hp = get_i64(it, "hp"), hm = get_i64(it, "hpMax");
+        t->hp_max = (uint16_t)(hm < 0 ? 0 : hm > 60000 ? 60000 : hm);
+        t->hp = (uint16_t)(hp < 0 ? 0 : hp > t->hp_max ? t->hp_max : hp);
+        copy_str(t->url, sizeof(t->url), it, "url");
+    }
+    out->plan_done = (int)get_i64(q, "planDone");
+    out->plan_total = (int)get_i64(q, "planTotal");
+    const cJSON *f = cJSON_GetObjectItemCaseSensitive(q, "focus");
+    if (cJSON_IsObject(f)) {
+        copy_str(out->focus_id, sizeof(out->focus_id), f, "id");
+        out->focus_started = get_i64(f, "startedAt");
+        out->focus_ends = get_i64(f, "endsAt");
+        out->focus_minutes = (int)get_i64(f, "minutes");
+    }
+    const cJSON *g = cJSON_GetObjectItemCaseSensitive(q, "game");
+    if (!cJSON_IsObject(g)) return;
+    out->xp = (int32_t)get_i64(g, "xp");
+    out->level = (int32_t)get_i64(g, "level");
+    if (out->level < 1) out->level = 1;
+    out->level_xp = (int32_t)get_i64(g, "levelXp");
+    out->next_xp = (int32_t)get_i64(g, "nextXp");
+    out->streak = (int32_t)get_i64(g, "streak");
+    out->best = (int32_t)get_i64(g, "best");
+    out->combo = (int32_t)get_i64(g, "combo");
+    out->combo_until = get_i64(g, "comboUntil");
+    out->today_xp = (int32_t)get_i64(g, "todayXp");
+    out->today_done = (int32_t)get_i64(g, "todayDone");
+    out->cleared = get_bool(g, "cleared");
+    out->bosses = (int32_t)get_i64(g, "bosses");
+    out->focus_min = (int32_t)get_i64(g, "focusMin");
+    out->seq = (uint32_t)get_i64(g, "seq");
+    static const char *outfit_ids[] = {"scarf", "glasses", "headphones", "party-hat", "crown"};
+    cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(g, "unlocks"))
+    {
+        for (int i = 0; i < 5; i++)
+            if (cJSON_IsString(it) && strcmp(it->valuestring, outfit_ids[i]) == 0) out->outfits |= 1u << i;
+    }
+    cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(g, "week"))
+    {
+        if (out->week_n >= 4) break;
+        dk_challenge_t *c = &out->week[out->week_n++];
+        copy_str(c->label, sizeof(c->label), it, "label");
+        c->goal = (int32_t)get_i64(it, "goal");
+        c->have = (int32_t)get_i64(it, "have");
+        c->done = get_bool(it, "done");
+    }
+    static const char *kinds[] = {"xp", "level", "combo", "boss", "cleared", "challenge", "unlock", "streak", "focus"};
+    cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(g, "events"))
+    {
+        if (out->event_n >= DK_MAX_GAME_EVENTS) break;
+        int k = -1;
+        for (int i = 0; i < 9; i++)
+            if (str_is(it, "kind", kinds[i])) k = i;
+        if (k < 0) continue;
+        dk_game_event_t *e = &out->events[out->event_n++];
+        e->kind = (dk_event_kind_t)k;
+        e->amount = (int32_t)get_i64(it, "amount");
+        copy_str(e->label, sizeof(e->label), it, "label");
+        e->seq = (uint32_t)get_i64(it, "seq");
+    }
+}
+
+const char *dk_qsrc_label(dk_qsrc_t s)
+{
+    return s == DK_QSRC_LINEAR ? "Linear" : s == DK_QSRC_JIRA ? "Jira" : "Mojo Desk";
+}
+
+const dk_quest_t *dk_quest_find(const dk_model_t *m, const char *id)
+{
+    for (int i = 0; m && id && i < m->quests.task_n; i++)
+        if (strcmp(m->quests.tasks[i].id, id) == 0) return &m->quests.tasks[i];
+    return NULL;
 }
 
 bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
@@ -184,6 +298,8 @@ bool dk_model_parse(const char *json, size_t len, dk_model_t *out)
             }
         }
     }
+
+    parse_quests(cJSON_GetObjectItemCaseSensitive(root, "quests"), &out->quests);
 
     cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "feed"))
     {
@@ -397,6 +513,58 @@ void dk_send_detail(const char *agent_id, const char *line_id)
     cJSON_AddStringToObject(o, "type", "detail");
     cJSON_AddStringToObject(o, "agentId", agent_id ? agent_id : "");
     cJSON_AddStringToObject(o, "lineId", line_id ? line_id : "");
+    send_obj(o);
+}
+
+static void send_quest(const char *type, const char *id)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", type);
+    if (id) cJSON_AddStringToObject(o, "id", id);
+    send_obj(o);
+}
+
+void dk_send_quest_status(const char *id, dk_qstatus_t to)
+{
+    static const char *names[] = {"todo", "progress", "review", "done"};
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "quest_status");
+    cJSON_AddStringToObject(o, "id", id ? id : "");
+    cJSON_AddStringToObject(o, "to", names[to]);
+    send_obj(o);
+}
+
+void dk_send_quest_plan(const char *id, bool on)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "quest_plan");
+    cJSON_AddStringToObject(o, "id", id ? id : "");
+    cJSON_AddBoolToObject(o, "on", on);
+    send_obj(o);
+}
+
+void dk_send_quest_move(const char *id, int by)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "quest_move");
+    cJSON_AddStringToObject(o, "id", id ? id : "");
+    cJSON_AddNumberToObject(o, "by", by);
+    send_obj(o);
+}
+
+void dk_send_quest_snooze(const char *id) { send_quest("quest_snooze", id ? id : ""); }
+void dk_send_quest_sync(void) { send_quest("quest_sync", NULL); }
+
+void dk_send_quest_focus(const char *id, int minutes)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "quest_focus");
+    if (minutes > 0) {
+        cJSON_AddStringToObject(o, "id", id ? id : "");
+        cJSON_AddNumberToObject(o, "minutes", minutes);
+    } else {
+        cJSON_AddBoolToObject(o, "stop", true);
+    }
     send_obj(o);
 }
 

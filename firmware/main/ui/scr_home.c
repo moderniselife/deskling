@@ -13,9 +13,34 @@ static struct {
     lv_obj_t *rem_list, *rem_count;
     lv_obj_t *feed_list;
     lv_obj_t *focus_btn;
+    lv_obj_t *brand, *quest_chip, *quest_label;
     char last_feed_top[16];
     bool cheering;
 } h;
+
+static void open_quests(lv_event_t *e)
+{
+    (void)e;
+    ui_go(SCR_QUESTS);
+}
+
+/* The quests chip on Deskling's card: level and today's progress (tap for the Quests screen). */
+static void build_quest_chip(void)
+{
+    const dk_quests_t *Q = &g_model->quests;
+    if (!Q->on) {
+        lv_obj_add_flag(h.quest_chip, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(h.brand, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_obj_add_flag(h.brand, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(h.quest_chip, LV_OBJ_FLAG_HIDDEN);
+    char t[48];
+    if (Q->plan_total) snprintf(t, sizeof(t), "Lv %d  ·  %d/%d quests", (int)Q->level, Q->plan_done, Q->plan_total);
+    else snprintf(t, sizeof(t), "Lv %d  ·  Quests", (int)Q->level);
+    dk_set_text(h.quest_label, t);
+    deskling_set_outfit(h.face, Q->outfits);
+}
 
 static void open_sessions(lv_event_t *e)
 {
@@ -90,7 +115,22 @@ lv_obj_t *scr_home_create(void)
     lv_obj_set_width(top, lv_pct(100));
     dk_row(top, 8);
     lv_obj_set_flex_align(top, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    dk_label(top, DK_FONT_L, DK_INK, "deskling");
+    h.brand = dk_label(top, DK_FONT_L, DK_INK, "deskling");
+    h.quest_chip = lv_button_create(top);
+    lv_obj_remove_style_all(h.quest_chip);
+    lv_obj_set_style_bg_color(h.quest_chip, DK_INK, 0);
+    lv_obj_set_style_bg_opa(h.quest_chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(h.quest_chip, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_pad_hor(h.quest_chip, 14, 0);
+    lv_obj_set_style_pad_ver(h.quest_chip, 8, 0);
+    lv_obj_set_style_min_height(h.quest_chip, 44, 0);
+    dk_row(h.quest_chip, 8);
+    lv_obj_set_flex_align(h.quest_chip, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    dk_label(h.quest_chip, &lv_font_montserrat_20, DK_SPARK, LV_SYMBOL_CHARGE);
+    h.quest_label = dk_label(h.quest_chip, DK_FONT_XS, DK_GROUND, "Quests");
+    lv_obj_add_event_cb(h.quest_chip, open_quests, LV_EVENT_CLICKED, NULL);
+    dk_press_style(h.quest_chip);
+    lv_obj_add_flag(h.quest_chip, LV_OBJ_FLAG_HIDDEN);
     h.status_pill = dk_card(top, DK_CARD, LV_RADIUS_CIRCLE);
     lv_obj_set_style_pad_hor(h.status_pill, 14, 0);
     lv_obj_set_style_pad_ver(h.status_pill, 6, 0);
@@ -495,6 +535,7 @@ void scr_home_refresh(dk_cause_t cause, const char *cause_id)
     (void)cause_id;
     if (!h.scr) return;
     build_companion(cause);
+    build_quest_chip();
     build_agents();
     build_reminders();
     build_feed();

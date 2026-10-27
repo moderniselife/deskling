@@ -149,6 +149,74 @@ textarea { flex: 1; font: inherit; color: var(--ink); background: var(--ground);
 .quick button { white-space: nowrap; font-size: 14px; padding: 4px 14px; min-height: 36px; border-width: 2px; }
 .nochat { margin: auto; text-align: center; color: var(--muted); padding: 24px; }
 
+/* quests */
+.qcard { margin: 4px 4px 10px; padding: 14px 16px; border-radius: 24px; background: var(--tint-lilac); cursor: pointer; display: grid; gap: 6px; border: 0; text-align: left; color: var(--ink); width: calc(100% - 8px); font: inherit; }
+.qcard .lv { font-weight: 900; font-size: 20px; }
+.xpbar { height: 10px; border-radius: 99px; background: var(--sunk); overflow: hidden; }
+.qcard .xpbar, .quest.boss .xpbar { background: var(--card); }
+.xpbar i { display: block; height: 100%; border-radius: 99px; background: var(--purple); transition: width .7s cubic-bezier(.2,.9,.3,1.2); }
+.qview { overflow-y: auto; padding: 18px 20px 28px; display: grid; gap: 14px; align-content: start; }
+.qhead { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.qhead h1 { margin: 0; font-size: 28px; font-weight: 900; }
+.qstats { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 4px 12px; font-size: 14px; font-weight: 800; background: var(--sunk); }
+.chip.flame::before { content: ""; width: 10px; height: 14px; border-radius: 6px 6px 6px 6px; background: #E8806A; animation: pulse 1.4s ease-in-out infinite; }
+.chip.combo { background: var(--butter); color: #7A5A12; }
+.segs { display: flex; gap: 6px; }
+.segs i { width: 28px; height: 10px; border-radius: 99px; background: var(--sunk); transition: background .4s; }
+.segs i.on { background: var(--good); }
+.quest { background: var(--card); border-radius: 24px; padding: 14px 16px; box-shadow: var(--shadow); display: grid; gap: 10px; }
+.quest.boss { background: var(--alert-bg); }
+.quest.done { opacity: .6; }
+.quest.done .qt { text-decoration: line-through; }
+.qrow { display: flex; gap: 12px; align-items: center; }
+.src { width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; color: #FBF6EF; font-weight: 900; flex: none; }
+.src.mojo { background: #5B4FA8; } .src.linear { background: #2A2433; } .src.jira { background: #7FB6E8; }
+.qmeta { font-size: 13px; color: var(--muted); font-weight: 800; }
+.qmeta.late { color: var(--alert); }
+.qt { font-weight: 800; font-size: 17px; }
+.qtxt { flex: 1; min-width: 0; }
+.qtxt > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag.bossy { background: #FAD9CF; color: var(--alert); border-radius: 99px; padding: 2px 10px; font-size: 13px; font-weight: 900; animation: wiggle 3.5s ease-in-out infinite; }
+@keyframes wiggle { 0%, 90%, 100% { transform: rotate(0); } 93% { transform: rotate(-6deg); } 96% { transform: rotate(6deg); } }
+.hp { display: flex; gap: 10px; align-items: center; font-size: 13px; font-weight: 800; color: var(--alert); }
+.hp .xpbar i { background: #E8806A; }
+.hp .xpbar { flex: 1; }
+.check { width: 48px; height: 48px; min-height: 48px; border-radius: 50%; padding: 0; font-size: 20px; flex: none; transition: width .2s, background .2s; }
+.check.armed { width: 116px; background: var(--butter); color: #2A2433; font-size: 14px; }
+.check.ok { background: var(--good); color: var(--card); border-color: var(--good); }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; animation: rise .25s ease-out; }
+.acts button { min-height: 38px; padding: 4px 14px; font-size: 14px; border-width: 2px; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+.morerow { display: flex; gap: 10px; align-items: center; background: var(--card); border-radius: 18px; padding: 8px 12px; }
+.morerow .qt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.week { display: grid; gap: 10px; background: var(--card); border-radius: 24px; padding: 14px 16px; }
+.week .w { display: grid; gap: 4px; font-size: 14px; font-weight: 800; }
+.week .w.done { color: var(--good); }
+.focusbar { display: flex; gap: 14px; align-items: center; background: #221D2B; color: #FBF6EF; border-radius: 24px; padding: 14px 18px; }
+.focusbar .t { font-size: 30px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.focusbar button { border-color: #FBF6EF; color: #FBF6EF; background: transparent; min-height: 40px; }
+.focusbar button.solid { background: #CFC4F2; color: #2A2433; border-color: #CFC4F2; }
+.qerr { background: var(--alert-bg); color: var(--alert); border-radius: 18px; padding: 8px 14px; font-size: 14px; font-weight: 800; }
+.conn-row { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 2px solid var(--sunk); }
+.conn-row .grow { flex: 1; }
+#qdlg input { width: 100%; font: inherit; padding: 10px 14px; border-radius: 16px; border: 3px solid var(--line); background: var(--ground); color: var(--ink); margin: 4px 0 10px; }
+#qdlg label { font-weight: 800; font-size: 14px; }
+/* celebrations */
+.cele { position: fixed; inset: 0; pointer-events: none; z-index: 50; display: grid; place-items: center; }
+.cele.dim { background: rgba(42,36,51,.35); pointer-events: auto; animation: fadein .25s ease-out; }
+.cele .pop { background: var(--card); color: var(--ink); border-radius: 36px; padding: 26px 40px; text-align: center; box-shadow: var(--shadow); animation: pop .45s cubic-bezier(.2,.9,.3,1.4); }
+.cele .pop.boss { background: var(--alert-bg); } .cele .pop.level { background: var(--lilac); color: #2A2433; } .cele .pop.cleared { background: var(--good-bg); } .cele .pop.challenge { background: var(--tint-butter); }
+.cele .pop b { display: block; font-size: 44px; font-weight: 900; }
+.cele .xp { position: absolute; bottom: 18%; left: 50%; transform: translateX(-50%); background: var(--card); color: var(--purple); border-radius: 99px; padding: 10px 24px; font-weight: 900; font-size: 22px; box-shadow: var(--shadow); animation: floatup 1.5s ease-out forwards; white-space: nowrap; }
+.cele .xp.combo { background: var(--butter); color: #7A5A12; top: 18%; bottom: auto; font-size: 30px; animation: pop .45s cubic-bezier(.2,.9,.3,1.4), shake .5s .45s; }
+.cele .bit { position: absolute; width: 12px; height: 16px; border-radius: 3px; top: -20px; animation: fall 2s ease-in forwards; }
+@keyframes pop { from { transform: scale(.6); opacity: 0; } }
+@keyframes fadein { from { opacity: 0; } }
+@keyframes floatup { 0% { opacity: 0; transform: translate(-50%, 20px); } 15% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -90px); } }
+@keyframes shake { 25% { transform: translateX(-8px); } 50% { transform: translateX(8px); } 75% { transform: translateX(-4px); } }
+@keyframes fall { to { transform: translate(var(--dx), 110vh) rotate(360deg); } }
+
 /* new session sheet */
 dialog { border: 0; border-radius: 32px; padding: 22px; width: min(640px, calc(100% - 32px)); background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
 dialog::backdrop { background: rgba(42,36,51,.35); }
@@ -181,6 +249,7 @@ dialog h1 { margin: 0 0 6px; font-weight: 900; font-size: 28px; }
     <section class="pane side" aria-label="Sessions">
       <div class="list">
         <div id="asks"></div>
+        <div id="qside"></div>
         <h2>Sessions</h2>
         <div id="sessions"></div>
         <h2>Reminders</h2>
@@ -201,6 +270,19 @@ dialog h1 { margin: 0 0 6px; font-weight: 900; font-size: 28px; }
     </section>
   </div>
 </div>
+
+<dialog id="qdlg" aria-labelledby="qtitle">
+  <form method="dialog" id="qform">
+    <h1 id="qtitle">Connect your tickets</h1>
+    <p class="muted">Tickets assigned to you become quests. Keys are kept on your relay and never shown again.</p>
+    <div id="qconns"></div>
+    <h2>Add or update</h2>
+    <div class="chips" id="qkind"></div>
+    <div id="qfields"></div>
+    <p class="qerr hide" id="qerr"></p>
+    <div class="btns"><button class="solid" id="qsave" value="save">Connect</button><button value="cancel" formnovalidate>Close</button></div>
+  </form>
+</dialog>
 
 <dialog id="newdlg" aria-labelledby="newtitle">
   <form method="dialog" id="newform">
@@ -272,6 +354,7 @@ function ago(ts) { var s = Math.max(0, (Date.now() - ts) / 1000); return s < 60 
 
 function openChat(id) {
   if (id !== open) { openSteps = {}; fullText = {}; }
+  questsOpen = false;
   open = id;
   $("app").classList.toggle("chatting", !!id);
   send({ type: "view", agentId: id });
@@ -443,7 +526,9 @@ function render(force) {
       el("button", { "aria-label": "Clear", style: "min-height:32px;padding:0 10px;border-width:2px", onclick: function () { send({ type: "feed_dismiss", id: f.id }); } }, "×"));
   }) : [el("div", { class: "empty", text: "Quiet" })]);
   $("focusbtn").className = S.focus ? "on" : ""; $("pingbtn").className = S.pingWhenDone ? "on" : "";
-  renderChat(force);
+  renderQSide();
+  celebrate(S.quests);
+  if (questsOpen) renderQuests(); else renderChat(force);
   if ($("newdlg").open) renderNew();
 }
 
@@ -531,6 +616,190 @@ function renderChat(force) {
   keepPlace = false;
   list.dataset.follow = atBottom ? "1" : "0";
   list.addEventListener("scroll", function () { list.dataset.follow = list.scrollHeight - list.scrollTop - list.clientHeight < 80 ? "1" : "0"; });
+}
+
+// ---- quests: tickets from Mojo Desk, Linear and Jira, as a game
+var questsOpen = false, qOpenId = "", qArmed = "", qArmedAt = 0, qSeen = -1, qKind = "mojo", qSig = "";
+var SRC = { mojo: ["M", "Mojo Desk"], linear: ["L", "Linear"], jira: ["J", "Jira"] };
+var QSTATUS = { todo: "To do", progress: "In progress", review: "Ready to test", done: "Done" };
+function openQuests() { questsOpen = true; open = ""; qSig = ""; $("app").classList.add("chatting"); send({ type: "view", agentId: "" }); render(true); }
+function est(m) { return !m ? "" : m < 60 ? m + "m" : m % 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m / 60 + "h"; }
+function qsend(type, extra) { send(Object.assign({ type: type }, extra)); }
+function xpBar(have, max) { return el("div", { class: "xpbar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(max), "aria-valuenow": String(have) }, el("i", { style: "width:" + Math.max(0, Math.min(100, (have / Math.max(1, max)) * 100)) + "%" })); }
+
+function renderQSide() {
+  var Q = S.quests;
+  if (!Q) { $("qside").replaceChildren(el("button", { class: "qcard", onclick: function () { openQuests(); } }, el("span", { class: "lv", text: "Quests" }), el("span", { class: "sub muted", text: "Turn your Mojo Desk, Linear or Jira tickets into a game." }))); return; }
+  var g = Q.game;
+  $("qside").replaceChildren(el("button", { class: "qcard" + (questsOpen ? " sel" : ""), onclick: function () { openQuests(); }, "aria-label": "Quests, level " + g.level },
+    el("span", { class: "qhead" }, el("span", { class: "lv", text: "Level " + g.level }), el("span", { class: "muted", style: "font-size:14px", text: Q.planTotal ? Q.planDone + " of " + Q.planTotal + " quests today" : "Quests" })),
+    xpBar(g.levelXp, g.nextXp),
+    el("span", { class: "qstats" }, g.streak ? el("span", { class: "chip flame", text: g.streak + " day streak" }) : null, g.combo >= 2 ? el("span", { class: "chip combo", text: "Combo x" + g.combo }) : null)));
+}
+
+function questCard(t, i) {
+  var open = qOpenId === t.id, done = t.status === "done", armed = qArmed === t.id && Date.now() - qArmedAt < 3000;
+  var check = el("button", { class: "check" + (done ? " ok" : armed ? " armed" : ""), "aria-label": done ? "Done" : armed ? "Tap again to finish " + t.key : "Finish " + t.key, onclick: function (e) {
+    e.stopPropagation();
+    if (done) return;
+    if (armed) { qArmed = ""; qsend("quest_status", { id: t.id, to: "done" }); e.currentTarget.className = "check ok"; return; }
+    qArmed = t.id; qArmedAt = Date.now(); qSig = ""; renderQuests();
+    setTimeout(function () { if (qArmed === t.id) { qArmed = ""; qSig = ""; renderQuests(); } }, 3000);
+  } }, armed ? "Tap: done" : "✓");
+  var meta = [t.key, QSTATUS[t.status]];
+  if (t.est) meta.push(est(t.est));
+  if (t.due) meta.push("due " + t.due.slice(5));
+  var card = el("div", { class: "quest" + (t.boss && !done ? " boss" : "") + (done ? " done" : ""), tabindex: "0", role: "button", "aria-expanded": open ? "true" : "false", "aria-label": t.key + " " + t.title + (open ? ", hide actions" : ", show actions"),
+    onclick: function () { qOpenId = open ? "" : t.id; qSig = ""; renderQuests(); }, onkeydown: function (e) { if (e.key === "Enter" && e.target === e.currentTarget) e.currentTarget.click(); } },
+    el("div", { class: "qrow" }, el("span", { class: "src " + t.src, "aria-label": SRC[t.src][1] }, SRC[t.src][0]),
+      el("div", { class: "qtxt" }, el("div", { class: "qmeta" + (t.overdue ? " late" : ""), text: meta.join("  ·  ") }), el("div", { class: "qt", text: t.title })),
+      t.boss && !done ? el("span", { class: "tag bossy", text: "Boss" }) : null, check),
+    t.boss && !done && t.hpMax ? el("div", { class: "hp" }, xpBar(t.hp, t.hpMax), el("span", { text: "HP " + t.hp + " / " + t.hpMax })) : null);
+  if (open) {
+    var b = function (label, fn, solid) { return el("button", { type: "button", class: solid ? "solid" : "", onclick: function (e) { e.stopPropagation(); fn(); } }, label); };
+    var acts = [];
+    if (t.status === "todo") acts.push(b("Start", function () { qsend("quest_status", { id: t.id, to: "progress" }); }, true));
+    if (t.status === "progress") acts.push(b("Ready to test", function () { qsend("quest_status", { id: t.id, to: "review" }); }));
+    if (!done) {
+      acts.push(b("Done", function () { qsend("quest_status", { id: t.id, to: "done" }); }, t.status !== "todo"));
+      acts.push(b("Focus 25 min", function () { qsend("quest_focus", { id: t.id, minutes: 25 }); }));
+      acts.push(b("Hand to Claude", function () { renderNew(); $("n-prompt").value = "Work on " + t.key + " (" + SRC[t.src][1] + "): " + t.title + ". Read the ticket first: " + t.url; $("newdlg").showModal(); }));
+      if (/^https:\/\//.test(t.url)) acts.push(el("a", { href: t.url, target: "_blank", rel: "noopener", class: "muted", style: "align-self:center;font-weight:800;font-size:14px", onclick: function (e) { e.stopPropagation(); } }, "Open in " + SRC[t.src][1]));
+    } else acts.push(b("Not done after all", function () { qsend("quest_status", { id: t.id, to: "todo" }); }));
+    if (t.planned) {
+      if (i > 0) acts.push(b("Move up", function () { qsend("quest_move", { id: t.id, by: -1 }); }));
+      acts.push(b("Move down", function () { qsend("quest_move", { id: t.id, by: 1 }); }));
+      if (!done) acts.push(b("Not today", function () { qsend("quest_snooze", { id: t.id }); }));
+      acts.push(b("Off the list", function () { qsend("quest_plan", { id: t.id, on: false }); }));
+    }
+    card.append(el("div", { class: "acts" }, acts));
+  }
+  return card;
+}
+
+function renderQuests() {
+  var main = $("main"), Q = S.quests;
+  var sig = JSON.stringify([Q, qOpenId, qArmed]);
+  if (sig === qSig && main.querySelector(".qview")) { tickFocus(); return; }
+  qSig = sig;
+  var keep = main.querySelector(".qview") ? main.querySelector(".qview").scrollTop : 0;
+  var head = el("div", { class: "head" }, el("button", { class: "back", onclick: function () { questsOpen = false; $("app").classList.remove("chatting"); render(true); } }, "Sessions"),
+    el("div", { class: "txt" }, el("h1", { text: "Quests" }), el("div", { class: "sub", text: Q && Q.connected.length ? Q.connected.map(function (c) { return SRC[c.kind][1] + (c.error ? " (needs attention)" : ""); }).join(" · ") : "Nothing connected yet" })),
+    el("button", { onclick: function () { openConnect(); } }, "Connect"),
+    Q && Q.connected.length ? el("button", { "aria-label": "Sync now", onclick: function () { qsend("quest_sync"); } }, "Sync") : null);
+  var v = el("div", { class: "qview" });
+  if (!Q || !Q.connected.length) {
+    v.append(el("div", { class: "nochat" }, el("p", { style: "font-size:20px;font-weight:900;color:var(--ink)", text: "Turn your tickets into quests" }),
+      el("p", { text: "Connect Mojo Desk, Linear or Jira. Tickets assigned to you show up here and on Deskling, with XP for finishing them, bosses, streaks, combos and weekly challenges." }),
+      el("button", { class: "solid", onclick: function () { openConnect(); } }, "Connect a service")));
+  } else {
+    var g = Q.game;
+    Q.connected.filter(function (c) { return c.error; }).forEach(function (c) { v.append(el("div", { class: "qerr", text: SRC[c.kind][1] + ": " + c.error })); });
+    if (Q.focus) {
+      var ft = Q.tasks.find(function (t) { return t.id === Q.focus.id; });
+      v.append(el("div", { class: "focusbar", role: "timer" }, el("span", { class: "t", id: "ftime" }, ""), el("span", { style: "flex:1;font-weight:800", text: "Focusing on " + (ft ? ft.key + " · " + ft.title : "a quest") }),
+        el("button", { class: "solid", onclick: function () { if (ft) qsend("quest_status", { id: ft.id, to: "done" }); } }, "Done"),
+        el("button", { onclick: function () { qsend("quest_focus", { stop: true }); } }, "Stop")));
+    }
+    v.append(el("div", { class: "qhead" },
+      el("div", null, el("h1", { text: "Level " + g.level }), el("div", { class: "muted", style: "font-weight:800", text: g.levelXp + " / " + g.nextXp + " XP · +" + g.todayXp + " today" })),
+      el("div", { style: "flex:1;min-width:160px" }, xpBar(g.levelXp, g.nextXp)),
+      el("div", { class: "qstats" }, el("span", { class: "chip flame", text: g.streak ? g.streak + " day streak" : "No streak yet" }), g.combo >= 2 ? el("span", { class: "chip combo", text: "Combo x" + g.combo }) : null, el("span", { class: "chip", text: g.bosses === 1 ? "1 boss defeated" : g.bosses + " bosses defeated" }))));
+    var today = Q.tasks.filter(function (t) { return t.planned; }), more = Q.tasks.filter(function (t) { return !t.planned; });
+    v.append(el("div", { class: "qhead" }, el("h2", { style: "margin:0;font-size:20px;color:var(--ink)", text: "Today's quests" }), el("span", { class: "muted", style: "font-weight:800", text: Q.planTotal ? (Q.planDone === Q.planTotal ? "All done. Day cleared!" : Q.planDone + " of " + Q.planTotal + " done") : "Pick a few to play today" }),
+      el("span", { class: "segs" }, today.map(function (t) { return el("i", { class: t.status === "done" ? "on" : "" }); }))));
+    today.forEach(function (t, i) { v.append(questCard(t, i)); });
+    if (more.length) {
+      v.append(el("h2", { text: "More quests" }));
+      more.forEach(function (t) {
+        v.append(el("div", { class: "morerow" + (t.snoozed ? " muted" : "") }, el("span", { class: "src " + t.src, style: "width:30px;height:30px;border-radius:10px;font-size:14px" }, SRC[t.src][0]),
+          el("span", { class: "qt", text: t.key + "  " + t.title + (t.snoozed ? "  (not today)" : "") }), t.boss ? el("span", { class: "tag bossy", text: "Boss" }) : null,
+          el("button", { onclick: function () { qsend("quest_plan", { id: t.id, on: true }); } }, "Add")));
+      });
+    }
+    if (g.week && g.week.length) v.append(el("div", { class: "week" }, el("h2", { style: "margin:0", text: "This week" }), g.week.map(function (c) {
+      var n = c.id === "focus" ? Math.floor(c.have / 60) + " / " + c.goal / 60 + "h" : c.have + " / " + c.goal;
+      return el("div", { class: "w" + (c.done ? " done" : "") }, el("div", { style: "display:flex;justify-content:space-between" }, el("span", { text: c.label }), el("span", { text: c.done ? "✓" : n })), xpBar(c.have, c.goal));
+    })));
+  }
+  main.replaceChildren(head, v);
+  v.scrollTop = keep;
+  tickFocus();
+}
+
+function tickFocus() {
+  var f = S && S.quests && S.quests.focus, n = $("ftime");
+  if (!f || !n) return;
+  var left = Math.max(0, f.endsAt - (Date.now() + clockSkew));
+  n.textContent = String(Math.floor(left / 60000)).padStart(2, "0") + ":" + String(Math.floor((left / 1000) % 60)).padStart(2, "0");
+}
+setInterval(tickFocus, 1000);
+
+// Connect: the keys go to the relay and never come back.
+function openConnect() { renderConnect(); $("qerr").classList.add("hide"); $("qdlg").showModal(); }
+function renderConnect() {
+  var Q = S && S.quests;
+  $("qconns").replaceChildren.apply($("qconns"), Q && Q.connected.length ? Q.connected.map(function (c) {
+    return el("div", { class: "conn-row" }, el("span", { class: "src " + c.kind, style: "width:30px;height:30px;border-radius:10px;font-size:14px" }, SRC[c.kind][0]),
+      el("span", { class: "grow" }, el("b", { text: SRC[c.kind][1] }), el("span", { class: "muted", text: " · " + (c.account || "") + (c.error ? " · " + c.error : "") })),
+      el("button", { type: "button", onclick: function () { fetch("/api/integrations?kind=" + c.kind, { method: "DELETE", headers: { authorization: "Bearer " + token } }).then(function () { setTimeout(renderConnect, 300); }); } }, "Disconnect"));
+  }) : [el("p", { class: "muted", text: "Nothing connected yet." })]);
+  $("qkind").replaceChildren.apply($("qkind"), ["mojo", "linear", "jira"].map(function (k) { return el("button", { type: "button", class: k === qKind ? "on" : "", onclick: function () { qKind = k; renderConnect(); } }, SRC[k][1]); }));
+  var f = function (id, label, type, ph, help) { return [el("label", { for: id, text: label }), el("input", { id: id, type: type, placeholder: ph, autocomplete: "off", spellcheck: "false" }), help ? el("p", { class: "muted", style: "margin:-6px 0 8px;font-size:13px", text: help }) : null]; };
+  var fields = qKind === "mojo" ? [].concat(f("q-url", "Mojo Desk address", "url", "https://desk.mojolayers.com"), f("q-token", "API token", "password", "", "Mojo Desk, Settings, API tokens. Make one for Deskling."))
+    : qKind === "linear" ? f("q-token", "Personal API key", "password", "lin_api_…", "Linear, Settings, Security & access, Personal API keys.")
+    : [].concat(f("q-site", "Jira site", "text", "you.atlassian.net"), f("q-email", "Your Atlassian email", "email", ""), f("q-token", "API token", "password", "", "id.atlassian.com, Security, Create and manage API tokens."));
+  $("qfields").replaceChildren.apply($("qfields"), fields);
+}
+$("qform").addEventListener("submit", function (e) {
+  if (e.submitter && e.submitter.value !== "save") return;
+  e.preventDefault();
+  var val = function (id) { var n = $(id); return n ? n.value.trim() : ""; };
+  var body = { kind: qKind, token: val("q-token"), url: val("q-url"), site: val("q-site"), email: val("q-email"), tz: Intl.DateTimeFormat().resolvedOptions().timeZone };
+  $("qsave").disabled = true; $("qsave").textContent = "Checking…";
+  fetch("/api/integrations", { method: "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: JSON.stringify(body) })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (r) {
+      $("qsave").disabled = false; $("qsave").textContent = "Connect";
+      if (!r.ok) { $("qerr").textContent = r.j.error || "That didn't work."; $("qerr").classList.remove("hide"); return; }
+      $("qerr").classList.add("hide");
+      var t = $("q-token"); if (t) t.value = "";
+      setTimeout(renderConnect, 200);
+      if (!questsOpen) openQuests();
+    })
+    .catch(function () { $("qsave").disabled = false; $("qsave").textContent = "Connect"; $("qerr").textContent = "Couldn't reach your relay."; $("qerr").classList.remove("hide"); });
+});
+
+// Celebrations: each new game event plays once (old ones aren't replayed when the page opens).
+var celeQueue = [], celeOn = false;
+function celebrate(Q) {
+  if (!Q || !Q.game) return;
+  var g = Q.game;
+  if (qSeen < 0 || g.seq < qSeen) { qSeen = g.seq; return; }
+  g.events.forEach(function (e) { if (e.seq > qSeen) { celeQueue.push(e); qSeen = e.seq; } });
+  playNext();
+}
+function confetti(box, n) {
+  var cols = ["#F5C64B", "#F4B393", "#CFC4F2", "#2F8A63", "#5B4FA8"];
+  for (var i = 0; i < n; i++) box.append(el("i", { class: "bit", style: "left:" + ((i * 37) % 100) + "%;background:" + cols[i % 5] + ";--dx:" + (((i % 5) - 2) * 30) + "px;animation-delay:" + ((i * 73) % 600) + "ms" }));
+}
+function playNext() {
+  if (celeOn || !celeQueue.length) return;
+  var e = celeQueue.shift(), big = ["boss", "level", "cleared", "challenge"].indexOf(e.kind) >= 0, ms = big ? 2600 : 1600;
+  if (e.kind === "level" && celeQueue[0] && celeQueue[0].kind === "unlock") e = Object.assign({}, e, { sub: celeQueue.shift().label });
+  var box = el("div", { class: "cele" + (big ? " dim" : ""), role: "status", "aria-live": "polite" });
+  if (e.kind === "boss") box.append(el("div", { class: "pop boss" }, el("b", { text: "Boss defeated!" }), el("span", { text: e.label + " · +" + e.amount + " XP" })));
+  else if (e.kind === "level" || e.kind === "unlock") { box.append(el("div", { class: "pop level" }, el("b", { text: e.kind === "level" ? e.label + "!" : "Unlocked!" }), el("span", { text: e.sub || (e.kind === "unlock" ? e.label : "Deskling levelled up") }))); confetti(box, 24); ms = 3200; }
+  else if (e.kind === "cleared") { box.append(el("div", { class: "pop cleared" }, el("b", { text: "Day cleared!" }), el("span", { text: "Every quest for today is done · +" + e.amount + " XP" }))); confetti(box, 30); }
+  else if (e.kind === "challenge") box.append(el("div", { class: "pop challenge" }, el("b", { text: "Weekly challenge complete" }), el("span", { text: e.label + " · +" + e.amount + " XP" })));
+  else if (e.kind === "combo") box.append(el("span", { class: "xp combo", text: "Combo x" + e.amount + "!" }));
+  else if (e.kind === "streak") box.append(el("span", { class: "xp", text: e.label }));
+  else box.append(el("span", { class: "xp", text: "+" + e.amount + " XP  " + e.label }));
+  celeOn = true;
+  var done = function () { if (!box.isConnected) return; box.remove(); celeOn = false; playNext(); };
+  box.addEventListener("click", done);
+  document.body.append(box);
+  setTimeout(done, ms);
 }
 
 // ---- new session

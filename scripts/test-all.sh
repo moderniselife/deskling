@@ -38,6 +38,7 @@ relay() {
   cd "$ROOT/relay"
   [ -d node_modules ] || npm ci --silent
   npx tsc --noEmit -p . || return 1
+  node test/quests.test.mjs >"$OUT/quests.log" || { cat "$OUT/quests.log"; return 1; }
   local port=$((20000 + RANDOM % 20000))
   npx wrangler dev --port "$port" --persist-to "$OUT/relay-state" --var DESKLING_TOKEN:dev-token >"$OUT/wrangler.log" 2>&1 &
   local pid=$!
@@ -47,6 +48,8 @@ relay() {
   # Deskling in a browser (/app), against the same relay.
   [ $rc = 0 ] && { DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node "$ROOT/tests/web/app.test.mjs"; rc=$?; }
   [ $rc = 0 ] && { DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node test/push.test.mjs; rc=$?; }
+  # Quests: fake Mojo Desk, Linear and Jira servers.
+  [ $rc = 0 ] && { DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node test/integrations.test.mjs; rc=$?; }
   # Odd and broken requests: no server errors, nothing hangs, the snapshot stays sound.
   [ $rc = 0 ] && { DESKLING_URL="http://127.0.0.1:$port" DESKLING_TOKEN=dev-token node test/fuzz.mjs 300; rc=$?; }
   kill "$pid" 2>/dev/null

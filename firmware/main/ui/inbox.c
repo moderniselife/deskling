@@ -80,6 +80,8 @@ void inbox_push(const char *json, size_t len)
 {
     if (!json || !len) return;
     bool detail = len > 16 && strncmp(json, "{\"type\":\"detail\"", 16) == 0;
+    // Anything else that isn't a snapshot (a newer relay's message) must not push one out.
+    if (!detail && !(len > 18 && strncmp(json, "{\"type\":\"snapshot\"", 18) == 0)) return;
     char *c = copy_of(json, len);
     if (!c) return;
     char *drop = NULL;

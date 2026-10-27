@@ -197,6 +197,7 @@ lv_obj_t *ui_nav_rail(lv_obj_t *parent, scr_id_t active)
         const char *label;
     } items[] = {{SCR_HOME, LV_SYMBOL_HOME, "Home"},
                  {SCR_SESSIONS, LV_SYMBOL_LIST, "Sessions"},
+                 {SCR_QUESTS, LV_SYMBOL_CHARGE, "Quests"},
                  {SCR_NIGHT, LV_SYMBOL_EYE_CLOSE, "Night"},
                  {SCR_SETTINGS, LV_SYMBOL_SETTINGS, "Settings"}};
     for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
@@ -395,8 +396,10 @@ void ui_go(scr_id_t id)
     if (id == SCR_HOME) scr_home_refresh(DK_CAUSE_HELLO, "");
     if (id == SCR_CHAT) scr_chat_refresh(DK_CAUSE_HELLO);
     if (id == SCR_NEW) scr_new_refresh();
+    if (id == SCR_QUESTS) scr_quests_refresh();
     show_screen(s_scr[id], how, ms);
     ui_gestures_on_screen(id);
+    ui_celebrate_resume(); // anything that waited behind an alert or the night clock
 }
 
 void ui_alert_finished(void)
@@ -420,6 +423,9 @@ bool ui_back(void)
         return true;
     case SCR_NEW:
         ui_go(SCR_SESSIONS);
+        return true;
+    case SCR_QUESTS:
+        if (!scr_quests_back()) ui_go(SCR_HOME);
         return true;
     case SCR_SESSIONS:
     case SCR_SETTINGS:
@@ -589,6 +595,7 @@ void ui_init(void)
     s_scr[SCR_SESSIONS] = scr_sessions_create();
     s_scr[SCR_CHAT] = scr_chat_create();
     s_scr[SCR_NEW] = scr_new_create();
+    s_scr[SCR_QUESTS] = scr_quests_create();
     s_scr[SCR_ALERT] = scr_alert_create();
     s_scr[SCR_NIGHT] = scr_night_create();
     s_scr[SCR_SETUP] = scr_setup_create();
@@ -638,7 +645,9 @@ static void model_changed(void)
     else if (s_cur == SCR_CHAT) scr_chat_refresh(s_model->cause);
     else if (s_cur == SCR_NEW) scr_new_refresh();
     else if (s_cur == SCR_NIGHT) scr_night_refresh();
+    else if (s_cur == SCR_QUESTS) scr_quests_refresh();
     ui_gestures_refresh();
+    ui_celebrate_model(&s_model->quests);
 
     if (s_cur == SCR_SETUP) return; // finish setting up first
     if (alert && s_cur != SCR_ALERT) {

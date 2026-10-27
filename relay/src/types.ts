@@ -147,6 +147,7 @@ export interface State {
   pingWhenDone: boolean;
   push?: import("./push").PushSub[]; // browsers that asked for notifications (/app)
   fullIds?: string[]; // chat lines whose whole text is kept apart ("full:<id>"), oldest first
+  quests?: import("./quests/types").Quests; // your tickets from Mojo Desk, Linear and Jira, and the game
 }
 
 export type Decision = "allow" | "deny" | "computer";
@@ -170,6 +171,7 @@ export interface Cause {
     | "reminder"
     | "reminder_due"
     | "reminder_done"
-    | "focus";
+    | "focus"
+    | "quests";
   id?: string;
 }

@@ -32,7 +32,9 @@ ws.onmessage = (e) => {
     onSnap?.(m);
   }
   if (m.type === "detail") onDetail?.(m);
+  if (m.type === "pong") gotPong = true;
 };
+let gotPong = false;
 let onDetail = null;
 const askDetail = (agentId, lineId) =>
   new Promise((res, rej) => {
@@ -66,6 +68,9 @@ const waitFor = (pred, ms = 3000) =>
 
 await waitFor((m) => m.cause.kind === "hello");
 check("screen gets a hello snapshot", true);
+ws.send(JSON.stringify({ type: "ping" }));
+await new Promise((r) => setTimeout(r, 400));
+check("the relay itself answers a screen's ping", gotPong);
 
 await hook({ hook_event_name: "SessionStart", source: "startup" });
 await hook({ hook_event_name: "UserPromptSubmit", prompt: "Refactor the login flow\nplease" });
