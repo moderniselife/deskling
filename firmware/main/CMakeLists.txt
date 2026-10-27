@@ -1,7 +1,7 @@
 file(GLOB UI_SRCS "ui/*.c" "ui/fonts/*.c")
 
 idf_component_register(
-    SRCS "main.c" "board/board.c" "board/audio.c" "app/sound_synth.c" "board/gsl3680.c"
+    SRCS "main.c" "board/board.c" "board/audio.c" "app/sound_synth.c" "board/gsl3680.c" "board/lv_mem_psram.c"
          "net/net.c" "net/portal.c" "net/ota.c" "net/images.c"
          "app/model.c" "app/settings.c" "app/crashlog.c" ${UI_SRCS}
     INCLUDE_DIRS "." "app" "ui" "board" "net"
@@ -10,6 +10,12 @@ idf_component_register(
                   nvs_flash esp_wifi esp_netif esp_event mbedtls esp_http_server esp_http_client
                   esp_https_ota app_update esp_app_format
 )
+
+# LVGL calls our allocator (board/lv_mem_psram.c, CONFIG_LV_USE_CUSTOM_MALLOC), but it links after
+# main: make sure those functions are pulled in.
+foreach(sym lv_mem_init lv_mem_deinit lv_mem_add_pool lv_mem_remove_pool lv_malloc_core lv_realloc_core lv_free_core lv_mem_monitor_core lv_mem_test_core)
+    target_link_libraries(${COMPONENT_LIB} INTERFACE "-u ${sym}")
+endforeach()
 
 # The GSL3680 needs its RAM firmware uploaded on every boot. That table comes
 # from the guition-jc component (fetched at build time) rather than this repo.

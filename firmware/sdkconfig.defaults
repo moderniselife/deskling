@@ -55,7 +55,9 @@ CONFIG_LV_USE_SNAPSHOT=y
 # Chat pictures: PNGs are decoded with LVGL's lodepng (JPEGs use the P4's hardware decoder).
 CONFIG_LV_USE_LODEPNG=y
 CONFIG_LV_OS_FREERTOS=y
-CONFIG_LV_USE_CLIB_MALLOC=y
+# LVGL memory: small objects in internal RAM only while plenty is left, the rest in PSRAM
+# (main/board/lv_mem_psram.c), so a long chat can't starve Wi-Fi and the web server.
+CONFIG_LV_USE_CUSTOM_MALLOC=y
 CONFIG_LV_USE_CLIB_STRING=y
 CONFIG_LV_USE_CLIB_SPRINTF=y
 CONFIG_LV_DEF_REFR_PERIOD=15
@@ -80,3 +82,5 @@ CONFIG_ESP_LCD_TOUCH_MAX_POINTS=5
 # picture downloads and update checks all share these. With only 10, the web server could run
 # out and stop answering while everything else kept working.
 CONFIG_LWIP_MAX_SOCKETS=24
+# deskling.local keeps answering while the board is busy (decoding a picture, say).
+CONFIG_MDNS_TASK_PRIORITY=5
