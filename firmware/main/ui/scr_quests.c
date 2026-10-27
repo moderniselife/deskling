@@ -192,20 +192,22 @@ static void quest_card(lv_obj_t *list, const dk_quest_t *t, int index)
 {
     bool done = t->status == DK_Q_DONE;
     bool open = strcmp(q.open_id, t->id) == 0;
-    lv_obj_t *c = dk_card(list, t->boss && !done ? DK_ALERT_BG : DK_CARD, 26);
+    // Done ones are drawn quieter with colours, not transparency: a see-through card has to be
+    // drawn as a separate layer every time it repaints (scrolling, say).
+    lv_obj_t *c = dk_card(list, done ? DK_LINE : t->boss ? DK_ALERT_BG : DK_CARD, 26);
     lv_obj_set_width(c, lv_pct(100));
     lv_obj_set_style_pad_hor(c, 18, 0);
     lv_obj_set_style_pad_ver(c, 14, 0);
     dk_col(c, 10);
     lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
     on_click(c, open_cb, t->id);
-    if (done) lv_obj_set_style_opa(c, LV_OPA_60, 0);
 
     lv_obj_t *row = dk_box(c);
     lv_obj_set_width(row, lv_pct(100));
     dk_row(row, 14);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    badge(row, t->src, 44);
+    lv_obj_t *bd = badge(row, t->src, 44);
+    if (done) lv_obj_set_style_bg_color(bd, DK_LILAC, 0);
     lv_obj_t *col = dk_box(row);
     lv_obj_set_flex_grow(col, 1);
     lv_obj_set_width(col, 0);
@@ -216,7 +218,7 @@ static void quest_card(lv_obj_t *list, const dk_quest_t *t, int index)
     lv_obj_t *m = dk_label(col, DK_FONT_XS, t->overdue ? DK_ALERT_INK : DK_MUTED, meta);
     lv_obj_set_width(m, lv_pct(100));
     dk_one_line(m);
-    lv_obj_t *ti = dk_label(col, DK_FONT_L, DK_INK, t->title);
+    lv_obj_t *ti = dk_label(col, DK_FONT_L, done ? DK_MUTED : DK_INK, t->title);
     lv_obj_set_width(ti, lv_pct(100));
     dk_one_line(ti);
     if (done) lv_obj_set_style_text_decor(ti, LV_TEXT_DECOR_STRIKETHROUGH, 0);
@@ -285,17 +287,16 @@ static void quest_card(lv_obj_t *list, const dk_quest_t *t, int index)
 
 static void more_row(lv_obj_t *list, const dk_quest_t *t)
 {
-    lv_obj_t *r = dk_card(list, DK_CARD, 22);
+    lv_obj_t *r = dk_card(list, t->snoozed ? DK_LINE : DK_CARD, 22);
     lv_obj_set_width(r, lv_pct(100));
     lv_obj_set_style_pad_hor(r, 16, 0);
     lv_obj_set_style_pad_ver(r, 10, 0);
     dk_row(r, 12);
     lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    if (t->snoozed) lv_obj_set_style_opa(r, LV_OPA_60, 0);
     badge(r, t->src, 32);
     char line[180];
     snprintf(line, sizeof(line), "%s  %s%s", t->key, t->title, t->snoozed ? "  (not today)" : "");
-    lv_obj_t *l = dk_label(r, DK_FONT_M, DK_INK, line);
+    lv_obj_t *l = dk_label(r, DK_FONT_M, t->snoozed ? DK_MUTED : DK_INK, line);
     lv_obj_set_flex_grow(l, 1);
     lv_obj_set_width(l, 0);
     dk_one_line(l);
@@ -449,6 +450,11 @@ static void refresh_head(void)
 
 // ------------------------------------------------------------ focus
 
+static void focus_sweep(void *o, int32_t v)
+{
+    lv_arc_set_value(o, v);
+}
+
 static void refresh_focus(void)
 {
     const dk_quests_t *Q = &g_model->quests;
@@ -487,7 +493,16 @@ static void refresh_focus(void)
     deskling_set_outfit(q.focus_face, Q->outfits | DK_OUTFIT_HEADPHONES);
     if (was_hidden) {
         deskling_set_mood(q.focus_face, DK_MOOD_CALM); // the ring is the motion here; a calm Deskling is cheap to draw
-        dk_anim_rise(q.focus, 0);
+        // It appears at once: fading or sliding a whole-screen layer costs a full redraw per frame.
+        // The ring sweeping round from empty is the entrance instead.
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, q.focus_ring);
+        lv_anim_set_exec_cb(&a, focus_sweep);
+        lv_anim_set_values(&a, 0, (int32_t)(left / 1000));
+        lv_anim_set_duration(&a, 600);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_start(&a);
     }
 }
 

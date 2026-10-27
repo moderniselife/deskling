@@ -666,7 +666,7 @@ static int bench(void)
     SCENE("sessions -> quests (fade)", 600, (apply("quests"), ui_go(SCR_QUESTS), run(600)));
     SCENE("quests, idle 2 s", 2000, run(2000));
     SCENE("scroll the quests", 1600, (drag(820, 600, 820, 200, 500, 0), run(300), drag(820, 200, 820, 600, 500, 0), run(300)));
-    SCENE("boss, combo, level-up celebrations", 9000, (apply("quests_win"), run(9000)));
+    SCENE("boss, combo, level-up celebrations", 9000, (apply("quests_win"), run(600), (getenv("DK_AREAS") ? (puts("  frames:"), 0) : 0), (getenv("DK_AREAS") ? (puts("  boss celebration, one frame:"), s_dump_areas = 1, run(17), s_dump_areas = 0) : 0), run(8383)));
     SCENE("focus timer, idle 3 s", 3000, (apply("quests_focus"), run(3000)));
     if (getenv("DK_AREAS")) { puts("  focus idle, one frame:"); s_dump_areas = 1; run(17); s_dump_areas = 0; }
     SCENE("quests -> home (fade)", 600, (ui_go(SCR_HOME), run(600)));

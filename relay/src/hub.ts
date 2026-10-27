@@ -36,7 +36,8 @@ const STEPS_SHOWN = 3; // tool steps shown in a row before they collapse into a 
 const HELPER_MAX = 4; // helpers per session the screen shows
 const HELPER_KEEP_MS = 10 * 60 * 1000; // finished helpers stay listed this long
 const QUIET_MS = 2 * 60 * 60 * 1000; // "working" with no news for this long is shown as idle
-const AGENT_STALE_MS = 12 * 60 * 60 * 1000; // forget sessions idle for 12 h
+const AGENT_STALE_MS = 3 * 24 * 60 * 60 * 1000; // forget sessions idle for 3 days (you come back to yesterday's)
+const AGENTS_KEPT = 24; // and keep at most this many (the quietest go first), so the state stays small
 const REMINDER_KEEP_DONE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_WAIT_S = 30;
 const MAX_WAIT_S = 110;
@@ -2018,6 +2019,14 @@ export class Hub extends DurableObject<Record<string, unknown>> {
     for (const [id, a] of Object.entries(this.state.agents)) {
       if (now - a.updated > AGENT_STALE_MS) this.removeAgent(id);
       else if ((a.state === "working" || a.state === "waiting") && now - a.updated > QUIET_MS) this.setAgent(a, "idle", "Quiet for a while");
+    }
+    const extra = Object.values(this.state.agents).length - AGENTS_KEPT;
+    if (extra > 0) {
+      const quietest = Object.values(this.state.agents)
+        .filter((a) => a.state === "done" || a.state === "idle")
+        .sort((a, b) => a.updated - b.updated)
+        .slice(0, extra);
+      for (const a of quietest) this.removeAgent(a.id);
     }
     this.state.reminders = this.state.reminders.filter((r) => !r.done || (r.doneAt ?? 0) > now - REMINDER_KEEP_DONE_MS);
     this.state.pending = this.state.pending.filter((p) => this.waiters.has(p.id));

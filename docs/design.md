@@ -60,7 +60,7 @@ A rounded blob with eyes, blush cheeks and a mouth. Built from primitive shapes 
 | night stars | twinkle out of phase |
 | +XP | pill pops in, floats up 90 px and fades, with a burst of squares |
 | combo | butter pill pops with overshoot, shakes, burst |
-| boss defeated, day cleared, challenge, level up | screen dims, a card pops in, rings grow (their own size) and fade, bursts or confetti falling across the screen; level up shows Deskling cheering in its new outfit |
+| boss defeated, day cleared, challenge, level up | a picture of the screen is darkened once and shown as its own screen; a card slides up with a little overshoot; bursts of squares or confetti fall over it; level up shows Deskling cheering in its new outfit. Nothing behind it redraws while it plays |
 | quest check | first tap widens to "Tap: done" in butter and pops; second tap turns it green |
 | XP bar | fills over 0.7 s |
 

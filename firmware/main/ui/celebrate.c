@@ -1,6 +1,15 @@
 // Celebrations for the game (quests): every new event from the relay plays once, one after
-// another, on the top layer so they show over whatever screen you're on. Each is built from a
-// few small boxes moved by translate and opacity (cheap to draw), and cleaned up when it ends.
+// another, over whatever screen you're on.
+//
+// Drawing cost is what matters on the board. LVGL keeps at most 32 areas to repaint per frame and
+// repaints the whole screen beyond that, so no more than about 14 pieces move at once (each one
+// reports where it was and where it is).
+// The big ones (boss, level up, day cleared, challenge)
+// take a picture of the screen once, darken it once, and show it as a screen of its own: while
+// they play, nothing behind them redraws, and each frame only repaints the few small pieces that
+// move (the card sliding in, bursts, the confetti) over a plain picture. Small ones (+XP, combo,
+// streak) are a pill on the top layer, moved by translate. Nothing animates a whole-screen fade,
+// a scale on anything big, or a shadow.
 #include <stdio.h>
 #include <string.h>
 
@@ -13,6 +22,9 @@ static int s_queue_n;
 static uint32_t s_seen;  // the newest event already played (or skipped)
 static bool s_baseline;  // we've seen a score at least once since boot
 static lv_obj_t *s_now;  // the celebration on screen
+static lv_obj_t *s_scr;  // a big one's own screen (NULL for the small ones)
+static lv_obj_t *s_back; // the screen to return to
+static lv_draw_buf_t *s_shot; // the darkened picture of it
 static lv_timer_t *s_next;
 static uint32_t s_played; // for tests
 
@@ -23,13 +35,6 @@ uint32_t ui_celebrations_played(void) { return s_played; }
 static void ex_tx(void *o, int32_t v) { dk_style(o, LV_STYLE_TRANSLATE_X, v); }
 static void ex_ty(void *o, int32_t v) { dk_style(o, LV_STYLE_TRANSLATE_Y, v); }
 static void ex_opa(void *o, int32_t v) { dk_style(o, LV_STYLE_OPA, v); }
-static void ex_bg_opa(void *o, int32_t v) { dk_style(o, LV_STYLE_BG_OPA, v); }
-static void ex_size(void *o, int32_t v)
-{
-    lv_obj_set_size(o, v, v);
-    lv_obj_set_style_translate_x(o, -v / 2, 0);
-    lv_obj_set_style_translate_y(o, -v / 2, 0);
-}
 
 static void go(lv_obj_t *o, lv_anim_exec_xcb_t cb, int32_t from, int32_t to, uint32_t dur, uint32_t delay, lv_anim_path_cb_t path)
 {
@@ -73,31 +78,17 @@ static void burst(lv_obj_t *p, int32_t x, int32_t y, int n, int32_t reach, uint3
     }
 }
 
-/* Confetti falling across the whole screen. */
+/* Confetti falling across the screen (small pieces: each frame repaints only around them). */
 static void confetti(lv_obj_t *p, int n, uint32_t delay)
 {
     lv_color_t c[5] = {DK_SPARK, DK_PEACH, DK_LILAC, DK_GOOD_INK, DK_PURPLE};
     for (int i = 0; i < n; i++) {
-        lv_obj_t *s = box(p, 10 + (i % 3) * 4, 16 + (i % 2) * 6, c[i % 5], 3);
+        lv_obj_t *s = box(p, 10 + (i % 3) * 3, 14 + (i % 2) * 4, c[i % 5], 3);
         int32_t x = 40 + (i * 1213) % (DK_W - 80);
-        lv_obj_set_pos(s, x, -30);
-        uint32_t d = delay + (uint32_t)((i * 97) % 600);
-        go(s, ex_ty, 0, DK_H + 60, 1800 + (i % 4) * 250, d, lv_anim_path_ease_in);
-        go(s, ex_tx, 0, ((i % 5) - 2) * 40, 1800, d, lv_anim_path_ease_in_out);
-    }
-}
-
-/* Rings growing out from a point (their own size, not a scale). */
-static void rings(lv_obj_t *p, int32_t x, int32_t y, lv_color_t c, int n)
-{
-    for (int i = 0; i < n; i++) {
-        lv_obj_t *r = dk_box(p);
-        lv_obj_set_pos(r, x, y);
-        lv_obj_set_style_radius(r, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(r, 6, 0);
-        lv_obj_set_style_border_color(r, c, 0);
-        go(r, ex_size, 40, 460, 1000, (uint32_t)i * 280, lv_anim_path_ease_out);
-        go(r, ex_opa, LV_OPA_COVER, LV_OPA_TRANSP, 1000, (uint32_t)i * 280, lv_anim_path_linear);
+        lv_obj_set_pos(s, x, -24);
+        uint32_t d = delay + (uint32_t)((i * 97) % 500);
+        go(s, ex_ty, 0, DK_H + 48, 1700 + (i % 4) * 200, d, lv_anim_path_ease_in);
+        go(s, ex_tx, 0, ((i % 5) - 2) * 36, 1700, d, lv_anim_path_ease_in_out);
     }
 }
 
@@ -109,6 +100,18 @@ static void end_after(uint32_t ms)
 {
     s_next = lv_timer_create(finished, ms, NULL);
     lv_timer_set_repeat_count(s_next, 1);
+}
+
+/* Darken a picture once (half way to ink), instead of fading a dim layer over a live screen. */
+static void darken(lv_draw_buf_t *b)
+{
+    lv_color_t ink = DK_INK;
+    uint16_t k = (uint16_t)(((ink.red >> 3) << 11) | ((ink.green >> 2) << 5) | (ink.blue >> 3));
+    uint16_t half_ink = (uint16_t)((k >> 1) & 0x7BEF);
+    for (uint32_t y = 0; y < b->header.h; y++) {
+        uint16_t *row = (uint16_t *)(b->data + (size_t)y * b->header.stride);
+        for (uint32_t x = 0; x < b->header.w; x++) row[x] = (uint16_t)(((row[x] >> 1) & 0x7BEF) + half_ink);
+    }
 }
 
 static void tap_away(lv_event_t *e)
@@ -123,17 +126,30 @@ static void tap_away(lv_event_t *e)
 
 static lv_obj_t *stage(bool dim)
 {
+    if (dim) {
+        // A screen of its own: the current screen's picture, darkened, under the celebration.
+        s_back = lv_screen_active();
+        s_shot = lv_snapshot_take(s_back, LV_COLOR_FORMAT_RGB565);
+        s_scr = lv_obj_create(NULL);
+        lv_obj_remove_style_all(s_scr);
+        lv_obj_remove_flag(s_scr, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_bg_color(s_scr, DK_INK, 0);
+        lv_obj_set_style_bg_opa(s_scr, LV_OPA_COVER, 0);
+        if (s_shot) {
+            darken(s_shot);
+            lv_obj_t *pic = lv_image_create(s_scr);
+            lv_image_set_src(pic, s_shot);
+            lv_obj_set_pos(pic, 0, 0);
+        }
+        lv_obj_add_flag(s_scr, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(s_scr, tap_away, LV_EVENT_CLICKED, NULL);
+        lv_screen_load(s_scr);
+        return s_scr;
+    }
     lv_obj_t *o = dk_box(lv_layer_top());
     lv_obj_set_size(o, DK_W, DK_H);
     lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
-    if (dim) {
-        lv_obj_set_style_bg_color(o, DK_INK, 0);
-        go(o, ex_bg_opa, 0, 150, 260, 0, NULL);
-        lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(o, tap_away, LV_EVENT_CLICKED, NULL);
-    } else {
-        lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE); // touches go through to the screen
-    }
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE); // touches go through to the screen
     return o;
 }
 
@@ -144,14 +160,13 @@ static void float_pill(lv_obj_t *st, const char *text, lv_color_t bg, lv_color_t
     lv_obj_set_style_text_color(p, ink, 0);
     lv_obj_set_style_pad_hor(p, 26, 0);
     lv_obj_set_style_pad_ver(p, 12, 0);
-    lv_obj_set_style_shadow_width(p, 24, 0);
-    lv_obj_set_style_shadow_opa(p, LV_OPA_20, 0);
-    lv_obj_set_style_shadow_color(p, DK_INK, 0);
+    lv_obj_set_style_border_width(p, 3, 0); // an outline, not a shadow: shadows are costly to redraw every frame
+    lv_obj_set_style_border_color(p, ink, 0);
     lv_obj_align(p, LV_ALIGN_TOP_MID, 0, y0);
     dk_anim_pop(p, 0);
     go(p, ex_ty, 0, -90, 1300, 250, lv_anim_path_ease_out);
     go(p, ex_opa, LV_OPA_COVER, LV_OPA_TRANSP, 400, 1150, lv_anim_path_linear);
-    burst(st, DK_W / 2, y0 + 28, 10, 150, 80);
+    burst(st, DK_W / 2, y0 + 28, 8, 150, 80);
 }
 
 /* A big card in the middle of the screen. */
@@ -171,7 +186,8 @@ static lv_obj_t *card(lv_obj_t *st, lv_color_t bg, const char *title, const char
         lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, 0);
     }
     lv_obj_center(c);
-    dk_anim_pop(c, 60);
+    // Slide up into place with a little overshoot: a translate, so it's cheap even with Deskling in it.
+    go(c, ex_ty, 70, 0, 420, 40, lv_anim_path_overshoot);
     return c;
 }
 
@@ -198,17 +214,15 @@ static void play(const dk_game_event_t *e)
         dk_anim_pop(p, 0);
         dk_anim_shake(p);
         go(p, ex_opa, LV_OPA_COVER, LV_OPA_TRANSP, 350, 1200, lv_anim_path_linear);
-        burst(s_now, DK_W / 2, 185, 12, 200, 120);
+        burst(s_now, DK_W / 2, 185, 10, 200, 120);
         end_after(1650);
         break;
     }
     case DK_EV_BOSS: {
         s_now = stage(true);
-        rings(s_now, DK_W / 2, DK_H / 2, DK_ALERT_RING, 2);
         snprintf(b, sizeof(b), "%s  ·  +%d XP", e->label, (int)e->amount);
         card(s_now, DK_ALERT_BG, "Boss defeated!", b, DK_FONT_H1);
         burst(s_now, DK_W / 2, DK_H / 2, 12, 420, 100);
-        burst(s_now, DK_W / 2, DK_H / 2, 12, 260, 380);
         ui_sound(DK_SND_DONE);
         end_after(2600);
         break;
@@ -216,8 +230,7 @@ static void play(const dk_game_event_t *e)
     case DK_EV_LEVEL:
     case DK_EV_UNLOCK: {
         s_now = stage(true);
-        rings(s_now, DK_W / 2, DK_H / 2 - 40, DK_LILAC, 2);
-        confetti(s_now, 26, 200);
+        confetti(s_now, 12, 150);
         lv_obj_t *c = card(s_now, DK_LILAC, e->kind == DK_EV_LEVEL ? e->label : "Unlocked!", e->kind == DK_EV_UNLOCK ? e->label : "Deskling levelled up", DK_FONT_H1);
         lv_obj_t *face = deskling_create(c, 150, DK_FACE);
         lv_obj_move_to_index(face, 0);
@@ -229,7 +242,7 @@ static void play(const dk_game_event_t *e)
     }
     case DK_EV_CLEARED:
         s_now = stage(true);
-        confetti(s_now, 32, 0);
+        confetti(s_now, 14, 0);
         snprintf(b, sizeof(b), "Every quest for today is done  ·  +%d XP", (int)e->amount);
         card(s_now, DK_GOOD_BG, "Day cleared!", b, DK_FONT_H1);
         ui_sound(DK_SND_CHEER);
@@ -286,7 +299,15 @@ static void finished(lv_timer_t *t)
 {
     (void)t;
     s_next = NULL;
-    if (s_now) {
+    if (s_scr) {
+        // Back to the screen underneath, unless something else (an alert) has taken over since.
+        if (lv_screen_active() == s_scr) lv_screen_load(s_back);
+        lv_obj_delete(s_scr);
+        s_scr = NULL;
+        s_now = NULL;
+        if (s_shot) lv_draw_buf_destroy(s_shot);
+        s_shot = NULL;
+    } else if (s_now) {
         lv_anim_delete(s_now, NULL);
         lv_obj_delete(s_now);
         s_now = NULL;
