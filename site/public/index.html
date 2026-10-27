@@ -221,6 +221,8 @@ button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-c
 /* --------------------------------------------------------------- works with */
 .works { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
 .works .card.wide { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); grid-template-areas: "badge code" "h code" "p code" "aside code"; column-gap: 40px; row-gap: 14px; align-content: start; }
+.card.wide .pic { grid-area: code; align-self: center; margin: 0; border-radius: 22px; overflow: hidden; box-shadow: var(--shadow-clay); }
+.card.wide .pic img { display: block; width: 100%; height: auto; }
 .card.wide .badge { grid-area: badge; } .card.wide h3 { grid-area: h; } .card.wide > p:not(.aside) { grid-area: p; } .card.wide .aside { grid-area: aside; } .card.wide .code { grid-area: code; align-self: center; }
 .card { position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 30px; border-radius: var(--r-xl); background: var(--surface); box-shadow: var(--shadow-clay); }
 .card::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: radial-gradient(90% 55% at 12% 0%, var(--hi), transparent 62%); pointer-events: none; }
@@ -337,7 +339,7 @@ p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px
   <section class="wrap hero" aria-labelledby="hero-title">
     <div class="hero-copy">
       <h1 id="hero-title">A little desk buddy for your AI agents.</h1>
-      <p class="lede">Deskling is a 10-inch touchscreen that keeps an eye on every Claude Code and Cursor session you have running. It tells you when one needs you, lets you answer from across the room, and dozes off when you do.</p>
+      <p class="lede">Deskling is a 10-inch touchscreen that keeps an eye on every Claude Code, OpenCode and Cursor session you have running. It tells you when one needs you, lets you answer from across the room, turns your tickets into a game, and dozes off when you do.</p>
       <div class="ctas">
         <a class="btn btn-bold" href="#make">Make one</a>
         <a class="btn btn-soft" href="https://github.com/moderniselife/deskling">See the code</a>
@@ -463,8 +465,8 @@ p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px
               <figcaption><b>Answer Claude's questions</b><span>Its multiple-choice questions become big buttons, and your answer goes straight back.</span></figcaption>
             </figure>
             <figure class="panel" id="p-chat" role="tabpanel" aria-labelledby="t-chat">
-              <div class="frame"><img src="/media/chat.webp" width="1280" height="800" alt="A session's conversation: your prompt, its thinking, the files it edits, its reply and its helpers, with quick replies" loading="lazy"></div>
-              <figcaption><b>Follow the whole conversation</b><span>Its replies as they arrive, what it's thinking, every step and its helpers. Reply with a tap or the on-screen keyboard.</span></figcaption>
+              <div class="frame"><img src="/media/chat.webp" width="1280" height="800" alt="A session's conversation: earlier steps folded into a pill, the latest steps, and a formatted reply with a heading, bold text, a numbered list and a table" loading="lazy"></div>
+              <figcaption><b>Follow the whole conversation</b><span>Replies with their formatting (lists, code, tables), Show all for long ones, and earlier steps that open. Reply with a tap or the on-screen keyboard.</span></figcaption>
             </figure>
             <figure class="panel" id="p-new" role="tabpanel" aria-labelledby="t-new">
               <div class="frame"><img src="/media/new-session.webp" width="1280" height="800" alt="New session: pick the computer, the agent (Claude Code, OpenCode or Gemini CLI), the model and the project, then say what to do" loading="lazy"></div>
@@ -478,6 +480,14 @@ p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px
               <div class="frame"><img src="/media/sessions.webp" width="1280" height="800" alt="Grid of sessions across machines with their status" loading="lazy"></div>
               <figcaption><b>See every session</b><span>Your Mac, your PC, Cursor and cloud sessions, sorted by who needs you.</span></figcaption>
             </figure>
+            <figure class="panel" id="p-quests" role="tabpanel" aria-labelledby="t-quests">
+              <div class="frame"><img src="/media/quests.webp" width="1280" height="800" alt="Quests: Deskling at level 4 with a streak and a combo, this week's challenges, and today's tickets from Mojo Desk, Linear and Jira, two of them bosses with HP bars" loading="lazy"></div>
+              <figcaption><b>Play your tickets</b><span>Mojo Desk, Linear and Jira tickets become today's quests, with XP, bosses, streaks and combos. Finish one here and it moves there too.</span></figcaption>
+            </figure>
+            <figure class="panel" id="p-focus" role="tabpanel" aria-labelledby="t-focus">
+              <div class="frame"><img src="/media/focus.webp" width="1280" height="800" alt="Focus timer: a countdown ring around Deskling in headphones, the ticket being worked on, and the boss's HP going down" loading="lazy"></div>
+              <figcaption><b>Focus on one thing</b><span>A 25-minute countdown on one quest. Every minute knocks HP off a boss, and on Jira the time is logged for you.</span></figcaption>
+            </figure>
             <figure class="panel" id="p-night" role="tabpanel" aria-labelledby="t-night">
               <div class="frame"><img src="/media/night.webp" width="1280" height="800" alt="Dark night clock with a sleeping Deskling" loading="lazy"></div>
               <figcaption><b>Doze off at night</b><span>After 10pm it dims to a quiet clock and only wakes for what matters.</span></figcaption>
@@ -487,10 +497,12 @@ p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px
         <div class="tabs" role="tablist" aria-label="Deskling screens" aria-orientation="vertical">
           <button type="button" class="tab" role="tab" id="t-permission" aria-controls="p-permission" aria-selected="true"><span class="dot" style="--c:#C8553D"></span><b>Allow or deny a command</b><span>See exactly what Claude wants to run, on which machine, and tap once.</span></button>
           <button type="button" class="tab" role="tab" id="t-question" aria-controls="p-question" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#E0B43A"></span><b>Answer its questions</b><span>Its multiple-choice questions become big buttons, and your answer goes straight back.</span></button>
-          <button type="button" class="tab" role="tab" id="t-chat" aria-controls="p-chat" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#8E80D6"></span><b>Follow the whole conversation</b><span>Its replies as they arrive, what it's thinking, every step and its helpers.</span></button>
+          <button type="button" class="tab" role="tab" id="t-chat" aria-controls="p-chat" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#8E80D6"></span><b>Follow the whole conversation</b><span>Formatted replies as they arrive, what it's thinking, and every step.</span></button>
           <button type="button" class="tab" role="tab" id="t-new" aria-controls="p-new" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#CFC4F2"></span><b>Start a session</b><span>Pick the computer, the agent, the model and the project.</span></button>
           <button type="button" class="tab" role="tab" id="t-home" aria-controls="p-home" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#F5C24A"></span><b>Tick off reminders</b><span>"Remind me at 3 to reply to that email." Claude sets it, and Deskling nudges you.</span></button>
           <button type="button" class="tab" role="tab" id="t-sessions" aria-controls="p-sessions" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#2F8A63"></span><b>See every session</b><span>Your Mac, your PC, Cursor and cloud sessions, sorted by who needs you.</span></button>
+          <button type="button" class="tab" role="tab" id="t-quests" aria-controls="p-quests" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#E8806A"></span><b>Play your tickets</b><span>Your tickets as today's quests, with XP, bosses and streaks.</span></button>
+          <button type="button" class="tab" role="tab" id="t-focus" aria-controls="p-focus" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#5B4FA8"></span><b>Focus on one thing</b><span>A countdown that knocks HP off a boss.</span></button>
           <button type="button" class="tab" role="tab" id="t-night" aria-controls="p-night" aria-selected="false" tabindex="-1"><span class="dot" style="--c:#2A2433"></span><b>Doze off at night</b><span>After 10pm it dims to a quiet clock and only wakes for what matters.</span></button>
         </div>
       </div>
@@ -522,12 +534,19 @@ p code { font: 600 0.88em var(--mono); background: var(--sunk); padding: 2px 7px
 curl -fsSL https://raw.githubusercontent.com/moderniselife/deskling/main/hooks/opencode/deskling.js \
   -o ~/.config/opencode/plugins/deskling.js</code></pre><button type="button" class="copy">Copy</button></div>
         </article>
-        <article class="card t-butter" data-enter style="--d:2">
+        <article class="card t-butter wide" data-enter style="--d:2">
+          <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M14 3l3 6.5 7 .8-5.2 4.8 1.5 7L14 18.6 7.7 22.1l1.5-7L4 10.3l7-.8z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg></span>
+          <h3>Mojo Desk, Linear and Jira</h3>
+          <p>Connect them in Deskling for your browser and the tickets assigned to you become quests: a few picked for each day, urgent and overdue ones as bosses, XP and combos for finishing, a streak over working days, weekly challenges, and outfits Deskling unlocks as you level up.</p>
+          <p class="aside">Start, finish or focus on a ticket from the screen and it changes in the service too. Keys stay on your relay.</p>
+          <figure class="pic"><img src="/media/level-up.webp" width="1280" height="800" alt="Level-up celebration: Deskling in new headphones, glasses and a scarf, with confetti" loading="lazy"></figure>
+        </article>
+        <article class="card t-peach" data-enter style="--d:3">
           <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M14 3l10 5.5v11L14 25 4 19.5v-11z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M14 14l10-5.5M14 14v11M14 14L4 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></span>
           <h3>Gemini CLI, Cursor, Codex and more</h3>
           <p>The Deskling runner starts them from the screen and shows the whole session. Copilot, Goose, Qwen Code, Kimi and Kiro work too. In the Cursor editor, hooks show each chat and let you approve shell commands.</p>
         </article>
-        <article class="card t-lilac" data-enter style="--d:3">
+        <article class="card t-lilac" data-enter style="--d:4">
           <span class="badge" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M7 21a5 5 0 01-.6-10A7 7 0 0120 9.5 5.5 5.5 0 0121 21z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/></svg></span>
           <h3>Everything else</h3>
           <p>Cron jobs, CI and other agents: if it can send a web request, it can ping Deskling.</p>
@@ -545,13 +564,13 @@ deskling remind "Stretch" --in 20m</code></pre><button type="button" class="copy
         <p>Your agents and the screen meet at a tiny relay that you run yourself, for free, on Cloudflare. You don't need to open ports or own a server.</p>
       </div>
       <div class="flow" data-enter>
-        <div class="node"><span class="mini" aria-hidden="true"><i style="--c:#CFC4F2"></i><i style="--c:#F4B393"></i><i style="--c:#F5E1A4"></i></span><b>Your agents</b><p>Claude Code and Cursor on any computer, plus cloud sessions and scheduled jobs.</p></div>
+        <div class="node"><span class="mini" aria-hidden="true"><i style="--c:#CFC4F2"></i><i style="--c:#F4B393"></i><i style="--c:#F5E1A4"></i></span><b>Your agents</b><p>Claude Code, OpenCode and Cursor on any computer, cloud sessions, scheduled jobs, and your tickets.</p></div>
         <div class="link" aria-hidden="true"><svg viewBox="0 0 40 24"><path d="M3 12h30M25 4l8 8-8 8" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <div class="node relay"><b>Your relay</b><p>A Cloudflare Worker on your own account. One click to deploy, and it should fit in the free plan.</p></div>
         <div class="link" aria-hidden="true"><svg viewBox="0 0 40 24"><path d="M3 12h30M25 4l8 8-8 8" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <div class="node screen"><b>Deskling</b><p>Stays connected over Wi-Fi, so taps go back in under a second. It updates itself.</p></div>
       </div>
-      <p class="note">The relay holds session names, short task summaries, reminders and the last few chat lines. Your code never passes through it, and nothing goes to a server run by anyone else.</p>
+      <p class="note">The relay holds session names, task summaries, reminders and recent conversations, and, if you connect them, the tickets assigned to you and the keys to fetch them. Your repositories never pass through it, and nothing goes to a server run by anyone else.</p>
     </div>
   </section>
 
@@ -596,6 +615,8 @@ deskling remind "Stretch" --in 20m</code></pre><button type="button" class="copy
         <details><summary>Which agents does it work with?</summary><p>Claude Code and OpenCode fully, with any model OpenCode can use, including local ones. The runner also starts Gemini CLI, Cursor, Codex, Copilot, Goose, Qwen Code, Kimi and Kiro from the screen. Anything else can send notifications, reminders and its status with one command.</p></details>
         <details><summary>Does it work with more than one computer?</summary><p>That's the point. Install the plugin on each one, and every session shows up with the name of the machine it's on.</p></details>
         <details><summary>Can I try it before I have the board?</summary><p>Yes. Deploy your relay and open its <code>/app</code> page: it's Deskling in your browser, with the same conversations, approvals and new sessions. Add it to your phone's home screen and it works there too.</p></details>
+        <details><summary>What does Quests need from Jira, Linear or Mojo Desk?</summary><p>A key that can read your tickets and change their status: an API token for Jira (with your email and site) or Mojo Desk, or a personal API key for Linear. You paste it in Deskling for your browser, your relay checks it and keeps it, and it's never shown again. Disconnect removes it.</p></details>
+        <details><summary>Does finishing a quest change the real ticket?</summary><p>Yes. Start, Ready to test and Done move it in its service (Jira through the matching transition), and focus time is logged on Jira tickets. Tickets you finish in the service itself count too, and old ones don't: only finishes after you connect earn XP.</p></details>
         <details><summary>I don't have a 3D printer.</summary><p>It works fine without the case, propped up on a little stand. Any print service can make the parts from the STL files in the repo.</p></details>
       </div>
     </div>
