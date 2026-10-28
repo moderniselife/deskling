@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "inbox.h"
+#include "health.h"
 #include "ui_internal.h"
 
 #define NIGHT_AFTER_IDLE_MS (5 * 60 * 1000)
@@ -249,6 +250,11 @@ scr_id_t ui_current(void)
     return s_cur;
 }
 
+lv_obj_t *ui_screen(int id)
+{
+    return id >= 0 && id < SCR_COUNT ? s_scr[id] : NULL;
+}
+
 static void set_backlight(uint8_t pct)
 {
     if (s_backlight && pct != s_backlight_pct) s_backlight(pct);
@@ -335,6 +341,7 @@ static void show_screen(lv_obj_t *scr, lv_screen_load_anim_t how, uint32_t ms)
     lv_obj_t *old = lv_screen_active();
     if (!old || old == scr || !ghost_capture(old)) {
         lv_screen_load_anim(scr, how, ms, 0, false);
+        health_follow_screen();
         return;
     }
     int32_t w = lv_display_get_horizontal_resolution(NULL), h = lv_display_get_vertical_resolution(NULL);
@@ -347,6 +354,7 @@ static void show_screen(lv_obj_t *scr, lv_screen_load_anim_t how, uint32_t ms)
     lv_obj_remove_flag(s_ghost, LV_OBJ_FLAG_HIDDEN);
 
     lv_screen_load(scr);
+    health_follow_screen();
     s_trans_scr = scr;
     switch (how) {
     case LV_SCREEN_LOAD_ANIM_MOVE_LEFT:
@@ -585,6 +593,13 @@ void ui_start_touch_calibration(void)
     scr_calib_start(calib_done);
 }
 
+static int s_quiet = -1;
+
+void ui_set_quiet_start(int screen)
+{
+    s_quiet = screen;
+}
+
 void ui_init(void)
 {
     inbox_init();
@@ -605,6 +620,20 @@ void ui_init(void)
     s_scr[SCR_UPDATE] = scr_update_create(update_back);
     lv_timer_create(tick_cb, 1000, NULL);
     ui_gestures_init();
+    health_init();
+
+    if (s_quiet >= 0) {
+        // A fresh start the board made by itself: straight back to where it was, no boot show.
+        scr_id_t to = s_quiet == SCR_NIGHT ? SCR_NIGHT : SCR_HOME;
+        s_cur = SCR_BOOT;
+        lv_screen_load(s_scr[SCR_BOOT]);
+        ui_go(to);
+        trans_finish();
+        lv_screen_load(s_scr[to]);
+        health_follow_screen();
+        if (s_backlight) s_backlight(s_backlight_pct);
+        return;
+    }
 
     s_cur = SCR_BOOT;
     s_holding = true;

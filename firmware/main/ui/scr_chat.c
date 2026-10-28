@@ -1055,6 +1055,16 @@ static void rebuild(bool animate_new)
     rebuild_chat(a, animate_new);
 }
 
+bool scr_chat_release(void)
+{
+    if (!c.scr || !s_rows_n) return false;
+    reader_close();
+    open_clear();
+    rows_clear();
+    s_head_sig = s_chat_sig = 0;
+    return true;
+}
+
 const char *scr_chat_agent(void)
 {
     return c.agent_id;

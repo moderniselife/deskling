@@ -38,6 +38,18 @@ static slot_t *take_slot(void)
     return best;
 }
 
+uint32_t ui_images_release(void)
+{
+    uint32_t n = 0;
+    for (int i = 0; i < SLOTS; i++) {
+        if (!s_slots[i].id[0] || s_slots[i].pending) continue; // one still on its way keeps its place
+        n += s_slots[i].px != NULL;
+        free(s_slots[i].px);
+        memset(&s_slots[i], 0, sizeof(s_slots[i]));
+    }
+    return n;
+}
+
 const lv_image_dsc_t *ui_image_get(const char *id, bool *failed)
 {
     if (failed) *failed = false;
@@ -70,6 +82,7 @@ void ui_image_ready(const char *id, const uint16_t *rgb565, int w, int h)
 {
     slot_t *s = find(id);
     if (!s) return; // pushed out while it downloaded
+    if (s->px) return; // already here (a second answer to the same request)
     s->pending = false;
     if (!rgb565 || w <= 0 || h <= 0) {
         s->failed = true;

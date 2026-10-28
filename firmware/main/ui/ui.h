@@ -21,6 +21,12 @@ typedef enum {
 typedef void (*ui_backlight_fn)(uint8_t percent);
 
 void ui_init(void);
+/* Before ui_init: this start is a quiet fresh start, so skip the boot animation and go straight
+   back to `screen` (home or the night clock). */
+void ui_set_quiet_start(int screen);
+/* The board's health, for its page (see health.h). Call with the LVGL lock held. */
+struct ui_health_s;
+const struct ui_health_s *ui_health(void);
 /** Hand the UI a freshly parsed snapshot (copied). */
 void ui_apply_model(const dk_model_t *m);
 /* The same, but takes *m and hands back the previous model in its place (no 700 KB copy). */
@@ -55,6 +61,11 @@ typedef struct {
     bool rotate_180;    // picture turned around (right way up in the case)
 } ui_device_info_t;
 
+/** Memory, as the device sees it (KB). */
+typedef struct {
+    uint32_t internal_free_kb, internal_largest_kb, psram_free_kb, psram_largest_kb;
+} ui_memory_t;
+
 typedef enum {
     UI_UPDATE_IDLE,
     UI_UPDATE_CHECKING,
@@ -84,6 +95,11 @@ typedef struct {
     // Fetch a chat picture from the relay (GET /img/<id>), shrink it to fit within
     // UI_IMAGE_MAX_W x UI_IMAGE_MAX_H, and hand it back with ui_image_ready. NULL = no pictures.
     void (*fetch_image)(const char *id);
+    // How much memory is left. NULL = unknown.
+    void (*memory)(ui_memory_t *m);
+    // Restart quietly (no boot animation) and come back on `screen` (a scr_id_t); `why` goes on
+    // the board's page. NULL = can't.
+    void (*fresh_start)(const char *why, int screen);
 } ui_platform_t;
 
 #define UI_IMAGE_MAX_W 520

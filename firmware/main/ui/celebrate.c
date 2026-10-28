@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "health.h"
 #include "ui_internal.h"
 
 #define QUEUE_MAX 8
@@ -144,6 +145,7 @@ static lv_obj_t *stage(bool dim)
         lv_obj_add_flag(s_scr, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(s_scr, tap_away, LV_EVENT_CLICKED, NULL);
         lv_screen_load(s_scr);
+        health_follow_screen();
         return s_scr;
     }
     lv_obj_t *o = dk_box(lv_layer_top());
@@ -302,6 +304,7 @@ static void finished(lv_timer_t *t)
     if (s_scr) {
         // Back to the screen underneath, unless something else (an alert) has taken over since.
         if (lv_screen_active() == s_scr) lv_screen_load(s_back);
+        health_follow_screen();
         lv_obj_delete(s_scr);
         s_scr = NULL;
         s_now = NULL;
@@ -334,6 +337,11 @@ void ui_celebrate_model(const dk_quests_t *q)
 }
 
 /* The screen changed: anything waiting (behind an alert, say) can play now. */
+bool ui_celebrate_showing(void)
+{
+    return s_now != NULL;
+}
+
 void ui_celebrate_resume(void)
 {
     next();

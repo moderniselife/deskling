@@ -106,6 +106,8 @@ code{background:var(--ground);padding:2px 6px;border-radius:6px}
     <p class="muted" id="perf"></p>
     <p class="muted" id="pics"></p>
     <p class="muted" id="snaps"></p>
+    <p class="muted" id="tidy"></p>
+    <p class="msg" id="tidyproblem" hidden></p>
     <p class="msg bad" id="crash" hidden></p>
     <input id="fwfile" type="file" accept=".bin">
     <button id="upload">Install firmware</button>
@@ -186,6 +188,16 @@ async function refresh() {
     const im = s.images || {};
     const sn = s.snapshots || {}, mem = s.memory || {};
     $('snaps').textContent = `Updates: ${sn.drawn} drawn of ${sn.received} received, ${sn.draw_ms_avg} ms each (worst ${sn.draw_ms_max}), held up to ${sn.held_ms_max} ms while you touched it. Memory: ${mem.internal_free_kb} KB internal free (lowest ${mem.internal_min_kb}, largest block ${mem.internal_largest_kb}), ${Math.round((mem.psram_free_kb || 0) / 1024)} MB PSRAM free, up ${Math.round((mem.uptime_s || 0) / 60)} min. Relay connection restarted ${s.relay.restarts || 0} times.`;
+    const he = s.health;
+    if (he) {
+      const hist = he.history || [];
+      const span = (k) => hist.length ? `${Math.min(...hist.map((p) => p[k]))}–${Math.max(...hist.map((p) => p[k]))}` : '';
+      $('tidy').textContent = `Housekeeping: ${he.anims_paused} of ${he.anims} animations paused on screens you can't see, ${he.objects} things on the screens, ${he.timers} timers. Chats let go ${he.chats_let_go} times. Fresh starts since it was switched on: ${he.fresh_starts}.` +
+        (hist.length > 1 ? ` Over the last ${Math.round(hist.length / 2)} h: drawing ${span(1)}% busy, internal largest block ${span(3)} KB, PSRAM largest block ${span(4)} KB, things on the screens ${span(8)}.` : '') +
+        (he.night_busy_best_pct ? ` Night clock: ${he.night_busy_pct}% busy (quickest ${he.night_busy_best_pct}%).` : '');
+      $('tidyproblem').hidden = !he.problem;
+      $('tidyproblem').textContent = he.problem ? `${he.problem}: it will start fresh by itself next time nobody's using it.` : '';
+    }
     $('pics').textContent = im.requested ? `Chat pictures: ${im.done} shown, ${im.failed} failed of ${im.requested}. Latest: ${im.last || 'nothing yet'}.` : '';
   }
   $('relaystate').textContent = s.relay.online ? 'Connected' : s.relay.configured ? 'Not connected' : 'Not set up';

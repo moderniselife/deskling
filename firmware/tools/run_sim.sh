@@ -21,3 +21,9 @@ fi
 cmake -S sim -B "$B" -DLVGL_DIR="$PWD/$DEPS/lvgl" -DCJSON_DIR="$PWD/$DEPS/cJSON" -DSTB_DIR="$PWD/$DEPS" "${FLAGS[@]}" >/dev/null
 cmake --build "$B" -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)" >/dev/null
 "./$B/deskling_sim" sim/fixtures "$OUT" "${2:-}"
+# Coming back from a quiet fresh start (ui/health.h), and (not under AddressSanitizer: too slow)
+# an hour of simulated running that must not build up animations, objects or memory.
+DK_QUIET_START=1 "./$B/deskling_sim" sim/fixtures "$OUT" | grep -E '^(PASS|FAIL)'
+if [ "${DESKLING_SIM_ASAN:-0}" != "1" ]; then
+  DK_SOAK="${DESKLING_SIM_SOAK:-60}" "./$B/deskling_sim" sim/fixtures "$OUT/soak" | grep -E '^(PASS|FAIL|soak)'
+fi

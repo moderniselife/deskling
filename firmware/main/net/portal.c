@@ -26,6 +26,7 @@
 #include "board.h"
 #include "esp_lvgl_port.h"
 #include "ui.h"
+#include "health.h"
 #include "settings.h"
 #include "sound.h"
 
@@ -173,6 +174,34 @@ static esp_err_t status(httpd_req_t *req)
     cJSON_AddNumberToObject(hp, "internal_largest_kb", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024);
     cJSON_AddNumberToObject(hp, "psram_free_kb", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
     cJSON_AddNumberToObject(hp, "uptime_s", (double)(esp_timer_get_time() / 1000000));
+    // Housekeeping (ui/health.h): what the board is holding, and what it has let go of.
+    ui_health_t *h = malloc(sizeof(ui_health_t));
+    if (h && lvgl_port_lock(500)) {
+        *h = *ui_health();
+        lvgl_port_unlock();
+        cJSON *he = cJSON_AddObjectToObject(o, "health");
+        cJSON_AddNumberToObject(he, "busy_pct", h->busy);
+        cJSON_AddNumberToObject(he, "night_busy_pct", h->busy_night);
+        cJSON_AddNumberToObject(he, "night_busy_best_pct", h->busy_night_base);
+        cJSON_AddNumberToObject(he, "anims", h->anims);
+        cJSON_AddNumberToObject(he, "anims_paused", h->paused);
+        cJSON_AddNumberToObject(he, "timers", h->timers);
+        cJSON_AddNumberToObject(he, "objects", h->objects);
+        cJSON_AddNumberToObject(he, "chats_let_go", h->chats_released);
+        cJSON_AddNumberToObject(he, "pictures_let_go", h->pictures_released);
+        cJSON_AddNumberToObject(he, "psram_largest_kb", h->mem.psram_largest_kb);
+        cJSON_AddStringToObject(he, "problem", h->problem);
+        cJSON_AddNumberToObject(he, "fresh_starts", crashlog_fresh_starts());
+        // Half-hour points, oldest first: [minutes up, busy %, internal free KB, internal largest KB,
+        // PSRAM largest KB, animations, paused, timers, objects]
+        cJSON *hi = cJSON_AddArrayToObject(he, "history");
+        for (int i = 0; i < h->history_n; i++) {
+            const health_point_t *p = &h->history[i];
+            const double v[] = {p->at_s / 60, p->busy, p->internal_free_kb, p->internal_largest_kb, p->psram_largest_kb, p->anims, p->paused, p->timers, p->objects};
+            cJSON_AddItemToArray(hi, cJSON_CreateDoubleArray(v, sizeof(v) / sizeof(v[0])));
+        }
+    }
+    free(h);
     images_stats_t is = images_stats();
     cJSON *im = cJSON_AddObjectToObject(o, "images");
     cJSON_AddNumberToObject(im, "requested", is.requested);

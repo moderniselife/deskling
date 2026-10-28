@@ -6,6 +6,7 @@
 #include "gsl3680.h"
 
 #include "device.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "images.h"
@@ -34,6 +35,21 @@ void device_set_brightness(uint8_t percent)
 static void restart(void)
 {
     esp_restart();
+}
+
+static void fresh_start(const char *why, int screen)
+{
+    ESP_LOGW(TAG, "fresh start: %s", why);
+    board_set_backlight(0); // dark for the second it takes, rather than a flash of noise
+    crashlog_fresh_start(why, screen);
+}
+
+static void memory(ui_memory_t *m)
+{
+    m->internal_free_kb = heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    m->internal_largest_kb = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;
+    m->psram_free_kb = heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024;
+    m->psram_largest_kb = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) / 1024;
 }
 
 static bool touch_calibrated(void)
@@ -85,6 +101,8 @@ static const ui_platform_t s_platform = {
     .touch_calibrated = touch_calibrated,
     .touch_save_calibration = touch_save_calibration,
     .fetch_image = images_fetch,
+    .memory = memory,
+    .fresh_start = fresh_start,
 };
 
 void app_main(void)
@@ -108,9 +126,11 @@ void app_main(void)
     lvgl_port_lock(0);
     ui_set_backlight_cb(board_set_backlight);
     ui_set_platform(&s_platform);
+    int quiet = crashlog_quiet_screen();
+    if (quiet >= 0) ui_set_quiet_start(quiet); // the UI sets the backlight for the screen it returns to
     ui_init();
     lvgl_port_unlock();
-    board_set_backlight(100);
+    if (quiet < 0) board_set_backlight(100);
     ESP_LOGI(TAG, "hello from Deskling %s", ota_variant());
 
     net_start();

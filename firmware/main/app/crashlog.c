@@ -23,6 +23,16 @@ typedef struct {
 } crash_t;
 
 static RTC_NOINIT_ATTR crash_t s_crash;
+
+#define FRESH_MAGIC 0xF2E5A171u
+typedef struct {
+    uint32_t magic;
+    int32_t screen;
+    char why[80];
+} fresh_t;
+static RTC_NOINIT_ATTR fresh_t s_fresh;
+static RTC_NOINIT_ATTR uint32_t s_fresh_n, s_fresh_n_check; // survives restarts, not power cuts
+static int s_quiet = -1;
 static char s_summary[200];
 
 extern char *g_panic_abort_details;
@@ -67,6 +77,28 @@ void crashlog_init(void)
         snprintf(s_summary, sizeof(s_summary), "Last restart: %s.", why);
     }
     s_crash.magic = 0; // report each crash once
+
+    if (s_fresh_n_check != ~s_fresh_n) s_fresh_n = 0, s_fresh_n_check = ~0u; // powered on: noise
+    if (r == ESP_RST_SW && s_fresh.magic == FRESH_MAGIC) {
+        s_quiet = s_fresh.screen;
+        s_fresh.why[sizeof(s_fresh.why) - 1] = '\0';
+        snprintf(s_summary, sizeof(s_summary), "Last restart: a fresh start by itself (%s).", s_fresh.why);
+    }
+    s_fresh.magic = 0;
 }
+
+void crashlog_fresh_start(const char *why, int screen)
+{
+    s_fresh.screen = screen;
+    copy(s_fresh.why, sizeof(s_fresh.why), why);
+    s_fresh.magic = FRESH_MAGIC;
+    s_fresh_n++;
+    s_fresh_n_check = ~s_fresh_n;
+    esp_restart();
+}
+
+int crashlog_quiet_screen(void) { return s_quiet; }
+
+unsigned crashlog_fresh_starts(void) { return s_fresh_n; }
 
 const char *crashlog_summary(void) { return s_summary; }

@@ -14,6 +14,9 @@
 #include "lvgl.h"
 #include "model.h"
 #include "ui.h"
+#include "health.h"
+#include "src/misc/lv_anim_private.h"
+#include "src/core/lv_global.h"
 #include "inbox.h"
 #include "ui_internal.h"
 
@@ -386,6 +389,16 @@ static void fake_touch_save(const float m[6])
     s_calibrated = true;
     printf("  -> touch calibration %.3f %.3f %.1f | %.3f %.3f %.1f\n", m[0], m[1], m[2], m[3], m[4], m[5]);
 }
+static ui_memory_t s_fake_mem; // zeros = unknown, as on a board that can't tell
+static char s_fresh_why[96];
+static int s_fresh_screen = -1;
+static void fake_memory(ui_memory_t *m) { *m = s_fake_mem; }
+static void fake_fresh_start(const char *why, int screen)
+{
+    snprintf(s_fresh_why, sizeof(s_fresh_why), "%s", why);
+    s_fresh_screen = screen;
+}
+
 static const ui_platform_t s_fake = {
     .wifi_scan = fake_scan,
     .wifi_connect = fake_connect,
@@ -401,6 +414,8 @@ static const ui_platform_t s_fake = {
     .touch_calibrated = fake_touch_calibrated,
     .touch_save_calibration = fake_touch_save,
     .fetch_image = fake_fetch_image,
+    .memory = fake_memory,
+    .fresh_start = fake_fresh_start,
 };
 
 static void expect_sound(const char *name)
@@ -999,6 +1014,155 @@ static void chaos(int rounds)
     }
 }
 
+static uint32_t count_objs(lv_obj_t *o)
+{
+    uint32_t n = 1;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(o); i++) n += count_objs(lv_obj_get_child(o, i));
+    return n;
+}
+
+/* apply() without the log line (the soak test applies thousands). */
+static void silent_apply(const char *fixture)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s.json", s_fixtures, fixture);
+    FILE *f = fopen(path, "rb");
+    if (!f) return;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc(n + 1);
+    fread(buf, 1, n, f);
+    buf[n] = 0;
+    fclose(f);
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    if (!root) return;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    relativise(root, (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000);
+    // Every update brings new chat lines and notifications (as a real night does), not the same ones.
+    static unsigned serial;
+    serial++;
+    cJSON *ag, *ln, *fd;
+    cJSON_ArrayForEach(ag, cJSON_GetObjectItem(root, "agents"))
+    {
+        cJSON_ArrayForEach(ln, cJSON_GetObjectItem(ag, "chat"))
+        {
+            cJSON *id = cJSON_GetObjectItem(ln, "id");
+            if (cJSON_IsString(id)) {
+                char nid[40];
+                snprintf(nid, sizeof(nid), "%.20s-%u", id->valuestring, serial % 7 == 0 ? serial : serial / 7);
+                cJSON_SetValuestring(id, nid);
+            }
+        }
+    }
+    cJSON_ArrayForEach(fd, cJSON_GetObjectItem(root, "feed"))
+    {
+        cJSON *id = cJSON_GetObjectItem(fd, "id");
+        if (cJSON_IsString(id)) {
+            char nid[40];
+            snprintf(nid, sizeof(nid), "%.20s-%u", id->valuestring, serial / 3);
+            cJSON_SetValuestring(id, nid);
+        }
+    }
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    inbox_push(json, strlen(json)); // the board's way in
+    free(json);
+}
+
+/* Looping animations on objects of `scr`: how many, and how many of them are paused. */
+static void loops_on(lv_obj_t *scr, int *n, int *paused)
+{
+    *n = *paused = 0;
+    lv_ll_t *ll = &LV_GLOBAL_DEFAULT()->anim_state.anim_ll;
+    for (lv_anim_t *a = lv_ll_get_head(ll); a; a = lv_ll_get_next(ll, a)) {
+        if (a->repeat_cnt != LV_ANIM_REPEAT_INFINITE || !a->var || !lv_obj_is_valid(a->var)) continue;
+        if (lv_obj_get_screen(a->var) != scr) continue;
+        (*n)++;
+        *paused += a->is_paused;
+    }
+}
+
+static void housekeeping_tests(void)
+{
+    // The fresh-start decision.
+    {
+        health_in_t in = {.uptime_s = 3 * 3600, .hour = 14, .idle_s = 600, .calm = true};
+        check(!health_verdict(&in).problem, "health: nothing to do on a healthy board");
+        in.mem = (ui_memory_t){.internal_free_kb = 20, .internal_largest_kb = 8, .psram_free_kb = 20000, .psram_largest_kb = 16000};
+        health_verdict_t v = health_verdict(&in);
+        check(v.problem && v.restart_now, "health: starts fresh when internal memory runs out and nobody's using it");
+        in.calm = false;
+        check(!health_verdict(&in).restart_now, "health: ...but not while something's on screen for you");
+        in.calm = true, in.idle_s = 20;
+        check(!health_verdict(&in).restart_now, "health: ...nor while you're using it");
+        in.idle_s = 600, in.uptime_s = 120;
+        check(!health_verdict(&in).restart_now, "health: ...nor straight after starting (no restart loops)");
+        in = (health_in_t){.uptime_s = 22 * 3600, .hour = 4, .idle_s = 3600, .calm = true};
+        check(health_verdict(&in).restart_now, "health: a nightly fresh start after a long run");
+        in.hour = 9;
+        check(!health_verdict(&in).problem, "health: not in the daytime");
+        in.hour = -1;
+        check(!health_verdict(&in).problem, "health: not without a clock");
+        in = (health_in_t){.uptime_s = 5 * 3600, .hour = 1, .idle_s = 3600, .calm = true, .slow_windows = 3};
+        check(health_verdict(&in).restart_now, "health: starts fresh when the night clock has become slow");
+        in = (health_in_t){.uptime_s = 5 * 3600, .hour = 14, .idle_s = 3600, .calm = true, .objects = 20000};
+        check(health_verdict(&in).restart_now, "health: starts fresh when things pile up on the screens");
+    }
+
+    // Loops on screens you can't see are paused, and pick up again when the screen is back.
+    apply("busy");
+    ui_go(SCR_HOME);
+    run(800);
+    int n, paused;
+    loops_on(ui_screen(SCR_NIGHT), &n, &paused);
+    check(n > 0 && paused == n, "the night clock's Deskling rests while the night clock is hidden");
+    loops_on(ui_screen(SCR_HOME), &n, &paused);
+    check(n > 0 && paused == 0, "home's animations keep going");
+    ui_go(SCR_NIGHT);
+    run(900);
+    loops_on(ui_screen(SCR_NIGHT), &n, &paused);
+    check(n > 0 && paused == 0, "the night clock's Deskling moves again when it's shown");
+    loops_on(ui_screen(SCR_HOME), &n, &paused);
+    check(n > 0 && paused == n, "home rests behind the night clock");
+    ui_go(SCR_HOME);
+    run(900);
+
+    // A chat you left ten minutes ago is let go of, and comes back whole when you open it.
+    apply("chat_long");
+    ui_open_chat("s-web");
+    run(900);
+    uint32_t full = count_objs(ui_screen(SCR_CHAT));
+    check(find_label(lv_screen_active(), "the device is stuck on a black screen, did we brick it?") != NULL, "the chat shows its messages");
+    ui_go(SCR_HOME);
+    uint32_t before = ui_health()->chats_released;
+    for (int i = 0; i < 11 * 12; i++) run(5000);
+    uint32_t let_go = count_objs(ui_screen(SCR_CHAT));
+    printf("  chat screen: %u things open, %u after letting go\n", full, let_go);
+    check(ui_health()->chats_released == before + 1, "a chat left for ten minutes is let go of (once)");
+    check(let_go + 40 < full && !find_label(ui_screen(SCR_CHAT), "the device is stuck on a black screen, did we brick it?"), "...its bubbles are gone");
+    ui_open_chat("s-web");
+    run(900);
+    check(find_label(lv_screen_active(), "the device is stuck on a black screen, did we brick it?") != NULL, "...and come back when you open it again");
+    ui_go(SCR_HOME);
+    run(900);
+
+    // Memory running out: a fresh start, but only when nobody's using it and nothing's asking.
+    while (lv_tick_get() < 11 * 60 * 1000) run(5000);
+    s_fake_mem = (ui_memory_t){.internal_free_kb = 18, .internal_largest_kb = 6, .psram_free_kb = 20000, .psram_largest_kb = 16000};
+    apply("permission");
+    for (int i = 0; i < 30; i++) run(5000);
+    check(s_fresh_screen < 0, "no fresh start while a permission question is up");
+    check(strstr(ui_health()->problem, "memory") != NULL, "...but the board's page says what's wrong");
+    apply("busy");
+    ui_go(SCR_HOME);
+    for (int i = 0; i < 30; i++) run(5000);
+    check(s_fresh_screen == SCR_HOME && strstr(s_fresh_why, "memory"), "a fresh start once it's calm and untouched, back to home");
+    s_fake_mem = (ui_memory_t){0};
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3) {
@@ -1028,8 +1192,71 @@ int main(int argc, char **argv)
     lv_indev_set_read_cb(ptr, read_cb);
 
     dk_set_sender(sender);
+    // DK_QUIET_START: start as after a fresh start that was on the night clock.
+    bool quiet = getenv("DK_QUIET_START") != NULL;
+    if (quiet) ui_set_quiet_start(SCR_NIGHT);
     ui_init();
     ui_set_platform(&s_fake);
+    if (quiet) {
+        run(300);
+        expect_screen(SCR_NIGHT, "night clock (straight back after a fresh start, no boot animation)");
+        return s_failures ? 1 : 0;
+    }
+
+    // DK_SOAK=<minutes>: leave the board running (simulated time) with updates every few seconds
+    // and the screen changing now and then, like a night on the desk, and print what it's holding
+    // every 10 minutes: running animations, timers, objects and heap. Anything that only grows is
+    // a leak that slows the board down over time.
+    const char *soak = getenv("DK_SOAK");
+    if (soak) {
+        ui_set_connection(DK_CONN_ONLINE, NULL);
+        s_calibrated = true;
+        run(3500);
+        static const char *fx[] = {"busy", "chat_long", "chat_live", "chat_markdown", "quests", "notify", "done", "opencode", "reminder_due", "chat_waiting", "quests_focus", "busy_long"};
+        static const scr_id_t scr[] = {SCR_HOME, SCR_SESSIONS, SCR_CHAT, SCR_QUESTS, SCR_HOME, SCR_NIGHT, SCR_HOME, SCR_CHAT};
+        int minutes = atoi(soak);
+        int nfx = (int)(sizeof(fx) / sizeof(fx[0]));
+        // The most it held in the first half hour (one turn round every screen and fixture), and
+        // the most after that: anything that keeps growing ends well above the first.
+        uint32_t warm[3] = {0}, late[3] = {0};
+        for (int m = 0; m <= minutes; m++) {
+            {
+                struct mallinfo2 mi = mallinfo2();
+                uint32_t now[3] = {lv_anim_count_running(), health_count_objects(), (uint32_t)(mi.uordblks / 1024)};
+                for (int i = 0; i < 3; i++) {
+                    uint32_t *into = m < 30 ? warm : late;
+                    if (now[i] > into[i]) into[i] = now[i];
+                }
+            }
+            if (m % 10 == 0) {
+                int timers = 0;
+                for (lv_timer_t *t = lv_timer_get_next(NULL); t; t = lv_timer_get_next(t)) timers++;
+                struct mallinfo2 mi = mallinfo2();
+                const ui_health_t *h = ui_health();
+                printf("soak %4d min: anims %4u (%3u paused)  timers %3d  objects %5u  heap %7zu KB  chats let go %u%s%s\n", m,
+                       lv_anim_count_running(), h->paused, timers, health_count_objects(), mi.uordblks / 1024, h->chats_released,
+                       s_fresh_why[0] ? "  fresh start: " : "", s_fresh_why);
+                fflush(stdout);
+            }
+            for (int k = 0; k < 20; k++) { // an update every 3 s
+                silent_apply(fx[(m * 20 + k) % nfx]);
+                run(3000);
+            }
+            scr_id_t to = scr[m % (int)(sizeof(scr) / sizeof(scr[0]))];
+            if (to == SCR_CHAT) ui_open_chat("s-web");
+            else ui_go(to);
+        }
+        if (minutes >= 40) {
+            static const char *what[] = {"animations", "things on the screens", "memory use (KB)"};
+            for (int i = 0; i < 3; i++) {
+                bool ok = late[i] <= warm[i] + warm[i] / 4 + 8;
+                printf("%s  no build-up of %s over %d minutes (first half hour at most %u, after that at most %u)\n", ok ? "PASS" : "FAIL",
+                       what[i], minutes, warm[i], late[i]);
+                if (!ok) s_failures++;
+            }
+        }
+        return s_failures ? 1 : 0;
+    }
 
     // DK_REPLAY=<dir>/<name>.json: apply one real snapshot (say, saved from your relay), open every
     // session's chat and render it, then stop. For chasing crashes with -fsanitize=address.
@@ -1664,6 +1891,8 @@ int main(int argc, char **argv)
         run(600);
         expect_screen(SCR_HOME, "home (back swipe started on a rail button)");
     }
+
+    housekeeping_tests();
 
     {
         // DK_CHAOS=<rounds> for a longer run.

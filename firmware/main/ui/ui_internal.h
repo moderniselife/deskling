@@ -75,6 +75,8 @@ void scr_chat_refresh(dk_cause_t cause);
 void scr_chat_detail(dk_detail_t *d);
 /* Swipe back on the chat: closes the reader first. */
 bool scr_chat_back(void);
+/* Let go of the chat's bubbles and opened steps (it's rebuilt when you open it). False if there was nothing. */
+bool scr_chat_release(void);
 
 lv_obj_t *scr_alert_create(void);
 /** Returns true if there is a request to show. */
@@ -123,6 +125,8 @@ const lv_image_dsc_t *ui_image_get(const char *id, bool *failed);
 void scr_chat_images_changed(void);
 /* 0 = not here yet (or never asked for), 1 = ready to draw, 2 = couldn't load. Never fetches. */
 int ui_image_state(const char *id);
+/* Free every picture that has arrived (the chat must not be showing any). Returns how many. */
+uint32_t ui_images_release(void);
 
 /* New session (scr_new.c) */
 lv_obj_t *scr_new_create(void);
@@ -139,4 +143,6 @@ bool scr_quests_back(void);
 /* Game celebrations (celebrate.c): plays each new event once, over any screen. */
 void ui_celebrate_model(const dk_quests_t *q);
 void ui_celebrate_resume(void);
+bool ui_celebrate_showing(void);
+lv_obj_t *ui_screen(int id);
 uint32_t ui_celebrations_played(void);
